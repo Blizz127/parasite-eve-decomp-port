@@ -22,25 +22,34 @@ own copy of the game; nothing from the game is included. No BIOS is needed.
 
 ### 1. Download
 
-> **The prebuilt download is coming soon.** The first public release will be
-> a build that contains only this project's own code: no Sony Psy-Q SDK
-> code. It will appear on the
-> [Releases page](https://github.com/Blizz127/parasite-eve-decomp-port/releases),
-> and these steps will be updated with its exact file name. A turnkey
-> [build from source](#build-from-source) (with your own disc) is being
-> finished at the same time.
+From the [Releases page](https://github.com/Blizz127/parasite-eve-decomp-port/releases/latest),
+download **`parasite-eve-day1-day1-r5-16a267b1-linux-x64.tar.gz`**. You can
+also download `SHA256SUMS` if you want to check the file.
+
+> **What is in the r5 build.** The r5 binary is compiled from the full
+> development tree, so it contains two things this repository's source
+> leaves out:
+>
+> - **Psy-Q SDK-derived code:** about 445 functions that translate Sony's
+>   Psy-Q libraries (graphics, CD, pad, sound, GTE and others).
+> - **khasinski's upstream code:** credited, and not under this
+>   repository's MIT license (see [UPSTREAM_FILES.md](UPSTREAM_FILES.md)).
+>
+> It includes no game assets, apart from the PlayStation SPU's 40-byte
+> sound-interpolation table. All of this is being replaced by the project's
+> own code in later releases (a Psy-Q-free port layer).
 
 ### 2. Install
 
-Unpack the download into `~/Games`:
+Unpack it into `~/Games`:
 
 ```sh
 mkdir -p ~/Games
-tar xzf ~/Downloads/parasite-eve-<version>-linux-x64.tar.gz -C ~/Games
+tar xzf ~/Downloads/parasite-eve-day1-day1-r5-16a267b1-linux-x64.tar.gz -C ~/Games
 ```
 
-That gives you a folder `~/Games/parasite-eve-<version>/`, with the launcher
-`parasite-eve` inside. The steps below call it `~/Games/parasite-eve-<version>`.
+That gives you `~/Games/parasite-eve-day1-day1-r5-16a267b1/`, with the
+launcher `parasite-eve` inside.
 
 ### 3. Your disc
 
@@ -67,14 +76,14 @@ it on start.
 ### 4. Run it
 
 ```sh
-~/Games/parasite-eve-<version>/parasite-eve ~/Games/parasite-eve/disc
+~/Games/parasite-eve-day1-day1-r5-16a267b1/parasite-eve ~/Games/parasite-eve/disc
 ```
 
 You can pass the folder, the `.bin` or the `.cue`. It starts fullscreen. For
 a window instead:
 
 ```sh
-PE_WINDOWED=1 ~/Games/parasite-eve-<version>/parasite-eve ~/Games/parasite-eve/disc
+PE_WINDOWED=1 ~/Games/parasite-eve-day1-day1-r5-16a267b1/parasite-eve ~/Games/parasite-eve/disc
 ```
 
 To run it without typing the disc path every time, save the path once:
@@ -84,14 +93,14 @@ mkdir -p ~/.config/parasite-eve-port
 echo "disc1=$HOME/Games/parasite-eve/disc" > ~/.config/parasite-eve-port/config
 ```
 
-After that, `~/Games/parasite-eve-<version>/parasite-eve` alone
+After that, `~/Games/parasite-eve-day1-day1-r5-16a267b1/parasite-eve` alone
 is enough, and you can double-click it in a file manager.
 
 ### 5. Steam Deck / Bazzite Game Mode
 
 1. In Desktop Mode, save the disc path once (the `config` step above).
 2. In Steam, choose **Games → Add a Non-Steam Game → Browse**. Pick
-   `~/Games/parasite-eve-<version>/parasite-eve`.
+   `~/Games/parasite-eve-day1-day1-r5-16a267b1/parasite-eve`.
 3. Switch to Game Mode and start it from your library. No launch options are
    needed.
 4. Controller: the built-in controls work as a standard Xbox-style gamepad.
@@ -154,7 +163,7 @@ They survive updates, because the install folder is never written to.
   (the last 10 are kept). Include the newest one, with the time and room and
   a screenshot, when you report a bug.
 
-Known issues in the current build:
+Known issues in r5:
 
 - Using some equipment or tool items from the field menu may stop the game.
   Healing items are fine.
