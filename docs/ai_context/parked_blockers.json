@@ -1,0 +1,394 @@
+{
+ "blockers": [
+  {
+   "id": "5EF-delay-slot",
+   "status": "INTEGRATED",
+   "note": "Phase 5EF closed all 14 members at leaf 205. Vendored maspsx LOCAL PATCH (tools/era/maspsx/maspsx/__init__.py, opt-in env MASPSX_FILL_STORE_DELAY_SLOT=1) expands an absolute sw macro before a bare j $31 into lui/j/sw-in-slot. sw only: sb/sh stay pre-jr (ROM-proven). Pilot func_8007FBC0 plus the remaining 13 typed members rebuild exact. Types: seven int state/value globals, four callback pointers proven by jalr use, and one write-only unsigned 32-bit opaque word; repeated globals account for 13 leaves. Evidence and leaf map: docs/ai_context/PHASE5EF_TYPING.md."
+  },
+  {
+   "id": "weak-int-ready",
+   "status": "INTEGRATED",
+   "rationale": "5EI: integrated func_80042B38/50 (D_800A1870/1874) and func_80042910 (D_800A1860 int + D_800A1868 u32 decl option a). Types from readers/opaque Stage 0, not opaque-word for 1860/1870/1874.",
+   "members": [
+    {
+     "global": "D_800A1860",
+     "address": "0x800A1860",
+     "store": "sw",
+     "setters": [
+      "func_80042910"
+     ],
+     "typing_reader": "func_800428C4 (int); asm also addiu -1",
+     "stage0": "NARROWING ARITHMETIC \u2014 stays READY-FROM-READER",
+     "integrated": "5EI"
+    },
+    {
+     "global": "D_800A1870",
+     "address": "0x800A1870",
+     "store": "sw",
+     "setters": [
+      "func_80042B38",
+      "func_80042B50"
+     ],
+     "typing_reader": "func_80042B6C (void (*)(void)); jalr proof",
+     "stage0": "NARROWING POINTER \u2014 stays READY-FROM-READER",
+     "integrated": "5EI"
+    },
+    {
+     "global": "D_800A1874",
+     "address": "0x800A1874",
+     "store": "sw",
+     "setters": [
+      "func_80042B38",
+      "func_80042B50"
+     ],
+     "typing_reader": "func_80042B6C (int; +1 counter)",
+     "stage0": "NARROWING ARITHMETIC \u2014 stays READY-FROM-READER",
+     "integrated": "5EI"
+    }
+   ],
+   "reference": "docs/ai_context/weak_int_setters.md"
+  },
+  {
+   "id": "opaque-word-post5eh-sweep",
+   "status": "PARTIALLY-INTEGRATED",
+   "rationale": "Stage 0 sweep after 5EH (read-only, tip 2234794): two remaining globals passed the opaque-word bar. D_800A1868 still READY-OPAQUE-WORD (decl via 42910). D_8009D28C reclassified READY-FROM-READER int state and INTEGRATED in 5EJ (not opaque-word \u2014 equality-tested state codes).",
+   "members": [
+    {
+     "global": "D_800A1868",
+     "address": "0x800A1868",
+     "store": "sw",
+     "type": "unsigned int (u32 opaque-word; write-only)",
+     "setters": [
+      "func_80042910"
+     ],
+     "stage0": "WRITE-ONLY: lui/sw only; stores 0 or 1; no lw anywhere in src or live asm",
+     "note": "decl+cleared by integrated func_80042910; other write sites remain asm"
+    },
+    {
+     "global": "D_8009D28C",
+     "address": "0x8009D28C",
+     "store": "sw",
+     "type": "int (state value; READY-FROM-READER)",
+     "setters": [
+      "func_80017FDC",
+      "func_80017FF0",
+      "func_800192B8",
+      "func_800192C8"
+     ],
+     "stage0": "stores constants 0/3/4/5/6/8; loads: word-copy sw to *v1 (func_80019154), bne vs 1 (A404) \u2014 no arith/deref-as-base/bitwise",
+     "reclassified": "NOT opaque-word: distinct state codes + equality compare \u2192 int; signedness undetermined",
+     "integrated": "5EJ",
+     "former_blocker_reader": "func_80019154 / func_8001D340 REMOVED as type-sites (use/copy only)"
+    }
+   ],
+   "reference": "docs/ai_context/weak_int_setters.md#stage-0-sweep-post-5eh"
+  },
+  {
+   "id": "flags-bitwise-D_8009D270",
+   "status": "INTEGRATED",
+   "rationale": "Stage 0 FAILED opaque-word bar: every load path does andi/and bit ops. That is narrowing evidence for an unsigned flags word \u2014 NOT bare opaque u32. Distinct bucket so the technique does not become the width-cheat. Type: unsigned int (flags bits 0 and 1 used). 5EK: integrated func_80087198/87414 (store 1/2, return 0; sb+ret0 fingerprint).",
+   "members": [
+    {
+     "global": "D_8009D270",
+     "address": "0x8009D270",
+     "store": "sw",
+     "type": "unsigned int (flags; andi 1 / andi 2 / and -2 / and -3)",
+     "setters": [
+      "func_80087198",
+      "func_80087414"
+     ],
+     "evidence_sites": "func_800871AC, func_80087428 (same unit; remain asm)",
+     "stage0": "NARROWING BITWISE \u2014 not opaque-word",
+     "integrated": "5EK"
+    }
+   ],
+   "reference": "docs/ai_context/weak_int_setters.md#stage-0-sweep-post-5eh"
+  },
+  {
+   "id": "opaque-word-A182x",
+   "status": "INTEGRATED",
+   "rationale": "6 globals / 8 setters integrated exact in 5EH (func_80042BD8\u2026func_80042C64). u32 opaque-word ruling proven.",
+   "members": [
+    {
+     "global": "D_800A1820",
+     "address": "0x800A1820",
+     "store": "sw",
+     "type": "unsigned int",
+     "setters": [
+      "func_80042BD8"
+     ]
+    },
+    {
+     "global": "D_800A1824",
+     "address": "0x800A1824",
+     "store": "sw",
+     "type": "unsigned int",
+     "setters": [
+      "func_80042BEC",
+      "func_80042C00"
+     ]
+    },
+    {
+     "global": "D_800A1828",
+     "address": "0x800A1828",
+     "store": "sw",
+     "type": "unsigned int",
+     "setters": [
+      "func_80042C14"
+     ]
+    },
+    {
+     "global": "D_800A182C",
+     "address": "0x800A182C",
+     "store": "sw",
+     "type": "unsigned int",
+     "setters": [
+      "func_80042C28"
+     ]
+    },
+    {
+     "global": "D_800A1830",
+     "address": "0x800A1830",
+     "store": "sw",
+     "type": "unsigned int",
+     "setters": [
+      "func_80042C3C",
+      "func_80042C50"
+     ]
+    },
+    {
+     "global": "D_800A1834",
+     "address": "0x800A1834",
+     "store": "sw",
+     "type": "unsigned int",
+     "setters": [
+      "func_80042C64"
+     ]
+    }
+   ],
+   "reference": "docs/ai_context/weak_int_setters.md"
+  },
+  {
+   "id": "sb-sh-five",
+   "status": "RECLASSIFIED-TYPING-ONLY",
+   "note": "ROM words prove sb/sh macro stores stay PRE-JR with a nop slot (func_80033A2C sb; func_800C6ED8/C6EE8 sh; func_800C6EC0 dual-sh; func_8001A374 has a cc1-filled li slot). Never the same delay-slot answer as 5EF: current maspsx already emits the shape; the 5EF patch deliberately skips sb/sh. Remaining work is per-global typing + integration."
+  },
+  {
+   "id": "lui-ori",
+   "status": "CAPABILITY-VERIFIED",
+   "rationale": "Large 32-bit literal synthesis (lui;ori) verified ROM-exact under era 2.21 + --dont-expand-li, for both bit15-clear and bit15-set low halves. Tested 0xFFF003FF (clear), 0x51EB851F (set, \u00f7100 magic), 0x000FFC00 (set) vs ROM opcode+immediate fields. cc1 emits the PSY-Q li-high + ori-low split natively; GNU as expands high-only li to lui; feared lui;ori-vs-lui;addiu divergence did not occur. No flag change. Not a blocker \u2014 constant-heavy computational functions are approachable as a separate phase.",
+   "evidence": "scratch probe /tmp/lui_ori_probe_* (investigation-only; no leaf integration)",
+   "note": "Capability, not a leaf inventory. Integration of mult/div/mask functions that use these constants is a future phase."
+  },
+  {
+   "id": "gp-loop-55724",
+   "status": "PARKED-SCHEDULING",
+   "note": "func_80055724 (0x45F24, 15 words): gp arena zero-fill loop, era -G8, two new gp globals (D_8009D058 int* cursor @ gp+0x2E8, D_8009D064 int count @ gp+0x2F4; _gp=0x8009CD70). Empty 8-byte frame SOLVED: cc1 2.7.2 emits vars=8 home slots naturally (no dummy local needed). Blocker is a three-way -O2 scheduling tension: while-form keeps frame+regs but hoists the p load above the blez guard (13/15, loses count-delay nop + loop-top nop); if+for keeps frame+regs but duplicates the blez and steals the prologue into guard-1's slot; if+do/while gets word order but vars=0 and i/p regs flipped. era -O1 -G8 output is byte-identical to -O2 for both leading phrasings (no per-function -O support from this leaf). Closest candidate (while-form, 13/15) stashed: 'park phase5eu func_80055724 while-form 13-15 (p-load hoist residual)'. Residual is scheduling, not allocation proven \u2014 pins not yet at the 6A8D4 bar.",
+   "evidence": "single-leaf era compiles on branch phase5eu-gp-loop-55724; five -O2 phrasings + two -O1 confirmations, all objdump-recorded in session"
+  },
+  {
+   "id": "rotated-loop-52bcc",
+   "status": "INTEGRATED",
+   "note": "func_80052BCC (0x433CC in asm/disc1/42FC8.s, 15 words): string copy-until-0xFF with a rotated (head-peeled) loop; gp-free, no calls. MATCHED in 5EW (leaf 218): era -O1 -G0 -fschedule-insns2 + two-const-mode phrasing (u8 head const dies at the guard -> loop const re-materializes into $v1; int loop byte -> mask-free raw bne; signed char head byte + explicit &= 0xFF -> in-place andi). sched2 hoists the head li into the lbu delay exactly as retail's ccpsx did. All 15 words exact; mid-42FC8 carve (prefix 0x404, C 0x3C, resume 43408.s 0x2A8). Formerly PARKED-ALLOCATION: -O2 kept 0xFF in $v0 across the peel boundary (role swap + absent reload, 13/15); family diagnosis attributed the -O1->-O2 flip to the regclass+sched2 pair and the -O1 retry closed it. Watch: comparing the loop byte against a const VARIABLE, or both consts sharing a mode, cross-jumps/CSE-shares head and loop.",
+   "evidence": "single-leaf era compile on branch phase5ev-52bcc, objdump-recorded in session; candidate C (rotated while-form, 13/15, structurally correct) stashed: 'park phase5ev func_80052BCC rotated-loop 13-15 (v0/v1 role-swap residual)'. FAMILY DIAGNOSIS (accepted): residual is -O-sensitive; -O1->-O2 flip requires exactly -fexpensive-optimizations + -fschedule-insns2 (regclass + post-alloc scheduler; minimal pair, bisection-proven). era -O1 -G0 output already shows retail's loop register roles ($v0 byte / $v1 const reload / bne $v0,$v1) with small head deltas remaining \u2014 RETRY AT -O1 with a phrasing pass. Divergence is in cc1 raw output; maspsx cannot fix it."
+  },
+  {
+   "id": "boot-698d4-dbr-sched",
+   "status": "PARKED-SCHEDULING",
+   "note": "func_800698D4 (0x5A0D4, 141 words): disc identification/mount. 140/141 words; all content words match, single residual. WHAT IT DOES (port-relevant): clears the mount flag, verifies drive ready, then searches the disc for \\\\FMV1\\\\PEDISC01.IDF;1, \\\\PE.IMG;1, \\\\FMV2\\\\PEDISC02.IDF;1 (+ PE.IMG again) via DsSearchFile, calling func_80080C48 on success, recording the result in D_800B0DD8 and setting flag bits in D_800B0DCD; returns 0 on any success, -2 if nothing mounted, error codes otherwise. PASSED: nested-if phrasing defeats gcc's range-test collapse (v1!=0 && v1!=-1 folds to addiu+sltiu+bnez under -O2; nested ifs keep separate compares). Short-circuit-AND wait loops, the three delay-slot error constants, addiu $a0,$sp,0x10 in jal delay slots, the mixed-sign byte (unsigned char + (signed char) cast at the return test), the sltiu/negu/and -2 return \u2014 ALL exact. FRAME NOTE: the DsSearchFile local is 0x18 (CdlFILE: pos 4 + size 4 + name 16), NOT 0x20 \u2014 0x10 args + 0x18 local + $s0 + $ra = frame 0x30; a 0x20 local emits 0x38 and fails at word 0. RESIDUAL: one delay slot. Search #3's beqz at 0x5A24C \u2014 retail leaves the slot nop, ours steals the addiu $v0,$zero,-1. MECHANISM: the steal candidate is a $v0-setter. At #1/#2 the fail target (.L80069A04) hits a jal immediately, killing $v0 \u2192 steal accepted \u2192 both fill. At #3/#4 the fail target (.L80069ADC) computes the RETURN value, so $v0 is live to jr $ra \u2192 retail declines the steal \u2192 nop. Our cc1 steals anyway, so the divergence is in reorg.c's liveness/steal check (version skew ccpsx vs 2.7.2-psx), NOT source-expressible: neither the constant's register nor the fail-target location is source-controllable. FALSIFIABLE PREDICTION (screening rule): a beqz/beq with a nop slot + a $v0-constant load on the fall-through, branching to a RETURN block, will diverge this way; the same pattern branching to a jal-adjacent block will match. Test on future leaves. Closest candidate (nested-ifs, 140/141) stashed: 'park phase5fb func_800698D4 nested-ifs 140-141 (search3 beqz-slot residual)'.",
+   "evidence": "single-leaf era compiles on branch phase5fb-boot-698d4; six phrasings (&&, nested ifs, -O1, sched2, else-if chain, static-inline helper) all objdump-recorded in session; four-site ROM structural comparison (searches #1-#4, asm/disc1/55430.s lines 5622-5723); Phase 5FL revisit (branch phase5fl-698d4-barrier-revisit, 2026-08-02): eight barrier/pin variants (V0-V7 + -O1) compiled and objdump-compared; empty asm volatile(\"\") and Phase 5FK-style value barriers prevent the steal at #3/#4 but add scheduling-boundary overhead bloating to 144 words; residual is a pure instruction-scheduling (delay-slot fill) decision, not register allocation; the 5FK barrier family cannot resolve this without unacceptable overhead; sltiu fix confirmed (D_800B0DCD < 1 generates sltiu); candidate preserved at src/func_800698D4.c (PARKED, 140/141)"
+  },
+  {
+   "id": "boot-6e834-register-home",
+   "status": "INTEGRATED",
+   "note": "func_8006E834 (0x5F034, 91 words): post-mount image loader + display env setup. 89/91 content words exact at era -O2 -G0. WHAT IT DOES (port-relevant): clears six status bytes (D_800B0DB2-B7), masks D_800B0CD8, reads a table-driven offset/size pair (D_80093164 lhu pair) from the mounted image base D_800B0DD8 (written by parked 698D4) into D_80011614 via func_8006E6D4 with retry-on--1; polls func_800811E4 for completion; then display bring-up: VSync(0), SetDispMask(0), func_800749D8(&env,0,0,0x140,0xF0) [PROBABLE SetDefDrawEnv, 320x240], sets env byte +0x29, PutDispEnv(&env). Returns 0. PROVEN HERE (firsts, reusable): FIVE-ARG CALL \u2014 5th arg emits sw $v0,0x10($sp) in the jal delay slot (o32 stack-arg), worked first try. Frame decomposition method: args 0x18 + env 0x18 + local30 0x8 + regs 0xC + pad 0x4 = 0x48, and env[0x11] puts the byte field at 0x29($sp) exactly. RANGE-TEST / PER-TU DATAPOINT: retail FOLDS r==0||r==-1 into addiu/sltiu/beqz in THIS unit and we match it naturally \u2014 whereas 698D4's unit did NOT fold the same shape; two datapoints for per-translation-unit compile settings. RESIDUAL (2 words, one mechanism): the poll result. Retail homes it in $v0 and pays two restores (addu $v0,$v1 in the beqz delay slot at word 49; again at word 56 after the mask block clobbers $v0); ours homes it in $v1 and compares directly \u2192 one content word shorter, downstream shifts. Four phrasings tried (natural ||, explicit range test, split temp, -O1 and -O2) \u2014 the register-home choice does not move. Hard-register-assignment skew for a call-result pseudo; not source-expressible; not at the 6A8D4 pinning bar (home choice, not a nameable allocation flip). $v0-liveness screening rule: NOT EXERCISED here (no matching pattern in this ROM); non-event, rule still untested. Closest candidate (89/91) stashed: 'park phase5fc func_8006E834 89-91 (call-result register-home residual)'.",
+   "evidence": "single-leaf era compiles on branch phase5fc-boot-6e834; -O1 (prologue-save placement), -O2 (best), explicit range-test and split-temp phrasings, all objdump-recorded in session; shift-aware tail check 0 mismatches on the exit sequence (five-arg call verified)",
+   "resolution": "RESOLVED in Phase 5FK (branch phase5fk-6e834-pin-revisit, 91/91 exact, era -O2 -G0). The register home WAS source-expressible via the 5FJ control technique: paired hard-register locals \u2014 `register int t asm(\"$3\")` ($v1 backup of the func_800811E4 result across the range test) and `register int rt asm(\"$2\")` ($v0 equality-test home) \u2014 plus two zero-code `asm volatile(\"\" : \"=r\"(x) : \"0\"(x))` barriers that block cc1 copy-propagation from folding the backup/restore copies away. reorg then threads the idempotent merge copy into the beqz delay slot AND emits it again at the merge, reproducing retail's two restores (0x5F0F8, 0x5F114). Bounded matrix: V0 natural = historical 90-word residual; V1 single $v1 pin and V3 scoped split = byte-identical to V0 (inert); V2 input-only barrier regressed (range test to $v1, tests to $a0); paired pins without the rt barrier leave tests on $v1. Integrated: src/func_8006E834.c, yaml [0x5F034, c, func_8006E834], 229 leaves, full build EXACT SHA."
+  },
+  {
+   "id": "register-coloring-374e8",
+   "status": "PARKED-ALLOCATION",
+   "note": "func_800374E8 (0x27CE8, 24 words): flag-clear loop over the 4 x 56-byte records at D_800BCEA8. RECORD TYPE ESTABLISHED (durable deliverable; propagates to func_80037548): +0x00 unsigned char byte0 (lbu/sb, 5+7 sites), +0x0C unsigned int flags (lw/sw, 8+8 sites; bit 0x02000000 cleared here), +0x10 signed short (lh/sh, 2+3 sites); 56-byte records x4; extent closes EXACTLY at +0xE0 = 4 x 56 where D_800BCF88 begins. STRUCTURE NOW CORRECT (5FD aggregate-subscript rule + the landed maspsx load gate 439c244): direct aggregate subscript (D_800BCEA8[i].flags/byte0) with NO rec pointer; cc1 emits the standalone indexed symbolic form (lui $at/addu/op-%lo) and the load passes through the extended 3-word gate \u2014 no la hoist, correct DAG, correct scheduling order. RESIDUAL: register COLORING only. era cc1 assigns mask->$v0 / chain->$v1 / value->$v0; ROM has mask->$v1 / chain->$v0 / value->$v1. Five C phrasings (RMW, explicit read-modify-write, mid-temp, byte-first, u suffix) x for/do-while all produce BYTE-IDENTICAL output \u2014 invariant under phrasing; same mechanism class as 6E834 call-result register home (hard-register-assignment skew), second register-coloring instance in the skew set. i++ semantics: case (a) \u2014 56*i offset computed from the PRE-increment counter and held across the addiu; ordinary single-record body, increment scheduled early. Stashed: park phase5ff func_800374E8 (register-coloring skew; structure correct).",
+   "evidence": "single-leaf era compiles on branch phase5ff-374e8; five C phrasings x two loop forms x -O1/-O2/-fschedule-insns2 ladder, all objdump-recorded; 9/24 words differ (register swap only \u2014 mask/chain/value roles). This leaf MOTIVATED the maspsx load-gate patch (landed 439c244). TWIN HYPOTHESIS FALSIFIED at 5FH: func_80037548 was predicted to hit the same skew but MATCHES 27/27 with the accumulator shape (signed char result = 0; assign + break). Refined rule: coloring skew is LIVE-VALUE-PRESSURE DEPENDENT, not per-table. 374E8 has mask + 56*i chain + value all live simultaneously (mask->$v0/chain->$v1/value->$v0 vs ROM's $v1/$v0/$v1); 37548's needle/accumulator/index live in $a0/$a2/$a1 leaving $v0/$v1 free, so cc1's natural allocation IS ROM's. Predict skew only when three or more scratch values compete."
+  },
+  {
+   "id": "main-prologue-scheduling",
+   "status": "PARKED-SCHEDULING",
+   "note": "func_8001220C (main, 187 words): the boot keystone. ~180 words match at opcode/position with a complete C candidate (five iterations, draft v5 preserved at stash). RESIDUAL proven scheduler-driven by an init-placement lever test: the invariant li $s4,0x100000 was placed after the first two calls in the C (draft 5), but cc1's instruction-ordering pass kept it at the same position (w015) as the declaration-top placement (draft 4), and the $s-save interleaving persisted identically across both drafts. Source cannot express the difference. Single mechanism: prologue save-batching + invariant constant placement, cc1 2.7.2 ordering pass vs ccpsx's. ATOM PROVEN: the 9-word scratchpad stack handoff (sp -> PS1 scratchpad top 0x1F8003FC, jal func_8019234C, restore) is byte-exact as fenced inline asm with full caller-saved clobbers; maspsx passes it untouched with no perturbation of surrounding codegen. The fenced-exception mechanism (register-pinning precedent) is validated for when main integrates. Role map: $s0 = D_800B0CD8 data pointer, $s1 = int dispatch, $s2 = flagbyte (data+0xF5), $s3 = state_val (0xA9400048), $s4 = bitmask (0x100000). All 20 call-site externs typed. Unparking levers: the cc1 archaeology (this is the FIFTH scheduling-family instance; three of the five are now boot-chain functions \u2014 main, 698D4, 6E834 \u2014 making the cc1 question directly gate boot-to-black), or per-leaf acceptance of the prologue residual. Candidate preserved: stash 'park main func_8001220C v5 (prologue-scheduling residual; atom byte-proven)'.",
+   "evidence": "five drafting iterations on scratch /tmp/mainvN.c; draft 5 init-placement lever test proved the li position and $s-save interleaving unchanged; draft 3 three-zone comparison reached and verified the atom byte-exact; 20 extern signatures resolved (69B08 int via prologue $a0->$s4, 1909B4->6E9A0 raw $v0 chain per 5EZ); all objdump-recorded in session. Phase 5FM revisit (branch phase5fm-main-barrier-revisit, 2026-08-02): V0 baseline compiled at era -O2 -G0 produces 188 words (1 extra); 150/187 word-level mismatches across all 7 zones \u2014 prologue save-batching order, $s2/$s3 register-assignment swap, invariant bitmask placement, and cascade through dispatch loop. The bounded hard-register/barrier family from 5FJ/5FK cannot address pervasive global register-allocation skew of this scope. The V0-V6 matrix was NOT executed because the baseline already exceeds what localized barriers can control. Candidate preserved at src/func_8001220C.c (PARKED, semantically complete, atom byte-proven). Fresh Docker build confirmed EXACT SHA-1 at 229 leaves."
+  },
+  {
+   "id": "loop-layout-62ce4",
+   "status": "PARKED-SCHEDULING",
+   "note": "func_80062CE4 (0x534E4, 18 words): sentinel validate-and-consume walk over the D_8009D154 list (same Node struct as 62A34). If the pending sentinel D_8009D160 is still reachable from head, promote it to D_8009D15C (confirmed); either way clear D_8009D160. gp cluster: D_154 head / D_15C confirmed / D_160 pending. RESIDUAL: loop body cycle position, PROVEN source-invariant. Both while-form (v3) and do/while-form (v4) produce BYTE-IDENTICAL output (advance->null-test->sentinel-back-edge); ROM has sentinel-at-top->advance->null-back-edge. cc1 canonicalizes loop body order before block layout. Lever tested with two phrasings, residual survived. CARVE CORRECTION (durable): spimdisasm 0x5C label OVERSHOOTS; leaf is 18 words (0x48), trailing 5 words at 0x5352C are func_80062Fxx prologue, NOT pad. SIXTH skew-set instance; scheduling sub-family now FOUR. Candidate preserved: stash 'park func_80062CE4'.",
+   "evidence": "single-leaf era -O2 -G8; v3 while-form + v4 do/while-form both objdump-recorded, byte-identical; ROM comparison at 0x534E4-0x53528; pad investigation confirmed next-function prologue at 0x5352C. 12/18 match."
+  },
+  {
+   "id": "per-tu-725dc",
+   "status": "PARKED-PER-TU-TOOLCHAIN",
+   "note": "func_800725DC (0x62DDC, 28 words) + twin func_8007264C (0x62E4C, 26 words): SDK-runtime init-runner pair in 5F3E4, immediately before the A0/B0 BIOS thunk stubs. Semantics: one-shot callback runner \u2014 if D_80094538 flag clear, set 1 and walk the fn-ptr table at jtbl_80010000 (VRAM 0x80010000 = main-text load base); baked count is ZERO (loop emitted, never entered). Twin runs when flag already set. PE1's other units reserve the 16-byte o32 args area for calls and save registers descending/slot-interleaved (6E834 matched era's descending order; 3F3C4/6A5BC/69B08 same family). This unit does NEITHER: frame 0x10 = three saves + pad with NO args area despite the jalr, and saves are CONTIGUOUS ASCENDING ($s0@4,$s1@8,$ra@C). BANKED LEVERS (durable): (1) TWO-WORD ZERO COUNT \u2014 no C zero spelling emits lui/addiu (10 forms probed; all fold to move; a constant-0 loop bound deletes the whole loop at -O2 AND -O1); the address expression (int)jtbl_80010000 - 0x80010000 compiles to la SYM+0x7FFF0000 whose R_MIPS_HI16/LO16 resolve to 0000/0000 at link and KEEPS the loop body alive; (2) NO-ARGS-AREA CALL \u2014 an inline-asm jalr (counter decrement as tied operand in the delay slot) is not a CALL insn, so .frame args=0; all C call forms reserve 16; (3) the loop body itself (lw/addiu/jalr/decrement-in-slot/bnez/nop + beqz nop guard) is word-exact under era -O2 -G0 with $s0/$s1/$t0 pins. RESIDUAL \u2014 three coupled per-TU mechanisms, flag-invariant (tested -O2/-O1/-fno-schedule-insns/-fschedule-insns2/-G8): (a) ascending contiguous prologue saves vs era's fixed descending base order \u2014 the coupled consequence is the bnez delay slot: retail fills it with the store constant, era's reorg pulls the last save into it; (b) li->ori expansion (retail slot constant is ORI 0x34080001; the era --dont-expand-li+GNU-as path yields addiu; ASPSX-default ori would match); (c) no-args-area frame model. CONCLUSION: the 0x800725xx SDK-runtime unit was built with a different ccpsx/aspsx configuration \u2014 third per-TU datapoint after 6E834-vs-698D4 range-test folding and this. Same architectural-skew class as cc1_investigation.md; not source-expressible. Candidate preserved at src/func_800725DC.c (PARKED, semantically complete, 28 words, loop body proven).",
+   "evidence": "scratch probes /tmp/5fn (session 2026-08-18): p0 natural C -O2/-O1/-O0 (loop fold/delete), p3 ten zero spellings (all move), p1/p2/p4 symbol-difference and symbol-minus-constant forms, p5 three C call forms (args=16 each), p6 asm-call frame probe (args=0), p8 multi-$s save-order probe (descending), c1-c3 candidates with c3 fully assembled + objdumped (28 words; loop body + flag load/store shape exact; prologue order/slot/frame constants diverge); retail decode from build/disc1.candidate.exe @ 0x62DDC/0x62E4C; prologue-convention survey 6E834/6A5BC/3F3C4/69B08/6E9A0."
+  },
+  {
+   "id": "handwritten-cop2-79024",
+   "status": "SKIP-SDK-LIBRARY-COP2",
+   "note": "func_80079024 @ file 0x69824 is a proven callable three-word handwritten GTE helper: ctc2 a0,$26; jr ra; nop. Five direct jal callers include 0x8003E648, 0x8003F1E8, 0x8006685C, 0x80068418, and 0x80068BD0. The bounded ordinary-C candidate compiles under era -O2 -G0 to jr ra; nop, missing exactly the semantic ctc2 word. C has no COP2 control-register side effect and the repository/toolchain exposes no sanctioned intrinsic; matching would require forbidden inline assembly, an assembly macro, or a new compiler intrinsic. No YAML/build/verifier integration and matching count remains 287.",
+   "evidence": "docs/evidence/volume-campaign-20260824/func-80079024/PARK.md; source preserved in stash 'park volume func_80079024 handwritten COP2 ctc2 unexpressible in C'",
+   "next": "Do not schedule for matching-C campaigns; port redirects this libGTE helper to PsyCross. Historical candidate remains in the named stash."
+  },
+  {
+   "id": "handwritten-cop2-78fac",
+   "status": "SKIP-SDK-LIBRARY-COP2",
+   "note": "func_80078FAC @ file 0x697AC is a proven callable three-word handwritten GTE helper: ctc2 a0,$27; jr ra; nop, with direct jal caller 0x80077F48. Era -O2 -G0 ordinary C emits only jr ra; nop, missing exactly ctc2. This is the same architecture-side-effect expressibility blocker as func_80079024; no sanctioned intrinsic exists and inline asm/macros are forbidden. No integration; count remains 287.",
+   "evidence": "docs/evidence/volume-campaign-20260824/func-80078fac/PARK.md; source preserved in stash 'park volume func_80078FAC handwritten COP2 ctc2 unexpressible in C'",
+   "next": "Do not schedule for matching-C campaigns; port redirects this libGTE helper to PsyCross."
+  },
+  {
+   "id": "handwritten-cop2-78fb8",
+   "status": "SKIP-SDK-LIBRARY-COP2",
+   "note": "func_80078FB8 @ file 0x697B8 is a proven callable three-word handwritten GTE helper: ctc2 a0,$28; jr ra; nop, with direct jal caller 0x80077F50. Era -O2 -G0 ordinary C emits only jr ra; nop, missing exactly ctc2. Same expressibility blocker as func_80079024 and func_80078FAC. No integration; count remains 287. This is the volume campaign's third consecutive park and triggers its mandatory hard stop.",
+   "evidence": "docs/evidence/volume-campaign-20260824/func-80078fb8/PARK.md; source preserved in stash 'park volume func_80078FB8 handwritten COP2 ctc2 unexpressible in C'",
+   "next": "Do not schedule for matching-C campaigns; port redirects this libGTE helper to PsyCross."
+  },
+  {
+   "id": "assembler-temp-703f0",
+   "status": "PARKED-ASSEMBLER-TEMP",
+   "note": "func_8007FBF0 @ 0x703F0 is a proven six-word callable table getter returning D_8009B574[index]. Function-hood: jr ra + nop, eleven direct jal callers (including 0x8007E8FC, 0x8007F7F8, and 0x80082324), and real instruction boundaries on both sides. Retail is sll a0,a0,2; lui v0,%hi; addu v0,v0,a0; lw v0,0(v0); jr ra; nop. With MASPSX_THREE_WORD_SYMBOL_STORE=1, the candidate has the correct three-instruction indexed-symbolic-load form, but uses $at as the address temporary while retail uses $v0, the load destination, as the temporary. The alternate pointer phrasing did not change this; the choice is in the assembler macro, not cc1 or source shape. This exposes a per-load-site discriminator: the 3W gate is correct for the $at-required 0x363F4-class site but wrong when the destination is also usable as the base. Do not change the global gate from this leaf alone. A fourth maspsx patch requires its own investigation and full regression with leaves traversing both branches. Matching-C remains 281; no YAML/build integration or leaf claim. Rejected candidate and both R6 retry objdumps are preserved in stash 'hold rejected 0x703F0 R6 retries'; the prior stash 'hold unaccepted 0x703F0 matching-C proposal' is also non-matching and rejected.",
+   "evidence": "docs/evidence/func-8007fbf0/PARK.md; full candidate/retry report and source preserved in the rejected R6 stash",
+   "next": "Investigate the GNU-as indexed symbolic-load temporary-register discriminator, then run the full maspsx regression and a leaf exercising each branch before any fourth patch."
+  },
+  {
+   "id": "address-retention-824c8",
+   "status": "PARKED-ADDRESS-RETENTION",
+   "note": "func_800824C8 @ file 0x72CC8 is a proven callable five-word scalar-global exchange with 12 unique direct jal callsites and real boundaries. Retail loads D_800B8AB4 through a retained $v1 address and stores the new a0 in the jr delay slot, returning the old v0. Two allowed era -O2 -G0 phrasings were tested: assignment-expression form uses v0/a0 plus at and loses the old-value load; explicit old-value form has correct semantics but rebuilds the address through v0/at and emits seven words. The adjacent func_800824DC has the identical exchange shape over D_800B8AB8 and is screened into the same family without a second attempt. The residual is address retention/register allocation, not a missing semantic. No YAML/build/verifier integration; matching count remains 288.",
+   "evidence": "docs/evidence/volume-campaign-20260825/func-800824c8/PARK.md; candidate source preserved in stash 'park volume func_800824C8 address-retention residual'",
+   "next": "Do not retry without a sanctioned address-retention lever; pins and further phrasing iterations are outside R6/R7."
+  },
+  {
+   "id": "handwritten-syscall-72714",
+   "status": "SKIP-SDK-LIBRARY-SYSCALL",
+   "note": "func_80072714 @ file 0x62F14 is a proven callable four-word handwritten wrapper: addiu a0,zero,1; syscall 0; jr ra; nop. It has 26 unique direct jal callsites and real boundaries. The adjacent func_80072724 has the same wrapper shape with immediate 2 and is screened with it. Ordinary C has no sanctioned spelling for the MIPS syscall architectural side effect; R7 forbids inline/file-scope assembly and mismatch-hiding macros. No YAML/build/verifier integration; matching count remains 287.",
+   "evidence": "docs/evidence/volume-campaign-20260825/func-80072714/PARK.md; diagnostic boundary source preserved in stash 'park volume func_80072714 handwritten syscall unexpressible in C'",
+   "next": "Do not schedule the adjacent syscall wrappers for matching-C attempts; continue with the next eligible Tier 1 candidate."
+  },
+  {
+   "id": "mmio-address-retention-87798",
+   "status": "PARKED-MMIO-ADDRESS-RETENTION",
+   "note": "func_80087798 @ file 0x77F98 is a proven callable nine-word per-voice SPU register-pair writer with direct callers at 0x80087958, 0x8008C780, and 0x8008C960, canonical return, and real boundaries. Retail materializes 0x1F801C00, folds voice*0x10 into a0, masks a1/a2 to 0x7FFF, and retains a0 across stores at offsets 0 and 2. Two era -O2 -G0 phrasings (explicit volatile pointer and explicit a0 address mutation) compile identically to 12 words: cc1 leaves the scaled index in a0, forms the first address in v0, then rematerializes the second address through at. This is an address-DAG/register-home residual, not a semantic mismatch. No YAML/build/verifier integration; matching count remains 308.",
+   "evidence": "docs/evidence/volume-campaign-20260825/func-80087798/PARK.md; source preserved in stash 'park volume func_80087798 MMIO address-retention'",
+   "next": "Do not retry without a new source or compiler lever that demonstrably retains a computed MMIO address in the argument register across both volatile stores."
+  },
+  {
+   "id": "aggregate-return-coloring-78c94",
+   "status": "PARKED-AGGREGATE-RETURN-COLORING",
+   "note": "func_80078C94 @ file 0x69494 is a proven callable nine-word three-word-copy helper with exact direct caller 0x80031A24 and canonical return. Retail loads three words to t0/t1/t2, stores them at a0+0x14/+0x18/+0x1C, then copies a0 to v0 after all stores. Era -O2 -G0 aggregate assignment preserves nine words but moves a0 to v0 at entry and uses v0 as the destination base. Scalar field-copy C keeps that early result home and moves the final store into the jr delay slot, shrinking to eight words. The residual is aggregate-copy return/address register allocation plus scheduling. Adjacency to libGTE is suggestive but no exact SDK routine name is proven. No YAML/build/verifier integration; matching count remains 309.",
+   "evidence": "docs/evidence/volume-campaign-20260825/func-80078c94/PARK.md; source preserved in stash 'park volume func_80078C94 aggregate return coloring'",
+   "next": "Do not retry without a new aggregate-copy source or compiler lever that demonstrably retains a0 as destination through all stores and delays the v0 result copy until afterward."
+  },
+  {
+   "id": "handwritten-cop2-792d4",
+   "status": "SKIP-SDK-LIBRARY-COP2",
+   "note": "func_800792D4 @ file 0x69AD4 is a proven callable ten-word handwritten libGTE operation helper with six exact direct callers. Its body uses lwc2 to load COP2 data registers, executes mvmva, writes three COP2 results via swc2, reads the COP2 flag register via cfc2, and stores that flag in the jr delay slot. These architectural side effects have no sanctioned ordinary-C spelling. It is real SDK code, not padding and not a compiler blocker. No C attempt or YAML/build/verifier integration; matching count remains 309.",
+   "evidence": "docs/evidence/volume-campaign-20260825/func-800792d4/SKIP.md",
+   "next": "Do not schedule for matching-C campaigns; redirect through PsyCross for the port. Exact PsyQ routine-name attribution remains open."
+  },
+  {
+   "id": "volatile-store-scheduling-8783c",
+   "status": "PARKED-VOLATILE-STORE-SCHEDULING",
+   "note": "func_8008783C @ file 0x7803C is a proven callable ten-word per-voice SPU halfword RMW with exact direct caller 0x80087A74, canonical return, and contiguous real-function boundaries. Retail retains the computed 0x1F801C08 + voice*0x10 address in a0, replaces bits 4..7, and puts sh v0,0(a0) in the jr delay slot. Two era -O2 -G0 phrasings (void volatile RMW and explicit returned value) reproduce the first eight words exactly but both emit sh; jr; nop. Adjacent func_80087864 has the same direct volatile sh return-slot mechanism and is screened into this family without a duplicate attempt. The existing MASPSX_FILL_STORE_DELAY_SLOT patch only handles absolute symbolic sw macros and cannot affect these direct volatile sh sites. No YAML/build/verifier integration; matching count remains 311.",
+   "evidence": "docs/evidence/volume-campaign-20260825/func-8008783c/PARK.md; docs/evidence/volume-campaign-20260825/func-80087864/SKIP.md; source preserved in stash 'park volume func_8008783C volatile store scheduling'",
+   "next": "Do not retry without a compiler/scheduler lever or separately justified and fully regressed maspsx rule for direct volatile sb/sh return-slot stores."
+  },
+  {
+   "id": "control-flow-constant-scheduling-5e988",
+   "status": "PARKED-CONTROL-FLOW-CONSTANT-SCHEDULING",
+   "note": "func_8005E988 @ file 0x4F188 is a proven callable sixteen-word three-way packed-value selector with twelve exact direct callers, canonical return, and real boundaries. It selects 0x408080, 0x404080, or 0x808080 from two signed comparisons, then writes the selected value and its unsigned half to gp-relative D_8009D110/D_8009D114. Two era -O2 -G8 phrasings preserve the semantics but not retail's control-flow/constant schedule. Natural nested selection remains sixteen words but uses beqz plus an early local jump for the first arm. An explicit less-case default selects retail's first bnez but hoists lui v1,0x40 ahead of the compare and shrinks to fifteen content words. Retail intertwines all three constant constructions with two branch delay slots and one local-jump delay slot. No YAML/build/verifier integration; matching count remains 332.",
+   "evidence": "docs/evidence/volume-campaign-20260825/func-8005e988/PARK.md; final source preserved in stash 'park volume func_8005E988 control-flow constant scheduling'",
+   "next": "Do not retry without a new source or compiler scheduling lever that demonstrably reproduces retail's branch topology and delay-slot constant materialization."
+  },
+  {
+   "id": "independent-load-scheduling-6e454",
+   "status": "PARKED-INDEPENDENT-LOAD-SCHEDULING",
+   "note": "func_8006E454 @ file 0x5EC54 is a proven callable seventeen-word decimal parser for field/package-name bytes 2-4, with direct callers 0x8005D958 and 0x8006B560, canonical return, and real boundaries. Existing BTL14 evidence independently proves the semantics. Two era -O2 -G0 phrasings were tested. Explicit signed char fixes attempt 1's lbu opcodes, but cc1 always hoists all three independent byte loads before arithmetic. Retail loads bytes 2 and 3, completes the strength-reduced hundreds/tens terms, then loads byte 4 into reused v1 and adds it in the return delay slot. Attempt 2 is semantically exact and seventeen words but differs solely in load scheduling/register reuse. No YAML/build/verifier integration; matching count remains 333.",
+   "evidence": "docs/evidence/volume-campaign-20260825/func-8006e454/PARK.md; final source preserved in stash 'park volume func_8006E454 independent load scheduling'",
+   "next": "Do not retry without a source or compiler scheduling lever that demonstrably prevents the independent byte-4 load from being hoisted."
+  },
+  {
+   "id": "symbolic-address-lifetime-coloring-5dbac",
+   "status": "PARKED-SYMBOLIC-ADDRESS-LIFETIME-COLORING",
+   "note": "func_8005DBAC @ file 0x4E3AC is a proven callable nineteen-word clamped symbolic-table address helper with eleven direct callers, canonical return, and real boundaries. Existing B28 evidence proves clamp(index,0,98) and the returned D_800A803C value plus (&D_800A803C-0x14) plus index*24. Two era -O2 -G0 phrasings were tested. Natural expression order keeps the clamp in a0 and consumes the global/address before scaling. An explicit pointer hoists the address into a1 before the clamp. Both produce eighteen content words. Retail alone begins move v1,a0, then after the clamp reuses a0 for the symbolic address and loaded value; that lifetime split supplies the nineteenth word. No YAML/build/verifier integration; matching count remains 334. Older pc-port commentary that called the body twenty words included the following function's first lui at 0x8005DBF8; the matching boundary is nineteen words.",
+   "evidence": "docs/evidence/volume-campaign-20260825/func-8005dbac/PARK.md; final source preserved in stash 'park volume func_8005DBAC symbolic address lifetime coloring'",
+   "next": "Do not retry without a source or compiler allocation lever that demonstrably copies the index to v1 and reserves dead a0 for the later symbolic address/load."
+  },
+  {
+   "id": "threshold-ladder-block-layout-43474",
+   "status": "PARKED-THRESHOLD-LADDER-BLOCK-LAYOUT",
+   "note": "func_80043474 @ file 0x33C74 is a proven callable nineteen-word six-result signed threshold classifier with direct callers 0x800402F4 and 0x8005C340, canonical return, and real boundaries. Two era -O2 -G0 phrasings were tested. An ascending less-than ladder and a complementary >= final condition both compile to twenty words. cc1 emits a separate category-4 beqz/nop plus local jump. Retail instead branches to a category-4 assignment block while computing the fifth predicate in that branch delay slot, then chooses categories 6/5 through a branch/local-jump pair. The complement changes only 5/6 polarity and cannot select retail's cross-block schedule. No YAML/build/verifier integration; matching count remains 334.",
+   "evidence": "docs/evidence/volume-campaign-20260825/func-80043474/PARK.md; final source preserved in stash 'park volume func_80043474 threshold ladder block layout'",
+   "next": "Do not retry without a source or compiler block-layout lever that demonstrably places the fifth compare in the category-4 branch delay slot."
+  },
+  {
+   "id": "lexicographic-compare-canonicalization-73244",
+   "status": "PARKED-LEXICOGRAPHIC-COMPARE-CANONICALIZATION",
+   "note": "func_80073244 @ file 0x63A44 is a proven callable twenty-word unsigned lexicographic comparator over two {lo,hi} word pairs, with direct callers 0x80073040 and 0x8007309C, canonical return, and real boundaries. Two era -O2 -G0 phrasings were tested. Scalar unsigned long long selects cc1's generic multiword compare and no argument homes. Passing two two-word structs by value proves the ABI source shape by reproducing retail words 0-5 exactly, including stores of a0/a1/a2 and the branch-delay a3 store. cc1 then folds the equal-high-word low comparison into sltu plus negu, producing seventeen content words instead of retail's explicit twenty-word branch/result ladder. No YAML/build/verifier integration; matching count remains 334. This was the third consecutive actual park after func_8005DBAC and func_80043474, so the mandatory hard stop fired with no Tier-1 row skipped.",
+   "evidence": "docs/evidence/volume-campaign-20260825/func-80073244/PARK.md; final source preserved in stash 'park volume func_80073244 lexicographic compare canonicalization'",
+   "next": "Do not retry without a source or compiler optimization lever that preserves explicit low-word branches instead of folding the three-way result through negu."
+  },
+  {
+   "id": "register-home-cross-block-scheduling-70d6c",
+   "status": "PARKED-REGISTER-HOME-AND-CROSS-BLOCK-SCHEDULING",
+   "note": "func_80070D6C @ file 0x6156C is a proven callable 25-word lagged-Fibonacci RNG advance with four direct callers, canonical return, and real boundaries. Independent retail/native oracles prove the self-adjacent state semantics. Two natural era -O2 -G0 phrasings compile byte-identically to 24 words: cc1 assigns the three retained bases and cursor/slot/value lifetimes through v0/t0/a3/a2/a1/a0/v1, moves both cursor decrements into earlier load gaps, and computes the sum directly in v0. Retail keeps a deliberate t0-t8 home plan, preserves one load-delay nop, copies t5 to v0, and fills the two guard slots plus return slot with the cursor operations. The explicit two-load/two-value retry changes nothing. No YAML/build/verifier integration; matching count remains 336. Disposition is ACCEPTED-RESIDUAL, not byte identity.",
+   "evidence": "docs/evidence/volume-campaign-20260830/func-80070d6c/PARK.md; final source preserved in stash 'park func_80070D6C register-schedule residual'",
+   "next": "Do not retry without a compiler allocation/scheduler lever that demonstrably reproduces the t0-t8 home plan and prevents both early cursor-decrement steals; pins and scheduling-hiding source tricks remain forbidden."
+  },
+  {
+   "id": "gp-load-store-scheduling-register-home-339a0",
+   "status": "PARKED-GP-LOAD-STORE-SCHEDULING-AND-REGISTER-HOME",
+   "note": "func_800339A0 @ file 0x241A0 is a proven callable 32-word constant-pair selector with six direct callers, canonical return, and real boundaries. It copies the 16-byte D_80010E38 table to a local aggregate, indexes a four-byte pair by index & 0xFF, and is the sole writer of gp state D_8009CE80/D_8009CE84/D_8009CE86. Two natural era -O2 -G8 phrasings differing in source store order compile byte-identically. Retail keeps the selected pair address in v1, loads the first result into v0, preserves a load-delay nop, stores it, then loads the second result. cc1 keeps the address in v0, first result in v1, hoists the second lhu, groups the three gp stores, and emits 31 content words plus alignment zero versus retail's 32 content words. No YAML/build/verifier integration; matching count remains 340. Disposition is ACCEPTED-RESIDUAL, not byte identity.",
+   "evidence": "docs/evidence/volume-campaign-20260830/func-800339a0/PARK.md; final source preserved in stash 'park func_800339A0 gp-load-store scheduling residual'",
+   "next": "Do not retry without a compiler allocation/scheduler lever that demonstrably retains the selected-pair address in v1, the first result in v0, and prevents the second lhu from moving across the first gp-relative halfword store; pins, volatile ordering fiction, and mismatch-hiding source tricks remain forbidden."
+  },
+  {
+   "id": "independent-load-bcd-accumulator-scheduling-80c48",
+   "status": "PARKED-INDEPENDENT-LOAD-AND-BCD-ACCUMULATOR-SCHEDULING",
+   "note": "func_80080C48 @ file 0x71448 is a proven callable 32-word libCD CdPosToInt routine with six direct callers, a canonical return with live subtract, and real boundaries. Independent native vectors prove its BCD minute/second/frame to LBA semantics. Two natural era -O2 -G0 phrasings each emit exactly 32 words. The peer-local form hoists all three loads and computes all BCD fields before combining them. The explicit-accumulator form recovers the first two retail load homes but cc1 still hoists byte 2 to entry, killing the input pointer early and changing every later accumulator home and schedule. This is the recognized independent-load scheduling family, with BCD accumulator register-home fallout. No YAML/build/verifier integration; matching count remains 340. Disposition is ACCEPTED-RESIDUAL, not byte identity.",
+   "evidence": "docs/evidence/volume-campaign-20260830/func-80080c48/PARK.md; final source preserved in stash 'park func_80080C48 independent-load scheduling residual'",
+   "next": "Do not retry without a compiler scheduler/allocation lever that demonstrably keeps byte 2 at its retail use point and pipelines decoded BCD fields through the retail accumulator homes; volatile ordering fiction, pins, and mismatch-hiding source tricks remain forbidden."
+  },
+  {
+   "id": "texture-window-control-flow-load-schedule-coloring-762bc",
+   "status": "PARKED-TEXTURE-WINDOW-CONTROL-FLOW-LOAD-SCHEDULE-AND-COLORING",
+   "note": "func_800762BC @ file 0x66ABC is a proven callable 32-word libGPU E2 texture-window packer with four direct callers, a canonical return with live frame teardown, and real boundaries. Local native and PsyQ-compatible header evidence independently prove the null-or-packed RECT semantics. Two natural era -O2 -G0 phrasings were tested. The direct _get_tw expression emits 25 content words and no frame. A four-element local component array recovers the exact 16-byte frame, all stores at sp+0/+4/+8/+C, and the 32-word size, but cc1 selects beqz with body fall-through instead of retail bnez into the body, loads Y before W, colors X/W through a2/a1 rather than a1/a2, adds a body-exit jump, and leaves the frame teardown before jr rather than in its delay slot. No YAML/build/verifier integration; matching count remains 340. Disposition is ACCEPTED-RESIDUAL, not byte identity. This was the third consecutive park after func_800339A0 and func_80080C48, so hard stop H5 fired with no Tier-1 candidate skipped.",
+   "evidence": "docs/evidence/volume-campaign-20260830/func-800762bc/PARK.md; final source preserved in stash 'park func_800762BC texture-window layout residual'",
+   "next": "Do not retry without a compiler block-layout/allocation/scheduler lever that demonstrably emits the bnez-into-body null shape, orders X/W before Y/H with retail homes, and leaves the common epilogue teardown in the jr delay slot; pins and mismatch-hiding source tricks remain forbidden."
+  },
+  {
+   "id": "independent-load-bcd-accumulator-scheduling-family-7aa34",
+   "status": "PARKED-INDEPENDENT-LOAD-AND-BCD-ACCUMULATOR-SCHEDULING-FAMILY",
+   "note": "func_8007AA34 @ file 0x6B234 is a proven callable 32-word CdPosToInt duplicate with exact direct caller 0x8007C2C0, a canonical return with live -150 subtract, and real boundaries. Its entire retail body is byte-for-byte identical to func_80080C48 (shared 0x80-byte SHA-256 91ea1fb723b4ee635699703080fc31c086af6ade091e87f0fb3c93316bdfecf2). The twin already exhausted two natural era -O2 -G0 phrasings; cc1 hoists byte 2 and changes the BCD accumulator schedule/register homes. Repeating the same compile under a second symbol cannot add evidence, so this family member was screened with zero phrasings. No YAML/build/verifier integration; matching count remains 340. Disposition is ACCEPTED-RESIDUAL, not byte identity.",
+   "evidence": "docs/evidence/volume-campaign-20260830/func-8007aa34/PARK.md; semantic source preserved in stash 'park func_8007AA34 duplicate CdPosToInt residual'",
+   "next": "Share func_80080C48's future unblocker; do not retry without a scheduler/allocation lever that keeps byte 2 at its retail use point and pipelines decoded BCD fields through the retail accumulator homes."
+  },
+  {
+   "id": "shared-lui-base-lifetime-coloring-7e8f4",
+   "status": "PARKED-SHARED-LUI-BASE-LIFETIME-COLORING",
+   "note": "func_8007E8F4 @ file 0x6F0F4 (28 words, 0x8007E8F4..0x8007E964) is the CD completion-queue predicate, translated in pc_port/platform/pe_libcd.c (Phase 6E-CDS1) with oracle pc_port/tools/pe_cds1_selector_tail_oracle.py. Two era -O2 -G0 phrasings tried via tools/analysis/era_leaf_match.sh (scalar externs; unknown-size array externs): cc1 will not share one lui between D_800A3604 (head load) and D_800A3540 (rec = base - 0xC4 + head*24); it materializes a second base and reschedules the sll/addu chain. No YAML/build/verifier integration; matching count remains 560.",
+   "evidence": "docs/evidence/pe-cds1-selector-tail/REPORT.md (section: src attempts)",
+   "next": "Retry only with an addressing lever that keeps the A3604 lui live across the head load into the A3540 derivation (absolute-base sharing across two symbols)."
+  },
+  {
+   "id": "store-block-base-reuse-coloring-7fb44",
+   "status": "PARKED-STORE-BLOCK-BASE-REUSE-COLORING",
+   "note": "func_8007FB44 @ file 0x70344 (31 words, 0x8007FB44..0x8007FBC0) is the CD completion-dispatch predicate, translated in pc_port/platform/pe_libcd.c (Phase 6E-CDS1) with the same oracle. Two era -O2 -G0 phrasings tried (-G0 and -G8; direct negative-index stores; explicit gate locals + hoisted a3): the three gate loads/branches match, but cc1 rematerializes the D_8009B598 base with a fresh lui for the 0x1F/2/0xB store block instead of reusing $a2/$a3 with small offsets, diverging the last 6 words. No YAML/build/verifier integration; matching count remains 560.",
+   "evidence": "docs/evidence/pe-cds1-selector-tail/REPORT.md (section: src attempts)",
+   "next": "Retry only with a lifetime/coloring lever that keeps $a2 ($a2-0x44 in $a3) live from the gate loads into the store block without a second lui."
+  },
+  {
+   "id": "mv1c-c89c-unknowable-inputs",
+   "status": "RESOLVED-FORENSIC-ERROR-INPUTS-MODELED",
+   "note": "SUPERSEDED 2026-09-03: both unknowables were forensic errors (see Correction record in evidence). Tail sets s3=0x801D1464 so a1=[0x801D1464+([146C]^1)*4] (first pass [0x801D1468]=[0x801D0DEC] movie-buf pointer); call site loads a2=[0x801D0DF8]; entry-a3 dead (C89C computes a3=a2+0x10000). State area corrected to 0x8011EB8C..0x8011EBB4. Transcription rung unblocked on inputs.",
+   "evidence": "docs/evidence/pe-mv1c-c89c-map/NOTE.md",
+   "next": "Transcribe C89C + got_frame/EC tail with real strict-path inputs; dual-model + resume-equivalence verification."
+  }
+ ]
+}

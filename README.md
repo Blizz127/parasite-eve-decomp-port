@@ -182,10 +182,11 @@ Known issues in r5:
 
 ## What is here
 
-- `src/`: the matching decompilation. There are 2,252 EXE functions and
-  3,339 overlay functions that compile back to the retail bytes (SHA-1
-  verified in the private development tree). Of those, the Psy-Q SDK
-  functions and two functions with retail tables are left out here.
+- `src/`: the matching decompilation. This repository has **1,772 EXE
+  functions in C** that compile back to the retail bytes, plus the overlay
+  functions. The development tree has 2,252 matched EXE functions. The
+  difference is the Psy-Q SDK functions and two functions with retail
+  tables, which are split from your disc as assembly instead.
 - `pc_port/`: the native port, including the host layer (window, input,
   audio, saves), the disc checks, the opt-in cheats, and its tests.
 - `configs/`: splat and symbol configuration (addresses and names only).
@@ -195,28 +196,48 @@ Known issues in r5:
 
 ## Build from source
 
-You need your own disc for any build: every retail byte (assembly, data
-tables, overlays) is generated from your image at build time.
+The matching build is turnkey: from a clean clone and your own disc, it
+rebuilds the retail executable byte for byte (SHA-1
+`452fb033f2eaa4b18aa20a5bca60b8125af3a37b`). Every retail byte that isn't
+published here is split from your disc at build time. That covers the
+assembly, the data, and the Psy-Q SDK functions whose source isn't published.
+You need git and Docker.
 
-**The tree is not yet a turnkey build.** To keep Sony and retail material
-out, this snapshot leaves out several things:
+```sh
+git clone https://github.com/Blizz127/parasite-eve-decomp-port.git
+cd parasite-eve-decomp-port
 
-- the Psy-Q SDK functions from `src/`;
-- the port files that still define or translate SDK functions;
-- the SPU table file;
-- the retail-recorded test cases.
+# Your disc: the Redump BIN/CUE of Disc 1, copied (or linked) here
+mkdir -p "rom/image/Parasite Eve (USA) (Disc 1)"
+cp ~/Games/parasite-eve/disc/"Parasite Eve (USA) (Disc 1)".{bin,cue} "rom/image/Parasite Eve (USA) (Disc 1)/"
 
-The splat configuration still expects those files. A follow-up will switch
-the SDK functions to assembly split from your disc, so the tree builds as
-is. The outline of the build is:
+# The build container (Debian with a mipsel cross toolchain)
+docker build -t parasite-eve-mipsel:trixie -f dev/mipsel/Dockerfile .
 
-1. **Your disc:** put `Parasite Eve (USA) (Disc 1).bin`/`.cue` under
-   `rom/image/Parasite Eve (USA) (Disc 1)/`.
-2. **Toolchain:** `scripts/setup_era.sh` fetches the era compilers and
-   maspsx. The build container is in `dev/mipsel/`.
-3. **Matching build:** run `scripts/extract_us.sh`, then `scripts/split_us.sh`,
-   then `scripts/build_us.sh`. Check the result with `scripts/verify_us.sh`.
-4. **Native port:** `cmake -S pc_port -B pc_port/build && cmake --build pc_port/build`.
+# Toolchain setup, extract, split, build and verify
+docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD":/workspace \
+  parasite-eve-mipsel:trixie bash -c '
+    scripts/setup_env.sh && scripts/setup_era.sh &&
+    export PATH=/workspace/.venv/bin:$PATH &&
+    scripts/extract_us.sh 1 && scripts/split_us.sh &&
+    scripts/build_us.sh && scripts/verify_us.sh'
+```
+
+- **`setup_env.sh`** installs the pinned splat into `.venv/`.
+- **`setup_era.sh`** downloads the era compilers
+  ([decompals/old-gcc](https://github.com/decompals/old-gcc)) and
+  [maspsx](https://github.com/mkst/maspsx) at a pinned commit, and keeps this
+  repo's patched maspsx files.
+- The build ends with `Compare: EXACT SHA-1 452fb033…`, and
+  `verify_us.sh` prints `VERIFY_US=PASS`.
+
+Everything the build writes (`build/`, `asm/`, `assets/`) is git-ignored,
+and your disc is only read.
+
+**The native port** (`pc_port/`) can't be built from this repository yet.
+The files that still translate Psy-Q SDK code are being replaced by the
+project's own port layer, and they are not published. The prebuilt release
+is the way to play until then.
 
 ## Status
 

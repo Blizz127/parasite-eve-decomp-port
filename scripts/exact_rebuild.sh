@@ -136,7 +136,7 @@ fi
 # ---------------------------------------------------------------------------
 
 # 1. Repo root guard.
-if [[ ! -f "$ROOT/CLAUDE.md" || ! -f "$ROOT/$CONFIG" ]]; then
+if [[ ! -f "$ROOT/configs/USA/disc1.yaml" || ! -f "$ROOT/$CONFIG" ]]; then
     envfail "not a Parasite-Eve-Decompilation root: $ROOT"
 fi
 

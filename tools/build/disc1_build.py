@@ -208,7 +208,7 @@ def era_compiler(environment: dict[str, str]) -> tuple[Path, Path]:
 
 
 def require_inputs(plan: dict[str, Any]) -> None:
-    if not (ROOT / "CLAUDE.md").is_file():
+    if not (ROOT / "configs" / "USA" / "disc1.yaml").is_file():
         raise BuildError(f"not a repository root: {ROOT}")
     target = plan_target(plan)
     exe = ROOT / target.retail

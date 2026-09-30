@@ -19,6 +19,9 @@ GCC_RELEASE="https://github.com/decompals/old-gcc/releases/download/0.17"
 GCC_URL="$GCC_RELEASE/gcc-2.7.2-psx.tar.gz"
 GCC_DIR="$ERA/gcc-2.7.2-psx"
 MASPSX_REPO="https://github.com/mkst/maspsx"
+# The tracked local patch (maspsx/__init__.py) is based on this upstream commit;
+# a newer upstream maspsx.py imports names the patched __init__.py lacks.
+MASPSX_COMMIT="42b862c988fe7a13fe4e7ac0ebec90ed6b9fb763"
 
 mkdir -p "$ERA"
 
@@ -123,7 +126,8 @@ if [[ -f "$ERA/maspsx/maspsx.py" ]]; then
 else
     echo "Cloning maspsx ..."
     tmp="$(mktemp -d)"
-    git clone -q --depth 1 "$MASPSX_REPO" "$tmp/maspsx"
+    git clone -q "$MASPSX_REPO" "$tmp/maspsx"
+    git -C "$tmp/maspsx" checkout -q "$MASPSX_COMMIT"
     mkdir -p "$ERA/maspsx"
     excludes=(--exclude='./.git')
     for f in "${MASPSX_TRACKED[@]}"; do excludes+=("--exclude=./$f"); done

@@ -6,12 +6,14 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         bash \
         ca-certificates \
+        curl \
         git \
         make \
         cmake \
         ninja-build \
         python3 \
         python3-pip \
+        python3-venv \
         gcc-mipsel-linux-gnu \
         binutils-mipsel-linux-gnu \
         libc6-dev-mipsel-cross \

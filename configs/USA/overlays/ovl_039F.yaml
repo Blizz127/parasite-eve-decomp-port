@@ -49,25 +49,25 @@ segments:
     vram: 0x8010BCF8
     subsegments:
       - [0x0, bin]
-      - [0x54, c, func_8010BD4C]
+      - [0x54, asm]  # func_8010BD4C: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x138, asm]
-      - [0x144, c, func_8010BE3C]
-      - [0x178, c, func_8010BE70]
-      - [0x204, c, func_8010BEFC]
-      - [0x29C, c, func_8010BF94]
-      - [0x2A8, c, func_8010BFA0]
-      - [0x324, c, func_8010C01C]
-      - [0x344, c, func_8010C03C]
-      - [0x380, c, func_8010C078]
-      - [0x3BC, c, func_8010C0B4]
-      - [0x3E0, c, func_8010C0D8]
-      - [0x404, c, func_8010C0FC]
-      - [0x4F4, c, func_8010C1EC]
-      - [0x584, c, func_8010C27C]
-      - [0x610, c, func_8010C308]
-      - [0x6A4, c, func_8010C39C]
-      - [0x738, c, func_8010C430]
-      - [0x750, c, func_8010C448]
+      - [0x144, asm]  # func_8010BE3C: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x178, asm]  # func_8010BE70: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x204, asm]  # func_8010BEFC: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x29C, asm]  # func_8010BF94: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x2A8, asm]  # func_8010BFA0: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x324, asm]  # func_8010C01C: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x344, asm]  # func_8010C03C: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x380, asm]  # func_8010C078: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x3BC, asm]  # func_8010C0B4: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x3E0, asm]  # func_8010C0D8: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x404, asm]  # func_8010C0FC: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x4F4, asm]  # func_8010C1EC: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x584, asm]  # func_8010C27C: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x610, asm]  # func_8010C308: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x6A4, asm]  # func_8010C39C: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x738, asm]  # func_8010C430: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x750, asm]  # func_8010C448: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x7CC, asm]
       - [0xF04, bin]
   - [0x13000]

@@ -17,7 +17,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # Repo-root sanity: refuse to run from a stray copy of this script — .venv/
 # must land at the real repo root, where .gitignore covers it.
-if [[ ! -f "$ROOT/CLAUDE.md" || ! -d "$ROOT/configs/USA" ]]; then
+if [[ ! -f "$ROOT/configs/USA/disc1.yaml" || ! -d "$ROOT/configs/USA" ]]; then
     echo "ERROR: $ROOT does not look like the Parasite-Eve-Decompilation root." >&2
     exit 1
 fi

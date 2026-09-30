@@ -47,7 +47,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-if [[ ! -f "$ROOT/CLAUDE.md" || ! -d "$ROOT/pc_port" ]]; then
+if [[ ! -f "$ROOT/configs/USA/disc1.yaml" || ! -d "$ROOT/pc_port" ]]; then
     echo "ERROR: $ROOT does not look like the Parasite-Eve-Decompilation root." >&2
     exit 1
 fi

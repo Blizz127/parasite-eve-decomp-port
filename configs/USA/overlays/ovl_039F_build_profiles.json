@@ -3,22 +3,7 @@
   "_comment": "Build profiles for the ovl_039F overlay target. Profile DEFINITIONS are inherited from the EXE manifest via profiles_from; only the ASSIGNMENTS are owned here and may name only C spans of configs/USA/overlays/ovl_039F.yaml.",
   "profiles_from": "configs/USA/disc1_build_profiles.json",
   "default_profile": "era_o2_g0",
-  "assignments": {
-    "era_o2_g0_fill_call_delay_slot": [
-      "func_8010C0FC",
-      "func_8010C308",
-      "func_8010C39C"
-    ],
-    "era_o2_g0_fill_epilogue_delay_slot": [
-      "func_8010BE3C",
-      "func_8010C1EC",
-      "func_8010C27C",
-      "func_8010BEFC"
-    ],
-    "era_o2_g0_no_schedule_insns_no_delayed_branch": [
-      "func_8010C448"
-    ]
-  },
+  "assignments": {},
   "local_profiles": {
     "era_o2_g0_no_schedule_insns_no_delayed_branch": {
       "toolchain": "era",

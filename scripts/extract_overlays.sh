@@ -54,8 +54,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 # 1. Root guard.
-if [[ ! -f "$ROOT/CLAUDE.md" || ! -f "$MANIFEST" ]]; then
-    echo "ERROR: $ROOT does not look like the Parasite-Eve-Decompilation root (no CLAUDE.md / overlay manifest)." >&2
+if [[ ! -f "$ROOT/configs/USA/disc1.yaml" || ! -f "$MANIFEST" ]]; then
+    echo "ERROR: $ROOT does not look like the Parasite-Eve-Decompilation root (no configs/USA/disc1.yaml / overlay manifest)." >&2
     exit 1
 fi
 command -v python3 >/dev/null || { echo "ERROR: python3 not found on PATH" >&2; exit 1; }

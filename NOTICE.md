@@ -41,6 +41,13 @@ Every file was checked before publishing:
   Psy-Q code or tables;
 - a scan for secrets and credentials found none.
 
+The one documented exception is `pc_port/platform/pe_spu_gauss.inc`. It holds
+the PlayStation SPU's 4-point Gaussian interpolation table, transcribed from
+the public [psx-spx](https://psx-spx.consoledev.net/) hardware documentation.
+It is a hardware constant, not game data. Its low-entropy 40-byte head happens
+to equal a run of unrelated bytes on the disc, so it is listed in
+`tools/analysis/retail_data_guard_allow.txt` with that reason.
+
 ## Your own disc
 
 To run anything built from this code you need your own legally obtained

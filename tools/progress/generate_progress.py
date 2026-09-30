@@ -37,7 +37,7 @@ NONMATCHING_RE = re.compile(r"^nonmatching\s+(\S+)")
 def find_repo_root() -> str:
     path = os.path.abspath(os.path.dirname(__file__))
     while path != "/":
-        if os.path.isfile(os.path.join(path, "CLAUDE.md")):
+        if os.path.isfile(os.path.join(path, "configs", "USA", "disc1.yaml")):
             return path
         path = os.path.dirname(path)
     return os.getcwd()

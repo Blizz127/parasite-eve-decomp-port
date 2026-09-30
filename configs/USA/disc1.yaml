@@ -614,7 +614,7 @@ segments:
       # lane1: func_80022210 VRAM 0x80022210 size 0x184.
       - [0x12A10, c, func_80022210]
       # Battle phase advance: slot-walk, facing/sound pick from two pool tables (D_8001074C/D_80010760), 0x80000/0x100000 phase flags.
-      - [0x12B94, c, func_80022394]
+      - [0x12B94, asm]  # func_80022394: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x13578, asm]
       # Status-effect particle spawner (D_8009D278->f68 flags vs actor status word).
       - [0x1357C, c, func_80022D7C]
@@ -625,7 +625,7 @@ segments:
       # Battle item-use effect switch (heal amounts, status toggles, clears).
       - [0x14614, c, func_80023E14]
       # restored after lane merge (row belongs to another agent)
-      - [0x14A50, c, func_80024250]
+      - [0x14A50, asm]  # func_80024250: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x1523C, c, func_80024A3C]
       - [0x15CBC, c, func_800254BC]
       # real `switch` on the command word; ERA_ASPSX_VER=2.30 is load-bearing - ASPSX 2.30 expands the a
@@ -804,7 +804,7 @@ segments:
       - [0x26C48, c, func_80036448]
       # func_80036DC8 — three sequential init calls (36DF8/36E34/36E58) in one
       # frame; era -O2 -G0, LINK_EXACT.
-      - [0x275C8, c, func_80036DC8]
+      - [0x275C8, asm]  # func_80036DC8: source not published (Psy-Q SDK or retail table); split from your disc
       # func_80036DF8 — five-word state seed: 0 and 0x1499700 into
       # D_800A76A8, 0 into D_800A76A4, 0 then 1 into D_800A76A0. Volatile
       # declarations keep the duplicate stores. era -O2 -G0, LINK_EXACT.
@@ -2568,359 +2568,359 @@ segments:
       - [0x61EA4, c, func_800716A4]
       # D_8009D26C direction cascade + D_8009D254 adjust. NEW LEVER: each arm of the flag cascade must d
       - [0x61F54, c, func_80071754]
-      - [0x620D0, c, func_800718D0]
+      - [0x620D0, asm]  # func_800718D0: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5EZ: conditional offset-0xC pointer helper.
-      - [0x62144, c, func_80071944]
+      - [0x62144, asm]  # func_80071944: source not published (Psy-Q SDK or retail table); split from your disc
       # header-skip pointer; register pins $2/$3 stop cc1 reassociating (a0+8)+d into a0+(d+8)
-      - [0x62164, c, func_80071964]
+      - [0x62164, asm]  # func_80071964: source not published (Psy-Q SDK or retail table); split from your disc
       # twin of 80071964 with a +0xC tail
-      - [0x62194, c, func_80071994]
+      - [0x62194, asm]  # func_80071994: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5FA: conditional offset-0x14 pointer helper.
-      - [0x621C4, c, func_800719C4]
+      - [0x621C4, asm]  # func_800719C4: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x621E4, asm]
-      - [0x62284, c, func_80071A84]
+      - [0x62284, asm]  # func_80071A84: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x62B08, asm]
-      - [0x62B34, c, func_80072334]
+      - [0x62B34, asm]  # func_80072334: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x62BA0, asm]
       # This is qsort: func_800723A4(void *b, unsigned int n, int size, int (*cmp)()) with func_800724F4
-      - [0x62BA4, c, func_800723A4]
+      - [0x62BA4, asm]  # func_800723A4: source not published (Psy-Q SDK or retail table); split from your disc
       # byte-swap loop; i=0 hoisted above the guard + do/while (a `for` here would add a phantom 8-byte 
-      - [0x62CF4, c, func_800724F4]
+      - [0x62CF4, asm]  # func_800724F4: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x62D30, asm]
-      - [0x62F14, c, func_80072714]
-      - [0x62F24, c, func_80072724]
+      - [0x62F14, asm]  # func_80072714: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x62F24, asm]  # func_80072724: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x62F34, asm]
-      - [0x62FB4, c, func_800727B4]
+      - [0x62FB4, asm]  # func_800727B4: source not published (Psy-Q SDK or retail table); split from your disc
       # jal/j/jalr slot macro split (maspsx patch 8, MASPSX_FILL_CALL_DELAY_SLOT)
-      - [0x63150, c, func_80072950]
+      - [0x63150, asm]  # func_80072950: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x63250, asm]
-      - [0x63274, c, func_80072A74]
+      - [0x63274, asm]  # func_80072A74: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x635E8, asm]
       # 64-bit add: the four 16-bit halves live in a local `unsigned int w[4]` (an array is what puts th
-      - [0x635F4, c, func_80072DF4]
+      - [0x635F4, asm]  # func_80072DF4: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x636A0, asm]
       # 64-bit shift (arithmetic right); explicit i=0/do-while kills the phantom frame, counter pinned $
-      - [0x636A4, c, func_80072EA4]
+      - [0x636A4, asm]  # func_80072EA4: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x63760, asm]
-      - [0x63764, c, func_80072F64]
+      - [0x63764, asm]  # func_80072F64: source not published (Psy-Q SDK or retail table); split from your disc
       # unsigned 64-bit compare; last sltu in $v1
-      - [0x63A44, c, func_80073244]
+      - [0x63A44, asm]  # func_80073244: source not published (Psy-Q SDK or retail table); split from your disc
       # twin of 80072EA4 with a logical right shift
-      - [0x63A94, c, func_80073294]
+      - [0x63A94, asm]  # func_80073294: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x63B50, asm]
       # epilogue fill
-      - [0x63B54, c, func_80073354]
+      - [0x63B54, asm]  # func_80073354: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x63C50, asm]
-      - [0x63C54, c, func_80073454]
+      - [0x63C54, asm]  # func_80073454: source not published (Psy-Q SDK or retail table); split from your disc
       # 64-bit negate: struct-by-value ~x then func_80072DF4(x,{1,0}); hi-before-lo statement order
-      - [0x63D54, c, func_80073554]
-      - [0x63DC4, c, func_800735C4]
+      - [0x63D54, asm]  # func_80073554: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x63DC4, asm]  # func_800735C4: source not published (Psy-Q SDK or retail table); split from your disc
       # 32x32->64 multiply via three func_80072DF4 adds. ERA_ASPSX_VER=2.30 is REQUIRED: maspsx omits th
-      - [0x640D8, c, func_800738D8]
-      - [0x641C4, c, func_800739C4]
+      - [0x640D8, asm]  # func_800738D8: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x641C4, asm]  # func_800739C4: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x64228, asm]
-      - [0x64244, c, func_80073A44]
+      - [0x64244, asm]  # func_80073A44: source not published (Psy-Q SDK or retail table); split from your disc
       # jal/j/jalr slot macro split (maspsx patch 8, MASPSX_FILL_CALL_DELAY_SLOT)
-      - [0x643BC, c, func_80073BBC]
+      - [0x643BC, asm]  # func_80073BBC: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x64454, asm]
       # func_80073C94 / func_80073CC4 — tail-dispatch through D_8009566C's
       # handler table (+0xC and +0x8). Argument-less fn-ptr slots (retail
       # clears no argument registers in the jalr delay slot). era -O2 -G0,
       # both LINK_EXACT.
-      - [0x64494, c, func_80073C94]
-      - [0x644C4, c, func_80073CC4]
+      - [0x64494, asm]  # func_80073C94: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x644C4, asm]  # func_80073CC4: source not published (Psy-Q SDK or retail table); split from your disc
       # func_80073CF4 — tail-dispatch through D_8009566C->f+0x4 (twin of
       # 73C94/73CC4, one slot over). Argument-less fn-ptr slot; a prototype
       # with a parameter materializes $a0 in the jalr delay slot. era -O2 -G0,
       # LINK_EXACT. Mid-644F4 carve: split asm into prefix + C + resume.
-      - [0x644F4, c, func_80073CF4]
+      - [0x644F4, asm]  # func_80073CF4: source not published (Psy-Q SDK or retail table); split from your disc
       # func_80073D24 — tail-dispatch D_8009566C->f+0x14 with (4, a0):
       # prototype-with-parameter form materializes $a0 in the jalr delay
       # slot. era -O2 -G0, LINK_EXACT.
-      - [0x64524, c, func_80073D24]
+      - [0x64524, asm]  # func_80073D24: source not published (Psy-Q SDK or retail table); split from your disc
       # func_80073D58/73D88/73DB8 — tail-dispatch through D_8009566C->f+0x14
       # /0x10/0x18 (twins of 73C94/73CC4/73CF4). Argument-less fn-ptr slots.
       # era -O2 -G0, LINK_EXACT each.
-      - [0x64558, c, func_80073D58]
-      - [0x64588, c, func_80073D88]
-      - [0x645B8, c, func_80073DB8]
-      - [0x645E8, c, func_80073DE8]
+      - [0x64558, asm]  # func_80073D58: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x64588, asm]  # func_80073D88: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x645B8, asm]  # func_80073DB8: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x645E8, asm]  # func_80073DE8: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5BX: C leaf func_80073DF8 — VRAM 0x80073DF8, size 0x18.
       # Halfword pointer deref on D_80095674 (lui/lw/nop/lhu0/jr/nop).
-      - [0x645F8, c, func_80073DF8]
+      - [0x645F8, asm]  # func_80073DF8: source not published (Psy-Q SDK or retail table); split from your disc
       # Unsigned-halfword read-and-replace helper: era -O2 -G0.
-      - [0x64610, c, func_80073E10]
+      - [0x64610, asm]  # func_80073E10: source not published (Psy-Q SDK or retail table); split from your disc
       # boot init chain. Needs asm barriers on both the D_800945E4 and D_80094620 bases, a volatile-qual
-      - [0x64628, c, func_80073E28]
+      - [0x64628, asm]  # func_80073E28: source not published (Psy-Q SDK or retail table); split from your disc
       # psyq/libapi/intr_state - the PSY-Q interrupt dispatcher. FIRST of the four entries that were par
-      - [0x64700, c, func_80073F00]
-      - [0x648D0, c, func_800740D0]
+      - [0x64700, asm]  # func_80073F00: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x648D0, asm]  # func_800740D0: source not published (Psy-Q SDK or retail table); split from your disc
       # teardown; asm barrier on D_800945E4, D_80095678 declared pointer-to-volatile for the double load
-      - [0x64A18, c, func_80074218]
-      - [0x64AB8, c, func_800742B8]
+      - [0x64A18, asm]  # func_80074218: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x64AB8, asm]  # func_800742B8: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5CX: C leaf func_80074330 — file 0x64B30, size 0x24.
-      - [0x64B30, c, func_80074330]
+      - [0x64B30, asm]  # func_80074330: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x64B54, asm]
       # boot init: *D_800956B0=0x107, D_800956AC=0, two calls, returns &func_80074478
-      - [0x64BB4, c, func_800743B4]
+      - [0x64BB4, asm]  # func_800743B4: source not published (Psy-Q SDK or retail table); split from your disc
       # 8-slot callback sweep; counter pinned $17, cursor $16
-      - [0x64C0C, c, func_8007440C]
+      - [0x64C0C, asm]  # func_8007440C: source not published (Psy-Q SDK or retail table); split from your disc
       # Volume campaign: indexed conditional state setter, era -O2 -G0.
-      - [0x64C78, c, func_80074478]
+      - [0x64C78, asm]  # func_80074478: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5CY: C leaf func_800744A4 — file 0x64CA4, size 0x24.
-      - [0x64CA4, c, func_800744A4]
+      - [0x64CA4, asm]  # func_800744A4: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x64CC8, asm]
       # init: func_8007474C + func_80073CC4, returns &func_800746A0
-      - [0x64CD4, c, func_800744D4]
+      - [0x64CD4, asm]  # func_800744D4: source not published (Psy-Q SDK or retail table); split from your disc
       # D_800956BC event-flag dispatch over D_800956C0[7] + D_800956E0 log sweep. NEW LEVER (inverse of 
-      - [0x64D20, c, func_80074520]
+      - [0x64D20, asm]  # func_80074520: source not published (Psy-Q SDK or retail table); split from your disc
       # schedule off both passes
-      - [0x64EA0, c, func_800746A0]
+      - [0x64EA0, asm]  # func_800746A0: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5CZ: C leaf func_8007474C — file 0x64F4C, size 0x24.
-      - [0x64F4C, c, func_8007474C]
+      - [0x64F4C, asm]  # func_8007474C: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x64F70, asm]
       # short buf[4] + 3-case switch on a1 (a5/4, a5/2, a5) then func_8007506C + func_80077A64; the swit
-      - [0x64F74, c, func_80074774]
+      - [0x64F74, asm]  # func_80074774: source not published (Psy-Q SDK or retail table); split from your disc
       # short buf[4] template then func_8007506C + func_80077AA4
-      - [0x6505C, c, func_8007485C]
+      - [0x6505C, asm]  # func_8007485C: source not published (Psy-Q SDK or retail table); split from your disc
       # twin of 8007485C with 0x10 instead of 0x100
-      - [0x650C0, c, func_800748C0]
+      - [0x650C0, asm]  # func_800748C0: source not published (Psy-Q SDK or retail table); split from your disc
       # struct init; a second barriered pointer local for the +8/+0xA/+0x14/+0x18 tail group; 'o[0x17] =
-      - [0x65124, c, func_80074924]
+      - [0x65124, asm]  # func_80074924: source not published (Psy-Q SDK or retail table); split from your disc
       # Volume campaign: display-environment initializer, size 0x3C.
-      - [0x651D8, c, func_800749D8]
+      - [0x651D8, asm]  # func_800749D8: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5EF: exchange D_800956EC (int from accepted getter 80074A28).
-      - [0x65214, c, func_80074A14]
+      - [0x65214, asm]  # func_80074A14: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5AX: C leaf func_80074A28 — VRAM 0x80074A28, size 0x10.
       # File span 0x65228–0x65238 exclusive. 32-bit global getter:
       # lui/lw/jr/nop on D_800956EC. Plain -O1 matches.
       # Mid-64610 carve: prefix 0xC18, C 0x10, resume 65238.s.
-      - [0x65228, c, func_80074A28]
+      - [0x65228, asm]  # func_80074A28: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5AY: C leaf func_8007DEB0 — VRAM 0x8007DEB0, size 0x10.
       # File span 0x6E6B0–0x6E6C0 exclusive. 32-bit global getter:
       # lui/lw/jr/nop on D_8009B4AC. Plain -O1 matches.
       # Mid-65238: 74CB8 leaf, then 654C8 asm to 7A324 cluster.
       - [0x65238, asm]
       # switch on (a0&7) over cases 0/3/5 with a D_80095744/D_80095748 fallback. CLOSED by the new toolc
-      - [0x65244, c, func_80074A44]
+      - [0x65244, asm]  # func_80074A44: source not published (Psy-Q SDK or retail table); split from your disc
       # Byte setter returning the old value. Confirms PATCH 8 COVERS jalr, not just jal/j: the `la $a0,D
-      - [0x653B8, c, func_80074BB8]
+      - [0x653B8, asm]  # func_80074BB8: source not published (Psy-Q SDK or retail table); split from your disc
       # D_8009574D setter. CLOSED by the new toolchain. This leaf sits at 0x80074C14, inside the 0x80071
-      - [0x65414, c, func_80074C14]
+      - [0x65414, asm]  # func_80074C14: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5BO: C leaf func_80074CB8 — VRAM 0x80074CB8, size 0x10.
       # Unsigned-byte global getter on D_8009574E; plain -O1 matches.
-      - [0x654B8, c, func_80074CB8]
+      - [0x654B8, asm]  # func_80074CB8: source not published (Psy-Q SDK or retail table); split from your disc
       # log gate + slot swap; zero-code asm barrier on &D_8009574E keeps the base in $s0
-      - [0x654C8, c, func_80074CC8]
+      - [0x654C8, asm]  # func_80074CC8: source not published (Psy-Q SDK or retail table); split from your disc
       # func_80074D28 — boot-spine transition trampoline: state-byte gate,
       # D_80095748 log vector, func_80077A28 0x14-byte clear, then the
       # D_80095744->f(0x10) renderer slot with 0x3000000/0x3000001. era
       # -O2 -G0 + MASPSX_FILL_EPILOGUE_DELAY_SLOT=1; LINK_EXACT.
-      - [0x65528, c, func_80074D28]
+      - [0x65528, asm]  # func_80074D28: source not published (Psy-Q SDK or retail table); split from your disc
       # func_80074DC0 — same gate/log pair, then the D_80095744->f(0x3C)
       # handler with a0. era -O2 -G0 + patch 3; LINK_EXACT.
-      - [0x655C0, c, func_80074DC0]
+      - [0x655C0, asm]  # func_80074DC0: source not published (Psy-Q SDK or retail table); split from your disc
       # func_80074E28 — GPU debug RECT bounds report through D_80095748.
       # 2.8.1 -mno-split-addresses + patch 8; `h` pinned to $3. LINK_EXACT.
-      - [0x65628, c, func_80074E28]
-      - [0x65744, c, func_80074F44]
-      - [0x657D4, c, func_80074FD4]
+      - [0x65628, asm]  # func_80074E28: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x65744, asm]  # func_80074F44: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x657D4, asm]  # func_80074FD4: source not published (Psy-Q SDK or retail table); split from your disc
       # func_8007506C / func_800750CC — reset a record via func_80074E28, then
       # push D_80095744->v[0x20]/[0x1C] out the D_80095744->f(0x8) slot.
       # era -O2 -G0 + patch 3; LINK_EXACT.
-      - [0x6586C, c, func_8007506C]
-      - [0x658CC, c, func_800750CC]
-      - [0x6592C, c, func_8007512C]
+      - [0x6586C, asm]  # func_8007506C: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x658CC, asm]  # func_800750CC: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x6592C, asm]  # func_8007512C: source not published (Psy-Q SDK or retail table); split from your disc
       # func_800751E4 — same D_8009574E gate / D_80095748 log pair, then a
       # next-pointer link walk (0xA4 chunks): clears p[3], merges the low 24
       # bits of (p+4) into the word at p, and finally stamps the D_8009580C /
       # D_800957F8 window pair. era -O2 -G0 + patch 3; LINK_EXACT.
-      - [0x659E4, c, func_800751E4]
+      - [0x659E4, asm]  # func_800751E4: source not published (Psy-Q SDK or retail table); split from your disc
       # func_800752AC — gate/log pair, then the D_80095744->f(0x2C) handler
       # with (a0, a1), then the same D_8009580C / D_800957F8 window seeds.
       # era -O2 -G0 + patch 3; LINK_EXACT.
-      - [0x65AAC, c, func_800752AC]
+      - [0x65AAC, asm]  # func_800752AC: source not published (Psy-Q SDK or retail table); split from your disc
       # func_80075358 — D_80095744->f(0x3C)(0) then ->f(0x14)(a0+4, a0[3]).
       # era -O2 -G0 + patch 3; LINK_EXACT (void return; move v0,a0 omitted).
-      - [0x65B58, c, func_80075358]
+      - [0x65B58, asm]  # func_80075358: source not published (Psy-Q SDK or retail table); split from your disc
       # func_800753B4 — reset via func_80074E28, then the D_80095744->f(0x8)
       # slot with D_80095744->v[6]. era -O2 -G0 + patch 3; LINK_EXACT.
-      - [0x65BB4, c, func_800753B4]
+      - [0x65BB4, asm]  # func_800753B4: source not published (Psy-Q SDK or retail table); split from your disc
       # func_80075424 — gate/log pair, func_80075EE0(a0+0x1C, a0), force the
       # low 24 bits of *(a0+0x1C) to 1, then D_80095744->f(0x8)(...0x40,...)
       # and the D_800957B8 0x14-byte template copy. era -O2 -G0 + patch 3.
-      - [0x65C24, c, func_80075424]
+      - [0x65C24, asm]  # func_80075424: source not published (Psy-Q SDK or retail table); split from your disc
       # func_800754E4 — same shape with a0's low 24 bits spliced into
       # *(a1+0x1C) between the func_80075EE0 call and the f(0x8) push.
       # era -O2 -G0 + patch 3; LINK_EXACT.
-      - [0x65CE4, c, func_800754E4]
+      - [0x65CE4, asm]  # func_800754E4: source not published (Psy-Q SDK or retail table); split from your disc
       # func_800755BC — 0x5C-byte record reset from the D_8009575C template
       # (wrapper returning a0). era -O2 -G0 + patch 3; LINK_EXACT.
-      - [0x65DBC, c, func_800755BC]
-      - [0x65DF0, c, func_800755F0]
+      - [0x65DBC, asm]  # func_800755BC: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x65DF0, asm]  # func_800755F0: source not published (Psy-Q SDK or retail table); split from your disc
       # func_80075AE8 — 0x14-byte record reset from the D_800957B8 template
       # (wrapper returning a0). era -O2 -G0 + patch 3; LINK_EXACT.
-      - [0x662E8, c, func_80075AE8]
-      - [0x6631C, c, func_80075B1C]
+      - [0x662E8, asm]  # func_80075AE8: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x6631C, asm]  # func_80075B1C: source not published (Psy-Q SDK or retail table); split from your disc
       # func_80075B4C / func_80075C04 — display-list node init: a0[3]=2, the
       # +4 command comes from func_800762BC / func_800762A0, +8 cleared.
       # era -O2 -G0 + MASPSX_FILL_EPILOGUE_DELAY_SLOT=1; LINK_EXACT.
-      - [0x6634C, c, func_80075B4C]
+      - [0x6634C, asm]  # func_80075B4C: source not published (Psy-Q SDK or retail table); split from your disc
       # func_80075B84 — display-list node init from a 4-short rect: a0[3]=2,
       # +4 = func_80076170(x,y), +8 = func_80076208(x+w-1, y+h-1). era
       # -O2 -G0 + patch 3; LINK_EXACT.
-      - [0x66384, c, func_80075B84]
+      - [0x66384, asm]  # func_80075B84: source not published (Psy-Q SDK or retail table); split from your disc
       # func_80075C04 — display-list node init from a point pair (signed lh).
-      - [0x66404, c, func_80075C04]
+      - [0x66404, asm]  # func_80075C04: source not published (Psy-Q SDK or retail table); split from your disc
       # func_80075C44 stays asm: PARK (boolean-fold residual, sltu->select).
-      - [0x66444, c, func_80075C44]
+      - [0x66444, asm]  # func_80075C44: source not published (Psy-Q SDK or retail table); split from your disc
       # func_80075C6C — rectangle flag-word setter (0xE6000000/1).
       # era -O2 -G0; BYTE_EXACT / LINK_EXACT.
-      - [0x6646C, c, func_80075C6C]
+      - [0x6646C, asm]  # func_80075C6C: source not published (Psy-Q SDK or retail table); split from your disc
       # func_80075C94 — display-list node init: a0[3]=2, +4 from
       # func_80076150(a1,a2,a3&0xFFFF), +8 from func_800762BC(a4/stack).
       # era -O2 -G0 + patch 3; LINK_EXACT.
-      - [0x66494, c, func_80075C94]
-      - [0x664E8, c, func_80075CE8]
-      - [0x666E0, c, func_80075EE0]
+      - [0x66494, asm]  # func_80075C94: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x664E8, asm]  # func_80075CE8: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x666E0, asm]  # func_80075EE0: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5FF: command-word builder with two flag bits and a masked field.
-      - [0x66950, c, func_80076150]
-      - [0x66970, c, func_80076170]
-      - [0x66A08, c, func_80076208]
+      - [0x66950, asm]  # func_80076150: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x66970, asm]  # func_80076170: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x66A08, asm]  # func_80076208: source not published (Psy-Q SDK or retail table); split from your disc
       # func_800762A0 — draw-mode word packer: ((a1 & 0x7FF) << 11) |
       # ((a0 & 0x7FF) | 0xE5000000). era -O2 -G0; object is byte-exact with
       # 4 bytes of trailing zero pad; LINK_EXACT.
-      - [0x66AA0, c, func_800762A0]
-      - [0x66ABC, c, func_800762BC]
+      - [0x66AA0, asm]  # func_800762A0: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x66ABC, asm]  # func_800762BC: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5BU: C leaf func_8007633C — VRAM 0x8007633C, size 0x18.
       # Pointer double-deref on D_80095854 (lui/lw/nop/lw0/jr/nop).
-      - [0x66B3C, c, func_8007633C]
+      - [0x66B3C, asm]  # func_8007633C: source not published (Psy-Q SDK or retail table); split from your disc
       # restored after lane merge (row belongs to another agent)
-      - [0x66B54, c, func_80076354]
-      - [0x66C34, c, func_80076434]
-      - [0x66E64, c, func_80076664]
-      - [0x670A0, c, func_800768A0]
+      - [0x66B54, asm]  # func_80076354: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x66C34, asm]  # func_80076434: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x66E64, asm]  # func_80076664: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x670A0, asm]  # func_800768A0: source not published (Psy-Q SDK or retail table); split from your disc
       # func_80076B20 — write *D_80095854 = a0 then index D_800A3348 by
       # a0 >> 24; era -O2 -G0 + maspsx patch 4
       # (MASPSX_SYMBOL_LOAD_DEST_TEMP=1) for the jr-delay-slot indexed store
       # fill. LINK_EXACT.
-      - [0x67320, c, func_80076B20]
+      - [0x67320, asm]  # func_80076B20: source not published (Psy-Q SDK or retail table); split from your disc
       # func_80076B44 — D_800A3348[a0] reader; era -O2 -G0 + new maspsx
       # patch 4 (MASPSX_SYMBOL_LOAD_DEST_TEMP=1), retail's dest-register
       # address temp: lui $v0,addu $v0,$v0,a0,lbu %lo($v0). LINK_EXACT.
-      - [0x67344, c, func_80076B44]
+      - [0x67344, asm]  # func_80076B44: source not published (Psy-Q SDK or retail table); split from your disc
       # func_80076B58 — *D_80095854 = 0x4000000 then copy `a1` words from
       # a0 to *D_80095850 (do-while with c = a1-1 compare to -1). era -O2
       # -G0, LINK_EXACT. True body is 0x40 (deep-preflight size defect #2:
       # the old 0x88 span swallowed func_80076B98 below).
-      - [0x67358, c, func_80076B58]
+      - [0x67358, asm]  # func_80076B58: source not published (Psy-Q SDK or retail table); split from your disc
       # func_80076B98 — four-word SPU/DMA control store: *D_80095854 =
       # 0x4000002, *D_80095858 = a0, *D_8009585C = 0, *D_80095860 =
       # 0x1000401. The fourth constant needs its own local so cc1 emits
       # retail's separate `lui $v1,0x100` (a hoisted named local for `a0`
       # perturbs the register order). era -O2 -G0, LINK_EXACT.
-      - [0x67398, c, func_80076B98]
+      - [0x67398, asm]  # func_80076B98: source not published (Psy-Q SDK or retail table); split from your disc
       # func_80076BE0 — *D_80095854 = a0 | 0x10000000; returns
       # *D_80095850 & 0xFFFFFF. era -O2 -G0, LINK_EXACT.
-      - [0x673E0, c, func_80076BE0]
-      - [0x67410, c, func_80076C10]
-      - [0x67434, c, func_80076C34]
+      - [0x673E0, asm]  # func_80076BE0: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x67410, asm]  # func_80076C10: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x67434, asm]  # func_80076C34: source not published (Psy-Q SDK or retail table); split from your disc
       # GPU queue drain; 2.8.1, branch-macro split, dest-temp loads
-      - [0x676E4, c, func_80076EE4]
-      - [0x67944, c, func_80077144]
+      - [0x676E4, asm]  # func_80076EE4: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x67944, asm]  # func_80077144: source not published (Psy-Q SDK or retail table); split from your disc
       # LINK_EXACT on swept stable source
-      - [0x67A94, c, func_80077294]
+      - [0x67A94, asm]  # func_80077294: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5FZ: C leaf func_800773D0 — VRAM 0x800773D0, size 0x34 (13 words).
       # Arms the GPU timeout deadline (D_80095888 = VSync + 0xF0) and clears the
       # poll counter D_8009588C.  era -O2 -G0 (default profile).
-      - [0x67BD0, c, func_800773D0]
+      - [0x67BD0, asm]  # func_800773D0: source not published (Psy-Q SDK or retail table); split from your disc
       # GPU timeout check: 2.8.1 + patch 15 (unfilled ra-only epilogue slot).
-      - [0x67C04, c, func_80077404]
+      - [0x67C04, asm]  # func_80077404: source not published (Psy-Q SDK or retail table); split from your disc
       # GPU state gate through *D_80095854/*D_80095850; the dead read is '*(volatile unsigned int *)D_80
-      - [0x67D48, c, func_80077548]
+      - [0x67D48, asm]  # func_80077548: source not published (Psy-Q SDK or retail table); split from your disc
       # GPU wait then D_80095744[8](a0, a1); masks 0x01000000/0x04000000
-      - [0x67DE8, c, func_800775E8]
+      - [0x67DE8, asm]  # func_800775E8: source not published (Psy-Q SDK or retail table); split from your disc
       # 2.8.1 epilogue order; sibling of func_800775E8
-      - [0x67ED4, c, func_800776D4]
+      - [0x67ED4, asm]  # func_800776D4: source not published (Psy-Q SDK or retail table); split from your disc
       # cc1 2.8.1 no-split
-      - [0x67FC0, c, func_800777C0]
+      - [0x67FC0, asm]  # func_800777C0: source not published (Psy-Q SDK or retail table); split from your disc
       # 2.8.1 epilogue order
-      - [0x68104, c, func_80077904]
+      - [0x68104, asm]  # func_80077904: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5EL: register func_80076EE4 for mode two.
-      - [0x68200, c, func_80077A00]
+      - [0x68200, asm]  # func_80077A00: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5DA: C leaf func_80077A28 — file 0x68228, size 0x24.
-      - [0x68228, c, func_80077A28]
+      - [0x68228, asm]  # func_80077A28: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x6824C, asm]
       # Volume campaign: Psy-Q GetTPage bit packer, size 0x3C.
-      - [0x68264, c, func_80077A64]
+      - [0x68264, asm]  # func_80077A64: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x682A0, asm]
       # Phase 5FY: packed coordinate helper func_80077AA4 — VRAM 0x80077AA4,
       # size 0x18, era -O2 -G0. Mid-6824C carve: prefix 0x58, C 0x18,
       # trailing asm resumes at 682BC.
-      - [0x682A4, c, func_80077AA4]
+      - [0x682A4, asm]  # func_80077AA4: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x682BC, asm]
       # func_80077AC4 — colour/palette key swap: *a1 = hi(*a1)|lo(*a0);
       # *a0 = hi(*a0)|lo(a1). The two mask constants are pinned to $6/$7 with
       # asm register locals (retail materializes 0x00FFFFFF in $a2 and
       # 0xFF000000 in $a3 once, first). era -O2 -G0; BYTE_EXACT / LINK_EXACT.
-      - [0x682C4, c, func_80077AC4]
+      - [0x682C4, asm]  # func_80077AC4: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x68300, asm]
       # Volume campaign: byte flag-2 set/clear helper; size 0x28,
       # era -O2 -G0.
-      - [0x68304, c, func_80077B04]
+      - [0x68304, asm]  # func_80077B04: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x6832C, asm]
       # Volume campaign: byte flag-1 set/clear helper; size 0x28,
       # era -O2 -G0.
-      - [0x68334, c, func_80077B34]
+      - [0x68334, asm]  # func_80077B34: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x6835C, asm]
       # Phase 5CB: C leaf func_80077B64 — file 0x68364, size 0x14.
-      - [0x68364, c, func_80077B64]
+      - [0x68364, asm]  # func_80077B64: source not published (Psy-Q SDK or retail table); split from your disc
       # 12-byte zero-filled alignment padding between 77B64 and 77B84.
       - [0x68378, asm]
       # Phase 5CC: C leaf func_80077B84 — file 0x68384, size 0x14.
-      - [0x68384, c, func_80077B84]
+      - [0x68384, asm]  # func_80077B84: source not published (Psy-Q SDK or retail table); split from your disc
       # 12-byte zero-filled alignment padding between 77B84 and 77BA4.
       - [0x68398, asm]
       # Phase 5CD: C leaf func_80077BA4 — file 0x683A4, size 0x14.
-      - [0x683A4, c, func_80077BA4]
+      - [0x683A4, asm]  # func_80077BA4: source not published (Psy-Q SDK or retail table); split from your disc
       # 12-byte zero-filled alignment padding between 77BA4 and 77BC4.
       - [0x683B8, asm]
       # Phase 5CE: C leaf func_80077BC4 — file 0x683C4, size 0x14.
-      - [0x683C4, c, func_80077BC4]
+      - [0x683C4, asm]  # func_80077BC4: source not published (Psy-Q SDK or retail table); split from your disc
       # 12-byte zero-filled alignment padding between 77BC4 and 77BE4.
       - [0x683D8, asm]
       # Phase 5CF: C leaf func_80077BE4 — file 0x683E4, size 0x14.
-      - [0x683E4, c, func_80077BE4]
+      - [0x683E4, asm]  # func_80077BE4: source not published (Psy-Q SDK or retail table); split from your disc
       # 12-byte zero-filled alignment padding between 77BE4 and 77C04.
       - [0x683F8, asm]
       # Phase 5CG: C leaf func_80077C04 — file 0x68404, size 0x14.
-      - [0x68404, c, func_80077C04]
+      - [0x68404, asm]  # func_80077C04: source not published (Psy-Q SDK or retail table); split from your disc
       # 12-byte zero-filled alignment padding between 77C04 and 77C24.
       - [0x68418, asm]
       # Phase 5CH: C leaf func_80077C24 — file 0x68424, size 0x14.
-      - [0x68424, c, func_80077C24]
+      - [0x68424, asm]  # func_80077C24: source not published (Psy-Q SDK or retail table); split from your disc
       # 12-byte zero-filled alignment padding between 77C24 and 77C44.
       - [0x68438, asm]
       # Phase 5CI: C leaf func_80077C44 — file 0x68444, size 0x14.
-      - [0x68444, c, func_80077C44]
+      - [0x68444, asm]  # func_80077C44: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x68458, asm]
       # Phase 5CJ: C leaf func_80077C64 — file 0x68464, size 0x14.
-      - [0x68464, c, func_80077C64]
+      - [0x68464, asm]  # func_80077C64: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x68478, asm]
-      - [0x68484, c, func_80077C84]
+      - [0x68484, asm]  # func_80077C84: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x684B0, asm]
       # Volume campaign: packet-chain merge helper; the 0x80077CE8 nop is
       # the jr-ra delay slot and belongs to this 0x38-byte function.
-      - [0x684B4, c, func_80077CB4]
+      - [0x684B4, asm]  # func_80077CB4: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x684EC, asm]
       # Volume campaign: func_80077CF4 — wrap func_80077D30 around a signed
       # 0x1000-step: the sign is applied before the mask and again to the
       # result. era -O2 -G0, LINK_EXACT.
-      - [0x684F4, c, func_80077CF4]
+      - [0x684F4, asm]  # func_80077CF4: source not published (Psy-Q SDK or retail table); split from your disc
       # Volume campaign: func_80077D30 — mirrored 0x1000-step short-table
       # lookup (callee of func_80077CF4/func_80077DC4). Same patch-5 lever;
       # era -O2 -G0 LINK_EXACT.
-      - [0x68530, c, func_80077D30]
+      - [0x68530, asm]  # func_80077D30: source not published (Psy-Q SDK or retail table); split from your disc
       # func_80077D30's true body ends at 0x685C0; the 4 bytes at 0x685C0 are
       # layout pad before func_80077DC4 (deep-preflight size defect #1: the
       # old 0x94 span overshot by exactly this pad).
@@ -2929,423 +2929,423 @@ segments:
       # table (fan-in 17). Needs maspsx patch 5 ($at address temp with %lo
       # displacement kept); plain -O2 -G0 mismatches 31 words, patch 5 is
       # LINK_EXACT.
-      - [0x685C4, c, func_80077DC4]
+      - [0x685C4, asm]  # func_80077DC4: source not published (Psy-Q SDK or retail table); split from your disc
       # 2.8.1 + expand_div + patch 16 (no reuse nop after the expanded div's mflo). size 0x104.
-      - [0x68664, c, func_80077E64]
+      - [0x68664, asm]  # func_80077E64: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x68768, asm]
-      - [0x68B44, c, func_80078344]
-      - [0x68B94, c, func_80078394]
-      - [0x68BE4, c, func_800783E4]
-      - [0x68C6C, c, func_8007846C]
-      - [0x68CF4, c, func_800784F4]
-      - [0x68D54, c, func_80078554]
+      - [0x68B44, asm]  # func_80078344: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x68B94, asm]  # func_80078394: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x68BE4, asm]  # func_800783E4: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x68C6C, asm]  # func_8007846C: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x68CF4, asm]  # func_800784F4: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x68D54, asm]  # func_80078554: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x68DD0, asm]
-      - [0x68DD4, c, func_800785D4]
+      - [0x68DD4, asm]  # func_800785D4: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x68EE0, asm]
-      - [0x68EE4, c, func_800786E4]
+      - [0x68EE4, asm]  # func_800786E4: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x68FCC, asm]
-      - [0x69134, c, func_80078934]
+      - [0x69134, asm]  # func_80078934: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x69294, asm]
-      - [0x693E4, c, func_80078BE4]
-      - [0x69434, c, func_80078C34]
+      - [0x693E4, asm]  # func_80078BE4: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x69434, asm]  # func_80078C34: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x69490, asm]
       # func_80078C94 — copies 3 words from a1[0..2] into a0[5..7] and
       # returns a0. era -O1 -G0 + -fno-delayed-branch: cc1 puts the return
       # `move $2,$4` BEFORE `jr $31` (unfilled slot), which is exactly
       # retail; plain -O1 fills the slot and plain -O2 reorders the loads.
       # LINK_EXACT (9 words).
-      - [0x69494, c, func_80078C94]
+      - [0x69494, asm]  # func_80078C94: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x694B8, asm]
       # packed halfword scale by three weights; multu via mflo
-      - [0x694C4, c, func_80078CC4]
+      - [0x694C4, asm]  # func_80078CC4: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x695FC, asm]
-      - [0x69604, c, func_80078E04]
-      - [0x69634, c, func_80078E34]
-      - [0x69664, c, func_80078E64]
-      - [0x69694, c, func_80078E94]
-      - [0x696B4, c, func_80078EB4]
-      - [0x696C4, c, func_80078EC4]
-      - [0x696D4, c, func_80078ED4]
-      - [0x696E4, c, func_80078EE4]
-      - [0x69704, c, func_80078F04]
-      - [0x69718, c, func_80078F18]
-      - [0x6972C, c, func_80078F2C]
-      - [0x69738, c, func_80078F38]
-      - [0x6974C, c, func_80078F4C]
-      - [0x69764, c, func_80078F64]
-      - [0x69778, c, func_80078F78]
-      - [0x6978C, c, func_80078F8C]
-      - [0x697A0, c, func_80078FA0]
-      - [0x697AC, c, func_80078FAC]
-      - [0x697B8, c, func_80078FB8]
-      - [0x697C4, c, func_80078FC4]
-      - [0x697E4, c, func_80078FE4]
-      - [0x69804, c, func_80079004]
+      - [0x69604, asm]  # func_80078E04: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x69634, asm]  # func_80078E34: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x69664, asm]  # func_80078E64: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x69694, asm]  # func_80078E94: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x696B4, asm]  # func_80078EB4: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x696C4, asm]  # func_80078EC4: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x696D4, asm]  # func_80078ED4: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x696E4, asm]  # func_80078EE4: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x69704, asm]  # func_80078F04: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x69718, asm]  # func_80078F18: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x6972C, asm]  # func_80078F2C: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x69738, asm]  # func_80078F38: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x6974C, asm]  # func_80078F4C: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x69764, asm]  # func_80078F64: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x69778, asm]  # func_80078F78: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x6978C, asm]  # func_80078F8C: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x697A0, asm]  # func_80078FA0: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x697AC, asm]  # func_80078FAC: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x697B8, asm]  # func_80078FB8: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x697C4, asm]  # func_80078FC4: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x697E4, asm]  # func_80078FE4: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x69804, asm]  # func_80079004: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x6981C, asm]
-      - [0x69824, c, func_80079024]
+      - [0x69824, asm]  # func_80079024: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x69830, asm]
-      - [0x69834, c, func_80079034]
-      - [0x6985C, c, func_8007905C]
-      - [0x69884, c, func_80079084]
-      - [0x698C0, c, func_800790C0]
-      - [0x698E4, c, func_800790E4]
-      - [0x6990C, c, func_8007910C]
-      - [0x69934, c, func_80079134]
-      - [0x69954, c, func_80079154]
-      - [0x69978, c, func_80079178]
-      - [0x699D0, c, func_800791D0]
-      - [0x69A28, c, func_80079228]
+      - [0x69834, asm]  # func_80079034: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x6985C, asm]  # func_8007905C: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x69884, asm]  # func_80079084: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x698C0, asm]  # func_800790C0: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x698E4, asm]  # func_800790E4: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x6990C, asm]  # func_8007910C: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x69934, asm]  # func_80079134: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x69954, asm]  # func_80079154: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x69978, asm]  # func_80079178: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x699D0, asm]  # func_800791D0: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x69A28, asm]  # func_80079228: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x69A40, asm]
-      - [0x69A44, c, func_80079244]
+      - [0x69A44, asm]  # func_80079244: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x69A70, asm]
-      - [0x69A74, c, func_80079274]
+      - [0x69A74, asm]  # func_80079274: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x69AC8, asm]
-      - [0x69AD4, c, func_800792D4]
+      - [0x69AD4, asm]  # func_800792D4: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x69AFC, asm]
-      - [0x69B04, c, func_80079304]
+      - [0x69B04, asm]  # func_80079304: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x69B7C, asm]
-      - [0x69B84, c, func_80079384]
+      - [0x69B84, asm]  # func_80079384: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x69C0C, asm]
-      - [0x69C14, c, func_80079414]
-      - [0x69CC4, c, func_800794C4]
+      - [0x69C14, asm]  # func_80079414: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x69CC4, asm]  # func_800794C4: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x69F50, asm]
-      - [0x69F54, c, func_80079754]
+      - [0x69F54, asm]  # func_80079754: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x6A1E0, asm]
-      - [0x6A1E4, c, func_800799E4]
+      - [0x6A1E4, asm]  # func_800799E4: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x6A470, asm]
-      - [0x6A474, c, func_80079C74]
+      - [0x6A474, asm]  # func_80079C74: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x6A60C, asm]
-      - [0x6A614, c, func_80079E14]
+      - [0x6A614, asm]  # func_80079E14: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x6A7AC, asm]
-      - [0x6A7B4, c, func_80079FB4]
+      - [0x6A7B4, asm]  # func_80079FB4: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x6A928, asm]
-      - [0x6AA14, c, func_8007A214]
+      - [0x6AA14, asm]  # func_8007A214: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x6AA40, asm]
       # Phase 5BK: C leaf func_8007A324 — VRAM 0x8007A324, size 0x10.
       # Unsigned-byte global getter on D_8009AFC4; plain -O1 matches.
-      - [0x6AA44, c, func_8007A244]
+      - [0x6AA44, asm]  # func_8007A244: source not published (Psy-Q SDK or retail table); split from your disc
       # func_8007A2A4 — pad subsystem mode reset; lw;nop;jal;sb tail via maspsx patch 13. era -O2 -G0.
-      - [0x6AAA4, c, func_8007A2A4]
-      - [0x6AB24, c, func_8007A324]
+      - [0x6AAA4, asm]  # func_8007A2A4: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x6AB24, asm]  # func_8007A324: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5BL: C leaf func_8007A334 — VRAM 0x8007A334, size 0x10.
       # Unsigned-byte global getter on D_8009AFD4; plain -O1 matches.
-      - [0x6AB34, c, func_8007A334]
+      - [0x6AB34, asm]  # func_8007A334: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5BM: C leaf func_8007A344 — VRAM 0x8007A344, size 0x10.
       # Unsigned-byte global getter on D_8009AFD5; plain -O1 matches.
-      - [0x6AB44, c, func_8007A344]
+      - [0x6AB44, asm]  # func_8007A344: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5BN: C leaf func_8007A354 — VRAM 0x8007A354, size 0xC.
       # Address-of D_8009AFD0 (lui/jr/addiu in delay slot); plain -O1 matches.
-      - [0x6AB54, c, func_8007A354]
-      - [0x6AB60, c, func_8007A360]
+      - [0x6AB54, asm]  # func_8007A354: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x6AB60, asm]  # func_8007A360: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5EF: direct func_8007B9EC forwarding wrapper.
-      - [0x6ABCC, c, func_8007A3CC]
+      - [0x6ABCC, asm]  # func_8007A3CC: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5EF: signed state/count exchange; blez/slti prove int.
-      - [0x6ABEC, c, func_8007A3EC]
+      - [0x6ABEC, asm]  # func_8007A3EC: source not published (Psy-Q SDK or retail table); split from your disc
       # Tier-2 continuation: CdReady forwarding wrapper func_8007A488.
       # Former 0x6AC00 asm span: prefix 0x68, C 0x20, C 0x20, closes at 0x6ACA8.
       # func_8007A400/7A434 — bound-checked 32-bit table getters with a
       # D_800119CC fallback. era -O2 -G0 + maspsx patch 5
       # (MASPSX_SYMBOL_AT_TEMP=1) + early-return polarity. LINK_EXACT.
-      - [0x6AC00, c, func_8007A400]
-      - [0x6AC34, c, func_8007A434]
+      - [0x6AC00, asm]  # func_8007A400: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x6AC34, asm]  # func_8007A434: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5EF: direct func_8007B010 forwarding wrapper.
-      - [0x6AC68, c, func_8007A468]
-      - [0x6AC88, c, func_8007A488]
+      - [0x6AC68, asm]  # func_8007A468: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x6AC88, asm]  # func_8007A488: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5EF: int state exchanges (zero/nonzero reader evidence).
-      - [0x6ACA8, c, func_8007A4A8]
-      - [0x6ACBC, c, func_8007A4BC]
+      - [0x6ACA8, asm]  # func_8007A4A8: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x6ACBC, asm]  # func_8007A4BC: source not published (Psy-Q SDK or retail table); split from your disc
       # Tier-2 continuation: one-result wrapper around func_8007B964.
       # Former 0x6ACD0 span: prefix 0x3BC, C 0x20, resume 0x1884.
-      - [0x6ACD0, c, func_8007A4D0]
-      - [0x6AE0C, c, func_8007A60C]
-      - [0x6AF40, c, func_8007A740]
-      - [0x6B08C, c, func_8007A88C]
+      - [0x6ACD0, asm]  # func_8007A4D0: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x6AE0C, asm]  # func_8007A60C: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x6AF40, asm]  # func_8007A740: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x6B08C, asm]  # func_8007A88C: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5EF: boolean-negating wrappers around 8007BF44 / 8007C044.
-      - [0x6B0AC, c, func_8007A8AC]
-      - [0x6B0CC, c, func_8007A8CC]
-      - [0x6B0EC, c, func_8007A8EC]
+      - [0x6B0AC, asm]  # func_8007A8AC: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x6B0CC, asm]  # func_8007A8CC: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x6B0EC, asm]  # func_8007A8EC: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5EF: direct func_8007BDDC forwarding wrapper.
-      - [0x6B110, c, func_8007A910]
-      - [0x6B130, c, func_8007A930]
+      - [0x6B110, asm]  # func_8007A910: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x6B130, asm]  # func_8007A930: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5EF: write-only opaque 32-bit setter.
       # BCD MSF -> LBA: ((m*60+s)*75+f)-150, nibble decode per byte
-      - [0x6B234, c, func_8007AA34]
-      - [0x6B2B4, c, func_8007AAB4]
-      - [0x6B810, c, func_8007B010]
-      - [0x6BA90, c, func_8007B290]
-      - [0x6BD58, c, func_8007B558]
-      - [0x6C164, c, func_8007B964]
+      - [0x6B234, asm]  # func_8007AA34: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x6B2B4, asm]  # func_8007AAB4: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x6B810, asm]  # func_8007B010: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x6BA90, asm]  # func_8007B290: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x6BD58, asm]  # func_8007B558: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x6C164, asm]  # func_8007B964: source not published (Psy-Q SDK or retail table); split from your disc
       # pin p=$3; non-volatile asm() re-opaque after p[2]=0 forces the reload; and '{ unsigned char *r =
-      - [0x6C1EC, c, func_8007B9EC]
-      - [0x6C2C0, c, func_8007BAC0]
+      - [0x6C1EC, asm]  # func_8007B9EC: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x6C2C0, asm]  # func_8007BAC0: source not published (Psy-Q SDK or retail table); split from your disc
       # 4 zero stores + 2 calls. PATCH 8 CANARY: 10 mismatches -> 0 with MASPSX_FILL_CALL_DELAY_SLOT=1 a
-      - [0x6C3B0, c, func_8007BBB0]
+      - [0x6C3B0, asm]  # func_8007BBB0: source not published (Psy-Q SDK or retail table); split from your disc
       # pinned zero args plus call fill and epilogue unfill
-      - [0x6C3FC, c, func_8007BBFC]
+      - [0x6C3FC, asm]  # func_8007BBFC: source not published (Psy-Q SDK or retail table); split from your disc
       # poll loop; index-pair jal schedule
-      - [0x6C5DC, c, func_8007BDDC]
+      - [0x6C5DC, asm]  # func_8007BDDC: source not published (Psy-Q SDK or retail table); split from your disc
       # 2.8.1 + patch 14 (load-delay nop before the poll-loop label). LEAF_STRONG=EXACT.
-      - [0x6C744, c, func_8007BF44]
+      - [0x6C744, asm]  # func_8007BF44: source not published (Psy-Q SDK or retail table); split from your disc
       # 'extern volatile unsigned char *D_8009B27C' (pointer TO volatile) gives one pointer load + a re-
-      - [0x6C844, c, func_8007C044]
-      - [0x6C930, c, func_8007C130]
+      - [0x6C844, asm]  # func_8007C044: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x6C930, asm]  # func_8007C130: source not published (Psy-Q SDK or retail table); split from your disc
       # Tier-2 probe: three-word state setter func_8007C544.
       # Former 0x6C93C asm span: prefix 0x408, C 0x1C, resume 0x1944.
       # First-try match (28 without patch 8). The two byte cursors are ONE symbol: `p = &D_8009B295; q =
-      - [0x6C93C, c, func_8007C13C]
+      - [0x6C93C, asm]  # func_8007C13C: source not published (Psy-Q SDK or retail table); split from your disc
       # func_8007C214 — slot record copy + optional D_800B0CC8 hook; store macro split into beqz slot (maspsx patch 10). era -O2 -G0.
-      - [0x6CA14, c, func_8007C214]
+      - [0x6CA14, asm]  # func_8007C214: source not published (Psy-Q SDK or retail table); split from your disc
       # Branch polarity was load-bearing: `if (D_800A8020 != 0) return -1;` FIRST, then the call arm (15
-      - [0x6CAA0, c, func_8007C2A0]
+      - [0x6CAA0, asm]  # func_8007C2A0: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x6CAF8, asm]
       # 8 global stores after func_8007C544(1); 5th arg read from 0x30($sp)
-      - [0x6CB04, c, func_8007C304]
+      - [0x6CB04, asm]  # func_8007C304: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x6CB88, asm]
       # page index = (int* - int*) / 504 (NOT a Page* subtraction, which cc1 turns into an exact-divisio
-      - [0x6CB94, c, func_8007C394]
+      - [0x6CB94, asm]  # func_8007C394: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x6CC40, asm]
-      - [0x6CC44, c, func_8007C444]
+      - [0x6CC44, asm]  # func_8007C444: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x6CC78, asm]
       # status-1 barrier plus sink zero store into beqz
-      - [0x6CC84, c, func_8007C484]
+      - [0x6CC84, asm]  # func_8007C484: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x6CD3C, asm]
-      - [0x6CD44, c, func_8007C544]
+      - [0x6CD44, asm]  # func_8007C544: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5EF: zero-argument func_8007D074 forwarding wrapper.
       - [0x6CD60, asm]
-      - [0x6CD64, c, func_8007C564]
+      - [0x6CD64, asm]  # func_8007C564: source not published (Psy-Q SDK or retail table); split from your disc
       # func_8007CE80 — word-copy of a2 elements with the count pre-tested; the
       # body keeps the loaded word in a named local so retail's
       # lw/addiu/store/addiu order (not load/store interleaved) is emitted.
       # era -O2 -G0, LINK_EXACT.
-      - [0x6D680, c, func_8007CE80]
-      - [0x6D6AC, c, func_8007CEAC]
-      - [0x6D854, c, func_8007D054]
-      - [0x6D874, c, func_8007D074]
+      - [0x6D680, asm]  # func_8007CE80: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x6D6AC, asm]  # func_8007CEAC: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x6D854, asm]  # func_8007D054: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x6D874, asm]  # func_8007D074: source not published (Psy-Q SDK or retail table); split from your disc
       # One-shot init guarded by D_8009B3EC. Two jal macro splits. Return value of func_800726E4 assigne
-      - [0x6D95C, c, func_8007D15C]
+      - [0x6D95C, asm]  # func_8007D15C: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x6D9CC, asm]
       # func_8007D1D4 — libspu _spu_init; 2.7.2 -O2 -G0 -fno-strength-reduce +
       # maspsx patches 8/3/21. LINK_EXACT.
-      - [0x6D9D4, c, func_8007D1D4]
+      - [0x6D9D4, asm]  # func_8007D1D4: source not published (Psy-Q SDK or retail table); split from your disc
       # call and epilogue fill
-      - [0x6DC54, c, func_8007D454]
+      - [0x6DC54, asm]  # func_8007D454: source not published (Psy-Q SDK or retail table); split from your disc
       # 2.8.1 + patch 15 (unfilled epilogue slot).
-      - [0x6DE14, c, func_8007D614]
+      - [0x6DE14, asm]  # func_8007D614: source not published (Psy-Q SDK or retail table); split from your disc
       # func_8007D6D0 — SPU transfer kick (volatile SPU ctrl). era cc1 2.8.1 -mno-split-addresses.
-      - [0x6DED0, c, func_8007D6D0]
-      - [0x6DF78, c, func_8007D778]
+      - [0x6DED0, asm]  # func_8007D6D0: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x6DF78, asm]  # func_8007D778: source not published (Psy-Q SDK or retail table); split from your disc
       # D_8009B418 gated variant of func_8007DA7C
-      - [0x6E1F8, c, func_8007D9F8]
+      - [0x6E1F8, asm]  # func_8007D9F8: source not published (Psy-Q SDK or retail table); split from your disc
       # three func_8007D778 calls, D_8009B414 << D_8009B424
-      - [0x6E27C, c, func_8007DA7C]
+      - [0x6E27C, asm]  # func_8007DA7C: source not published (Psy-Q SDK or retail table); split from your disc
       # short store through *D_8009B3FC, optional >>D_8009B424; if(a2==0){}else{} branch polarity
-      - [0x6E2E0, c, func_8007DAE0]
+      - [0x6E2E0, asm]  # func_8007DAE0: source not published (Psy-Q SDK or retail table); split from your disc
       # expand-div plus div-no-reuse nop
-      - [0x6E324, c, func_8007DB24]
+      - [0x6E324, asm]  # func_8007DB24: source not published (Psy-Q SDK or retail table); split from your disc
       # func_8007DBC8 — u16 table read D_8009B3FC[a0], optionally shifted by
       # D_8009B424; the narrow `unsigned short v` local homes the value in $a0.
       # era -O2 -G0, LINK_EXACT.
-      - [0x6E3C8, c, func_8007DBC8]
+      - [0x6E3C8, asm]  # func_8007DBC8: source not published (Psy-Q SDK or retail table); split from your disc
       # RMW of *D_8009B40C; 'unsigned int *volatile' pointer global defeats the pointer-load CSE (3 inde
-      - [0x6E404, c, func_8007DC04]
+      - [0x6E404, asm]  # func_8007DC04: source not published (Psy-Q SDK or retail table); split from your disc
       # func_8007DC5C / func_8007DC84 — field-insert setters on the color word
       # at *D_8009B410: clear bits 24..27, OR in 0x2 / 0x22. Empty arg list
       # (retail loads only $a0). era -O2 -G0; object +4-byte gas pad, LINK_EXACT.
-      - [0x6E45C, c, func_8007DC5C]
-      - [0x6E484, c, func_8007DC84]
+      - [0x6E45C, asm]  # func_8007DC5C: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x6E484, asm]  # func_8007DC84: source not published (Psy-Q SDK or retail table); split from your disc
       # libspu volatile x13 busy-wait (60 iters); cc1 2.8.1 + patch 11 (jump stack store fill).
-      - [0x6E4AC, c, func_8007DCAC]
+      - [0x6E4AC, asm]  # func_8007DCAC: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x6E508, asm]
-      - [0x6E514, c, func_8007DD14]
+      - [0x6E514, asm]  # func_8007DD14: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x6E538, asm]
       # func_8007DD74 — func_8007DDC4(a0) then func_8007DDB4(a0, 0x3F, 0);
       # void. The addiu $sp epilogue schedules into the jr delay slot
       # (maspsx patch 3). era -O2 -G0.
-      - [0x6E574, c, func_8007DD74]
+      - [0x6E574, asm]  # func_8007DD74: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x6E5A8, asm]
       # boot sequence; 'if (func_8007DEB0() == 0) a0 = 0;'
-      - [0x6E5D4, c, func_8007DDD4]
+      - [0x6E5D4, asm]  # func_8007DDD4: source not published (Psy-Q SDK or retail table); split from your disc
       # func_8007DE40 — func_80072714(); func_8007E324(); func_80073C74(0);
       # func_80072724(); void. era -O2 -G0, LINK_EXACT.
-      - [0x6E640, c, func_8007DE40]
+      - [0x6E640, asm]  # func_8007DE40: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5EF: two-call void wrapper.
-      - [0x6E678, c, func_8007DE78]
+      - [0x6E678, asm]  # func_8007DE78: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x6E6A0, asm]
       # Phase 5EF: int setter typed by accepted getter 8007DEB0.
-      - [0x6E6A4, c, func_8007DEA4]
-      - [0x6E6B0, c, func_8007DEB0]
+      - [0x6E6A4, asm]  # func_8007DEA4: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x6E6B0, asm]  # func_8007DEB0: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5AZ: C leaf func_8007F778 — VRAM 0x8007F778, size 0x10.
       # File span 0x6FF78–0x6FF88 exclusive. 32-bit global getter:
       # lui/lw/jr/nop on D_800A3608. Plain -O1 matches.
       # Mid-6E6C0 carve: prefix 0x18B8, C 0x10, resume 6FF88.s 0xD2F4.
       # 7-call init spine then D_8009B4AC = 1
-      - [0x6E6C0, c, func_8007DEC0]
+      - [0x6E6C0, asm]  # func_8007DEC0: source not published (Psy-Q SDK or retail table); split from your disc
       # twin of func_8007DEC0 with func_8007E1A4 instead of func_8007E1D4
-      - [0x6E750, c, func_8007DF50]
+      - [0x6E750, asm]  # func_8007DF50: source not published (Psy-Q SDK or retail table); split from your disc
       # func_8007DFE0 — three-call sequenced init (func_8007E1B4,
       # func_80073C74(0), func_8007E204); return 1. era -O2 -G0.
-      - [0x6E7E0, c, func_8007DFE0]
-      - [0x6E810, c, func_8007E010]
+      - [0x6E7E0, asm]  # func_8007DFE0: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x6E810, asm]  # func_8007E010: source not published (Psy-Q SDK or retail table); split from your disc
       # func_8007E0C0 — func_80072714(); func_8007E1F4(1, D_800A34B0);
       # func_80072724(); return 1. era -O2 -G0, LINK_EXACT.
       # handler install; -fno-schedule-insns2 keeps li v0,1 before restores
-      - [0x6E848, c, func_8007E048]
-      - [0x6E8C0, c, func_8007E0C0]
+      - [0x6E848, asm]  # func_8007E048: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x6E8C0, asm]  # func_8007E0C0: source not published (Psy-Q SDK or retail table); split from your disc
       # func_8007E0F8 — clear *D_8009B4B0 +0xA, volatile countdown c[3]=10 (frame 0x10), return 0. era -O2 -G0.
-      - [0x6E8F8, c, func_8007E0F8]
+      - [0x6E8F8, asm]  # func_8007E0F8: source not published (Psy-Q SDK or retail table); split from your disc
       # two bit tests on D_8009B4B4; shared jr
-      - [0x6E960, c, func_8007E160]
+      - [0x6E960, asm]  # func_8007E160: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x6E9A0, asm]
       # tail jr through jtbl_800A34C8 in $t1 via computed goto
-      - [0x6EA04, c, func_8007E204]
+      - [0x6EA04, asm]  # func_8007E204: source not published (Psy-Q SDK or retail table); split from your disc
       # tail jr through jtbl_800A34CC in $t1 via computed goto
-      - [0x6EA18, c, func_8007E218]
+      - [0x6EA18, asm]  # func_8007E218: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x6EA2C, asm]
       # global register $v1 poll then jr through *(int *)0xDFFC
-      - [0x6EB70, c, func_8007E370]
-      - [0x6EBB4, c, func_8007E3B4]
+      - [0x6EB70, asm]  # func_8007E370: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x6EBB4, asm]  # func_8007E3B4: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x6EBC4, asm]
       # word copy to 0xDF80; -O1 keeps the load-delay nop
-      - [0x6ECE0, c, func_8007E4E0]
+      - [0x6ECE0, asm]  # func_8007E4E0: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x6ED14, asm]
       # func_8007E594 — clear a 0x18-byte object (word 0, bytes 4..8 via a
       # down-counting parallel pointer q, then words 0xC/0x10/0x14). The local
       # `q` is load-bearing; era -O2 -G0, LINK_EXACT.
-      - [0x6ED94, c, func_8007E594]
+      - [0x6ED94, asm]  # func_8007E594: source not published (Psy-Q SDK or retail table); split from your disc
       # dest-temp symbolic load
-      - [0x6EDC4, c, func_8007E5C4]
+      - [0x6EDC4, asm]  # func_8007E5C4: source not published (Psy-Q SDK or retail table); split from your disc
       # ring-slot address getter over the 24-byte D_800A3540 table; pins $3/$4/$2 + asm barrier on the b
-      - [0x6EEB0, c, func_8007E6B0]
+      - [0x6EEB0, asm]  # func_8007E6B0: source not published (Psy-Q SDK or retail table); split from your disc
       # slot walk; dest-temp load and epilogue fill
-      - [0x6EF04, c, func_8007E704]
+      - [0x6EF04, asm]  # func_8007E704: source not published (Psy-Q SDK or retail table); split from your disc
       # D_800A3604 slot dispatch; 'if (e[0] != 0) return f(...) != 0; return 0;' is the polarity that me
-      - [0x6F0F4, c, func_8007E8F4]
+      - [0x6F0F4, asm]  # func_8007E8F4: source not published (Psy-Q SDK or retail table); split from your disc
       # CD completion; beq -1 delay is addiu via MASPSX_ADDU_NEG1_BEQ_DELAY
-      - [0x6F164, c, func_8007E964]
+      - [0x6F164, asm]  # func_8007E964: source not published (Psy-Q SDK or retail table); split from your disc
       # ring push into D_800A3610[16]; f5 base written as (char*)idx-0x7B and the add as ((*idx<<4)+(int
-      - [0x6F388, c, func_8007EB88]
+      - [0x6F388, asm]  # func_8007EB88: source not published (Psy-Q SDK or retail table); split from your disc
       # FIRST-TRY MATCH by adapting func_8007ED58 - they are siblings sharing the same 40-word init bloc
-      - [0x6F414, c, func_8007EC14]
+      - [0x6F414, asm]  # func_8007EC14: source not published (Psy-Q SDK or retail table); split from your disc
       # 13 -> 0. Two pointer bases (&D_800B8AB0 and &D_800A3510) each need the non-volatile tie to stay 
-      - [0x6F558, c, func_8007ED58]
+      - [0x6F558, asm]  # func_8007ED58: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5EF: direct func_8007FB04 forwarding wrapper.
-      - [0x6F664, c, func_8007EE64]
-      - [0x6F684, c, func_8007EE84]
-      - [0x6F8C8, c, func_8007F0C8]
+      - [0x6F664, asm]  # func_8007EE64: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x6F684, asm]  # func_8007EE84: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x6F8C8, asm]  # func_8007F0C8: source not published (Psy-Q SDK or retail table); split from your disc
       # dest-temp load plus epilogue delay fill
-      - [0x6FC18, c, func_8007F418]
+      - [0x6FC18, asm]  # func_8007F418: source not published (Psy-Q SDK or retail table); split from your disc
       # duplicate the whole body in BOTH arms (cc1 cross-jumps the tail) and pin the outgoing arg 'regis
-      - [0x6FE08, c, func_8007F608]
+      - [0x6FE08, asm]  # func_8007F608: source not published (Psy-Q SDK or retail table); split from your disc
       # 8x24-byte table init; register pins $4/$5/$2/$3 for the two ivs, and 'i = 0;' written BEFORE 'e 
-      - [0x6FE9C, c, func_8007F69C]
+      - [0x6FE9C, asm]  # func_8007F69C: source not published (Psy-Q SDK or retail table); split from your disc
       # func_8007F72C — func_8007FBF0(0) then, when it returns 1 and
       # func_8007F778() > 0, bump to 2. sp delta 0x18. era -O2 -G0 +
       # maspsx patch 3 (MASPSX_FILL_EPILOGUE_DELAY_SLOT=1, profile
       # era_o2_g0_fill_epilogue_delay_slot), LINK_EXACT. Mid-6F684 carve:
       # prefix 0x8A8, C 0x4C, resume 0x6FF78.
-      - [0x6FF2C, c, func_8007F72C]
-      - [0x6FF78, c, func_8007F778]
+      - [0x6FF2C, asm]  # func_8007F72C: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x6FF78, asm]  # func_8007F778: source not published (Psy-Q SDK or retail table); split from your disc
       # Tier-2 continuation: unsigned-byte forwarding wrapper; exact 0x20 span.
-      - [0x6FF88, c, func_8007F788]
+      - [0x6FF88, asm]  # func_8007F788: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5EL: C func_8007F7A8 — VRAM 0x8007F7A8, size 0x20.
       # Return-forwarding call to already-C int func_8007FCAC(void). Retail
       # epilogue restores $ra, tears down the frame before jr, then uses a nop
       # jr delay slot. Era -O2 -G0; no arguments or $gp references.
       # Mid-6FF88 carve: prefix 0x20, C 0x20, resume 6FFC8.s 0x3F8.
-      - [0x6FFA8, c, func_8007F7A8]
+      - [0x6FFA8, asm]  # func_8007F7A8: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5EF: unsigned-byte forwarding wrapper around func_8007FC08.
-      - [0x6FFC8, c, func_8007F7C8]
+      - [0x6FFC8, asm]  # func_8007F7C8: source not published (Psy-Q SDK or retail table); split from your disc
       # pins r=$16,p=$17,i=$3,m=$2 and a nested q=$3 for (int)p-0xC8 so the base decrement is not reasso
-      - [0x6FFE8, c, func_8007F7E8]
+      - [0x6FFE8, asm]  # func_8007F7E8: source not published (Psy-Q SDK or retail table); split from your disc
       # func_8007F88C — pad event post into D_800A3520/D_800A3530 + optional D_800B8AB4 hook. era cc1 2.8.1 -mno-split-addresses.
-      - [0x7008C, c, func_8007F88C]
-      - [0x70160, c, func_8007F960]
+      - [0x7008C, asm]  # func_8007F88C: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x70160, asm]  # func_8007F960: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x7018C, asm]
       # Boot init. NEW LEVER COMBO: D_800A36A8/A4/A0 must ALL be `volatile int`. Volatile on A36A8 alone
-      - [0x70194, c, func_8007F994]
+      - [0x70194, asm]  # func_8007F994: source not published (Psy-Q SDK or retail table); split from your disc
       # func_8007FA2C — pad state reset (D_8009B554/560/56C records). era cc1 2.8.1 -mno-split-addresses.
-      - [0x7022C, c, func_8007FA2C]
+      - [0x7022C, asm]  # func_8007FA2C: source not published (Psy-Q SDK or retail table); split from your disc
       # Store D_8009B554=0, call func_8007B9EC, zero two globals, func_80073D58(0,0). Patch 8 alone, fir
-      - [0x70304, c, func_8007FB04]
+      - [0x70304, asm]  # func_8007FB04: source not published (Psy-Q SDK or retail table); split from your disc
       # two pinned pointer bases ($6=&D_8009B598, $7=base-0x44), each with its own asm barrier
-      - [0x70344, c, func_8007FB44]
+      - [0x70344, asm]  # func_8007FB44: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5EF-pilot: C leaf func_8007FBC0 — VRAM 0x8007FBC0, size 0xC.
       # Delay-slot $at sw setter: D_800A36A0 = cb (void (*)(void), jalr proof
       # in 704BC.s). ROM: lui/jr/sw — sw in the return delay slot.
       # Era -O2 -G0 + MASPSX_FILL_STORE_DELAY_SLOT=1 (maspsx LOCAL PATCH).
       # Mid-6FFC8 carve: prefix 0x3F8, three C leaves, resume 703F0.s.
-      - [0x703C0, c, func_8007FBC0]
+      - [0x703C0, asm]  # func_8007FBC0: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5EF: two-argument callbacks proven by jalr reader sites.
-      - [0x703CC, c, func_8007FBCC]
-      - [0x703D8, c, func_8007FBD8]
-      - [0x703E4, c, func_8007FBE4]
+      - [0x703CC, asm]  # func_8007FBCC: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x703D8, asm]  # func_8007FBD8: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x703E4, asm]  # func_8007FBE4: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5BE: C leaf func_8007FC08 — VRAM 0x8007FC08, size 0x10.
       # File span 0x70408–0x70418 exclusive. Unsigned-byte global getter:
       # lui/lbu/jr/nop on D_8009B580. Plain -O1 matches.
       # func_8007FBF0 — int getter: D_8009B574[a0] (sll/addu of the %lo
       # displacement on the shared base). era -O2 -G0; object +8-byte gas pad,
       # LINK_EXACT.
-      - [0x703F0, c, func_8007FBF0]
-      - [0x70408, c, func_8007FC08]
+      - [0x703F0, asm]  # func_8007FBF0: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x70408, asm]  # func_8007FC08: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5BF: C leaf func_8007FC18 — VRAM 0x8007FC18, size 0x10.
       # File span 0x70418–0x70428 exclusive. Unsigned-byte global getter:
       # lui/lbu/jr/nop on D_8009B581. Plain -O1 matches.
       # Mid-70418 carve: prefix 0x0, C 0x10, resume 70428.s 0x84.
-      - [0x70418, c, func_8007FC18]
+      - [0x70418, asm]  # func_8007FC18: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5BJ: C leaf func_8007FC28 — VRAM 0x8007FC28, size 0xC.
       # Address-of D_8009B582 (lui/jr/addiu in delay slot); plain -O1 matches.
-      - [0x70428, c, func_8007FC28]
+      - [0x70428, asm]  # func_8007FC28: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5BG: C leaf func_8007FC34 — VRAM 0x8007FC34, size 0x10.
       # Unsigned-byte global getter on D_8009B586; plain -O1 matches.
       # Mid-70428 carve: prefix 0xC (func_8007FC28), C 0x10.
-      - [0x70434, c, func_8007FC34]
+      - [0x70434, asm]  # func_8007FC34: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5BH: C leaf func_8007FC44 — VRAM 0x8007FC44, size 0x10.
       # Unsigned-byte global getter on D_8009B587; plain -O1 matches.
-      - [0x70444, c, func_8007FC44]
+      - [0x70444, asm]  # func_8007FC44: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5BI: C leaf func_8007FC54 — VRAM 0x8007FC54, size 0x10.
       # Unsigned-byte global getter on D_8009B56C; plain -O1 matches.
       # The next asm span was formerly 70464.s 0x48 before this carve.
-      - [0x70454, c, func_8007FC54]
+      - [0x70454, asm]  # func_8007FC54: source not published (Psy-Q SDK or retail table); split from your disc
       # Tier-2 W wrapper: func_8007FC64 forwards result to SDK CD_sync with
       # mode 1. Era -O2 -G0, first phrasing. Carve: C 0x24, resume 0x70488.
-      - [0x70464, c, func_8007FC64]
+      - [0x70464, asm]  # func_8007FC64: source not published (Psy-Q SDK or retail table); split from your disc
       # Adjacent W twin: func_8007FC88 forwards result to SDK CD_ready with
       # mode 1. Era -O2 -G0, first phrasing; consumes the final 0x24 span.
-      - [0x70488, c, func_8007FC88]
+      - [0x70488, asm]  # func_8007FC88: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5BA: C leaf func_8007FCAC — VRAM 0x8007FCAC, size 0x10.
       # File span 0x704AC–0x704BC exclusive. 32-bit global getter:
       # lui/lw/jr/nop on D_8009B590. Plain -O1 matches.
       # Mid-6FF88 carve: prefix 0x524, C 0x10, resume 704BC.s 0xCDC0.
-      - [0x704AC, c, func_8007FCAC]
+      - [0x704AC, asm]  # func_8007FCAC: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5BB: C leaf func_80080940 — VRAM 0x80080940, size 0x10.
       # File span 0x71140–0x71150 exclusive. 32-bit global getter:
       # lui/lw/jr/nop on D_8009B554. Plain -O1 matches.
       # Mid-704BC carve: prefix 0xC84, C 0x10, resume 71150.s 0xC12C.
       # guarded D_8009B570=0x20 then tail call; pointer local &D_8009B598 + asm barrier keeps the shared
-      - [0x704BC, c, func_8007FCBC]
+      - [0x704BC, asm]  # func_8007FCBC: source not published (Psy-Q SDK or retail table); split from your disc
       # func_8007FCFC — pad request setup (id byte, payload copy, timeout from D_8009B5A4, then func_8007B558 issue). era cc1 2.8.1 -mno-split-addresses.
-      - [0x704FC, c, func_8007FCFC]
+      - [0x704FC, asm]  # func_8007FCFC: source not published (Psy-Q SDK or retail table); split from your disc
       # func_8007FE24 — libds vsync state machine; 2.8.1 -mno-split-addresses
       # + maspsx patches 8/14. LINK_EXACT.
-      - [0x70624, c, func_8007FE24]
+      - [0x70624, asm]  # func_8007FE24: source not published (Psy-Q SDK or retail table); split from your disc
       # indexed D_8009B5A4[k] load uses the dest-register address temp (patch 4); '!=0 first' branch pol
-      - [0x708F4, c, func_800800F4]
+      - [0x708F4, asm]  # func_800800F4: source not published (Psy-Q SDK or retail table); split from your disc
       # switch(m){0x1F,0x20,default} beats the if/else chain; 'int b = a1; int c = a0;' in THAT order re
-      - [0x70964, c, func_80080164]
+      - [0x70964, asm]  # func_80080164: source not published (Psy-Q SDK or retail table); split from your disc
       # libds sync/notify dispatcher, 121w. Jump-table switch over D_8009B558[0] plus an if/else-if ladd
-      - [0x70A20, c, func_80080220]
-      - [0x70C04, c, func_80080404]
+      - [0x70A20, asm]  # func_80080220: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x70C04, asm]  # func_80080404: source not published (Psy-Q SDK or retail table); split from your disc
       # pins c=$7,p=$6,q=$4,f=$3; 'extern void (*volatile D_800A36A4)(int)' gives retail's two loads; ho
-      - [0x70E8C, c, func_8008068C]
+      - [0x70E8C, asm]  # func_8008068C: source not published (Psy-Q SDK or retail table); split from your disc
       # pointer local created AFTER the call; 'void (*volatile)' callback global gives retail's two inde
-      - [0x70F78, c, func_80080778]
+      - [0x70F78, asm]  # func_80080778: source not published (Psy-Q SDK or retail table); split from your disc
       # bit-splat of a status byte; pins q=$6/b=$5, asm barriers on p, on b (keeps the last sb late) and
-      - [0x7100C, c, func_8008080C]
+      - [0x7100C, asm]  # func_8008080C: source not published (Psy-Q SDK or retail table); split from your disc
       # pinned $16 base &D_8009B554 + barrier; a separate barriered q=&D_8009B574 for the two stores; if
-      - [0x710BC, c, func_800808BC]
+      - [0x710BC, asm]  # func_800808BC: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5EF: set D_8009B554 int state to one.
-      - [0x71130, c, func_80080930]
-      - [0x71140, c, func_80080940]
+      - [0x71130, asm]  # func_80080930: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x71140, asm]  # func_80080940: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5BC: C leaf func_800822AC — VRAM 0x800822AC, size 0x10.
       # File span 0x72AAC–0x72ABC exclusive. 32-bit global getter:
       # lui/lw/jr/nop on D_8009B70C. Plain -O1 matches.
@@ -3359,227 +3359,227 @@ segments:
       # retail's `lbu`/`addiu a1`/`addiu i`/`sb`/`slti` order and the
       # `a1`-then-`a0` null-test order. The empty-source arm stores a NUL.
       # era -O2 -G0, LINK_EXACT.
-      - [0x71150, c, func_80080950]
-      - [0x71198, c, func_80080998]
+      - [0x71150, asm]  # func_80080950: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x71198, asm]  # func_80080998: source not published (Psy-Q SDK or retail table); split from your disc
       # func_800809E0 — era cc1 2.8.1 -mno-split-addresses + maspsx call/branch macro-split fills.
-      - [0x711E0, c, func_800809E0]
+      - [0x711E0, asm]  # func_800809E0: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x712BC, asm]
-      - [0x712C4, c, func_80080AC4]
-      - [0x712E4, c, func_80080AE4]
-      - [0x71304, c, func_80080B04]
+      - [0x712C4, asm]  # func_80080AC4: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x712E4, asm]  # func_80080AE4: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x71304, asm]  # func_80080B04: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5EF: direct func_8007BDDC forwarding wrapper.
-      - [0x71324, c, func_80080B24]
-      - [0x71344, c, func_80080B44]
+      - [0x71324, asm]  # func_80080B24: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x71344, asm]  # func_80080B44: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5EF: signed state/count exchange; same D_8009AFC0 evidence.
       # byte-identical twin of func_8007AA34
-      - [0x71448, c, func_80080C48]
-      - [0x714C8, c, func_80080CC8]
+      - [0x71448, asm]  # func_80080C48: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x714C8, asm]  # func_80080CC8: source not published (Psy-Q SDK or retail table); split from your disc
       # null-guard then a 4-byte unaligned struct copy (lwl/lwr+swl/swr, 4x unsigned char struct); if/el
-      - [0x714DC, c, func_80080CDC]
+      - [0x714DC, asm]  # func_80080CDC: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x71530, asm]
       # Phase 5EM: byte-typed forwarding wrapper with two zero tail fields.
-      - [0x71534, c, func_80080D34]
+      - [0x71534, asm]  # func_80080D34: source not published (Psy-Q SDK or retail table); split from your disc
       # open a handle via func_8007EE84 then poll func_8007F418 until nonzero; returns r==2 (xori/sltiu)
-      - [0x7155C, c, func_80080D5C]
+      - [0x7155C, asm]  # func_80080D5C: source not published (Psy-Q SDK or retail table); split from your disc
       # exact twin of func_80080D5C (same source, different address)
-      - [0x715C4, c, func_80080DC4]
+      - [0x715C4, asm]  # func_80080DC4: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x7162C, asm]
       # 2.8.1 unaligned copy temp rename
-      - [0x71634, c, func_80080E34]
+      - [0x71634, asm]  # func_80080E34: source not published (Psy-Q SDK or retail table); split from your disc
       # func_80080F64 — if ((a0 & 0xFF) == 2) func_80081D74(func_80080F98, -1).
       # era -O2 -G0, LINK_EXACT.
-      - [0x71764, c, func_80080F64]
+      - [0x71764, asm]  # func_80080F64: source not published (Psy-Q SDK or retail table); split from your disc
       # s2/s1 prologue swap and nop before label
-      - [0x71798, c, func_80080F98]
+      - [0x71798, asm]  # func_80080F98: source not published (Psy-Q SDK or retail table); split from your disc
       # 'register int m1 asm("$4") = -1;' RE-ASSIGNED before the second call reproduces retail's two sep
-      - [0x71910, c, func_80081110]
+      - [0x71910, asm]  # func_80081110: source not published (Psy-Q SDK or retail table); split from your disc
       # CD read poll (28 words). era -O2 -G0 + MASPSX_FILL_EPILOGUE_DELAY_SLOT:
       # one retained base register ($a0) for the adjacent pending/issue words,
       # frame teardown in the jr $31 delay slot (ASPSX reorder fill).
-      - [0x719E4, c, func_800811E4]
+      - [0x719E4, asm]  # func_800811E4: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5EF: callback exchange proven by jalr reader sites.
-      - [0x71A54, c, func_80081254]
+      - [0x71A54, asm]  # func_80081254: source not published (Psy-Q SDK or retail table); split from your disc
       # Tier-2 probe: range-guarded state setter func_800812F4.
       # Former 0x71A68 asm span: prefix 0x8C, C 0x1C, resume 0xF9C.
       # D_8009B6B8[6] flag block: guard + 4 calls; asm barrier on &D_8009B6B8[5] forces retail's shared 
-      - [0x71A68, c, func_80081268]
-      - [0x71AF4, c, func_800812F4]
+      - [0x71A68, asm]  # func_80081268: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x71AF4, asm]  # func_800812F4: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x71B10, asm]
       # First-try match. Patch 8 splits `lui $a0,%hi(func_8007C214) / jal / addiu $a0,%lo`; patch 3 puts
-      - [0x71B14, c, func_80081314]
-      - [0x71BE8, c, func_800813E8]
+      - [0x71B14, asm]  # func_80081314: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x71BE8, asm]  # func_800813E8: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x71C08, asm]
       # 184w DsSearchFile. SIZE CORRECTION: 0x2E0, not the 0x2C4 I used in the earlier park (184 words; 
-      - [0x71C14, c, func_80081414]
-      - [0x71EF4, c, func_800816F4]
-      - [0x71F14, c, func_80081714]
+      - [0x71C14, asm]  # func_80081414: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x71EF4, asm]  # func_800816F4: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x71F14, asm]  # func_80081714: source not published (Psy-Q SDK or retail table); split from your disc
       # 0x2C-stride keyed table search with a strcmp-style callback. Writing the loop with explicit `got
-      - [0x721D8, c, func_800819D8]
-      - [0x7227C, c, func_80081A7C]
+      - [0x721D8, asm]  # func_800819D8: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x7227C, asm]  # func_80081A7C: source not published (Psy-Q SDK or retail table); split from your disc
       # two setup calls with an 8-byte stack buffer then a do/while poll; returns r==0
-      - [0x72518, c, func_80081D18]
-      - [0x72574, c, func_80081D74]
+      - [0x72518, asm]  # func_80081D18: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x72574, asm]  # func_80081D74: source not published (Psy-Q SDK or retail table); split from your disc
       # D_8009B700[4] guard + 3 calls; same asm-barrier pointer-base lever
-      - [0x725F8, c, func_80081DF8]
+      - [0x725F8, asm]  # func_80081DF8: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5EF: D_8009B708 integer exchange.
-      - [0x7265C, c, func_80081E5C]
-      - [0x72670, c, func_80081E70]
+      - [0x7265C, asm]  # func_80081E5C: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x72670, asm]  # func_80081E70: source not published (Psy-Q SDK or retail table); split from your disc
       # D_8009B6EC[9] double guard, command==2 branch, else two teardown calls + a nulled handler dispat
-      - [0x7294C, c, func_8008214C]
+      - [0x7294C, asm]  # func_8008214C: source not published (Psy-Q SDK or retail table); split from your disc
       # jal/j/jalr slot macro split (maspsx patch 8, MASPSX_FILL_CALL_DELAY_SLOT)
-      - [0x72A04, c, func_80082204]
+      - [0x72A04, asm]  # func_80082204: source not published (Psy-Q SDK or retail table); split from your disc
       # jal/j/jalr slot macro split (maspsx patch 8, MASPSX_FILL_CALL_DELAY_SLOT)
-      - [0x72A7C, c, func_8008227C]
-      - [0x72AAC, c, func_800822AC]
+      - [0x72A7C, asm]  # func_8008227C: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x72AAC, asm]  # func_800822AC: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5BD: C leaf func_800870E0 — VRAM 0x800870E0, size 0x10.
       # File span 0x778E0–0x778F0 exclusive. 32-bit global getter:
       # lui/lw/jr/nop on D_8009D24C. Plain -O1 matches.
       # Mid-72ABC carve: prefix 0x4E24, C 0x10, resume 778F0.s 0x598C.
       # D_8009B700[4] guard + 2 calls (asm-barrier base)
-      - [0x72ABC, c, func_800822BC]
+      - [0x72ABC, asm]  # func_800822BC: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x72B0C, asm]
       # func_80082314 — link/probe handshake: status poll loop, buffer send via func_8007F0C8, spin on volatile D_800B28F8. era -O2 -G0 + patch 3.
-      - [0x72B14, c, func_80082314]
+      - [0x72B14, asm]  # func_80082314: source not published (Psy-Q SDK or retail table); split from your disc
       # unsigned char==2 -> register callback else store 2; if/else reuses the compare constant
-      - [0x72C00, c, func_80082400]
+      - [0x72C00, asm]  # func_80082400: source not published (Psy-Q SDK or retail table); split from your disc
       # Patch 8 closes the `lui $at / jal / sw %lo($at)` split (9 -> 4 with the knob). Two C levers: the
-      - [0x72C44, c, func_80082444]
+      - [0x72C44, asm]  # func_80082444: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x72CA8, asm]
       # Phase 5EF: adjacent integer exchanges D_800B8AB0/+4/+8.
-      - [0x72CB4, c, func_800824B4]
-      - [0x72CC8, c, func_800824C8]
-      - [0x72CDC, c, func_800824DC]
-      - [0x72CF0, c, func_800824F0]
+      - [0x72CB4, asm]  # func_800824B4: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x72CC8, asm]  # func_800824C8: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x72CDC, asm]  # func_800824DC: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x72CF0, asm]  # func_800824F0: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5EF: direct func_80082CDC forwarding wrapper.
-      - [0x72D14, c, func_80082514]
-      - [0x72D34, c, func_80082534]
+      - [0x72D14, asm]  # func_80082514: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x72D34, asm]  # func_80082534: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5EF: direct func_80082DBC forwarding wrapper.
-      - [0x72D54, c, func_80082554]
+      - [0x72D54, asm]  # func_80082554: source not published (Psy-Q SDK or retail table); split from your disc
       # guard + stride-240 byte-table lookup ==8; early-return polarity (nonzero case first)
-      - [0x72D74, c, func_80082574]
+      - [0x72D74, asm]  # func_80082574: source not published (Psy-Q SDK or retail table); split from your disc
       # func_800828F4 — indirect call through D_8009B738, then
       # func_80083BB8(result, a1). Epilogue addiu fills the jr delay slot
       # (maspsx patch 3). era -O2 -G0.
-      - [0x72DC0, c, func_800825C0]
+      - [0x72DC0, asm]  # func_800825C0: source not published (Psy-Q SDK or retail table); split from your disc
       # switch(a1) field getter over the D_8009B738 record, incl. a bound-checked halfword table in case
-      - [0x72E80, c, func_80082680]
+      - [0x72E80, asm]  # func_80082680: source not published (Psy-Q SDK or retail table); split from your disc
       # func_80082778 — 5-byte row byte getter via switch (jtbl_8001206C folded); era cc1 2.8.1 + three-word store + dispatch fold.
-      - [0x72F78, c, func_80082778]
+      - [0x72F78, asm]  # func_80082778: source not published (Psy-Q SDK or retail table); split from your disc
       # two-level bound-checked byte-table lookup through the D_8009B738 handler's record; signed <0 sho
-      - [0x7304C, c, func_8008284C]
-      - [0x730F4, c, func_800828F4]
+      - [0x7304C, asm]  # func_8008284C: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x730F4, asm]  # func_800828F4: source not published (Psy-Q SDK or retail table); split from your disc
       # func_80083D04(D_8009B738(a0), (u8)a1, (u8)a2)
-      - [0x7312C, c, func_8008292C]
+      - [0x7312C, asm]  # func_8008292C: source not published (Psy-Q SDK or retail table); split from your disc
       # func_800835A4(D_8009B738(a0), a1, a2)
-      - [0x73174, c, func_80082974]
+      - [0x73174, asm]  # func_80082974: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x731BC, asm]
       # func_800829C4 — pad port enable mask set (bit0 port A, bit1 port B, timeout callbacks); era -O2 -G0 + patch 3.
-      - [0x731C4, c, func_800829C4]
+      - [0x731C4, asm]  # func_800829C4: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5EF: return-and-clear int state flag.
-      - [0x732DC, c, func_80082ADC]
+      - [0x732DC, asm]  # func_80082ADC: source not published (Psy-Q SDK or retail table); split from your disc
       # two bit-0 guards through pointer global D_8009B784, optional D_8009B74C() call, return 1
-      - [0x73308, c, func_80082B08]
+      - [0x73308, asm]  # func_80082B08: source not published (Psy-Q SDK or retail table); split from your disc
       # func_80082B70 — pad VSync tick: timeout counters, port rescan via func_80082E00/func_80083014. era -O2 -G0 + patch 10.
-      - [0x73370, c, func_80082B70]
-      - [0x734DC, c, func_80082CDC]
+      - [0x73370, asm]  # func_80082B70: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x734DC, asm]  # func_80082CDC: source not published (Psy-Q SDK or retail table); split from your disc
       # 14 -> 0 with three levers, one of them NEW. (a) `register int *p asm("$3")` for the D_8009B784 r
-      - [0x734F0, c, func_80082CF0]
+      - [0x734F0, asm]  # func_80082CF0: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5CK: C leaf func_800835A4 — file 0x73DA4, size 0xC.
-      - [0x735BC, c, func_80082DBC]
+      - [0x735BC, asm]  # func_80082DBC: source not published (Psy-Q SDK or retail table); split from your disc
       # func_80082E00 — SIO port select + pending-slot drain; era -O2 -G0 + maspsx patches 10 and 3.
-      - [0x73600, c, func_80082E00]
+      - [0x73600, asm]  # func_80082E00: source not published (Psy-Q SDK or retail table); split from your disc
       # jal/j/jalr slot macro split (maspsx patch 8, MASPSX_FILL_CALL_DELAY_SLOT)
-      - [0x73814, c, func_80083014]
-      - [0x738DC, c, func_800830DC]
-      - [0x73AB4, c, func_800832B4]
+      - [0x73814, asm]  # func_80083014: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x738DC, asm]  # func_800830DC: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x73AB4, asm]  # func_800832B4: source not published (Psy-Q SDK or retail table); split from your disc
       # clear D_8009B784, spin on D_8009B788[2]&0x80 calling func_80084FE4; an entry-test through a pre-
-      - [0x73CE8, c, func_800834E8]
+      - [0x73CE8, asm]  # func_800834E8: source not published (Psy-Q SDK or retail table); split from your disc
       # 2.8.1 + patch 14 (load-delay nop before the volatile poll-loop label).
-      - [0x73D78, c, func_80083578]
+      - [0x73D78, asm]  # func_80083578: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x73DA0, asm]
-      - [0x73DA4, c, func_800835A4]
+      - [0x73DA4, asm]  # func_800835A4: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5CL: C leaf func_800835B0 — file 0x73DB0, size 0x10.
-      - [0x73DB0, c, func_800835B0]
+      - [0x73DB0, asm]  # func_800835B0: source not published (Psy-Q SDK or retail table); split from your disc
       # switch(a0[0x46]) 2/3/4 dispatch to three handlers
-      - [0x73DC0, c, func_800835C0]
+      - [0x73DC0, asm]  # func_800835C0: source not published (Psy-Q SDK or retail table); split from your disc
       # epilogue fill; case-4 pins
-      - [0x73E44, c, func_80083644]
+      - [0x73E44, asm]  # func_80083644: source not published (Psy-Q SDK or retail table); split from your disc
       # func_80083790 — record offset = ((hE3+1)>>1)<<2 plus 0x11C-stride
       # (5*hE9+3 & 0xFFC)+4, added to *(u32*)(a0+0xEC). era -O2 -G0.
-      - [0x73F90, c, func_80083790]
+      - [0x73F90, asm]  # func_80083790: source not published (Psy-Q SDK or retail table); split from your disc
       # three-guard allocator sizer; needs `goto zero`/`goto body` for the shared return-0 block, `regis
-      - [0x73FC8, c, func_800837C8]
+      - [0x73FC8, asm]  # func_800837C8: source not published (Psy-Q SDK or retail table); split from your disc
       # switch(a0[0x46]) 2/3/4 with a nested a0[0x48] gate in case 4
-      - [0x7409C, c, func_8008389C]
-      - [0x74144, c, func_80083944]
+      - [0x7409C, asm]  # func_8008389C: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x74144, asm]  # func_80083944: source not published (Psy-Q SDK or retail table); split from your disc
       # D_8009B740(a0) guard then handler/arg install; function symbols taken as data addresses
-      - [0x743B8, c, func_80083BB8]
+      - [0x743B8, asm]  # func_80083BB8: source not published (Psy-Q SDK or retail table); split from your disc
       # Volume campaign: callback func_80083C20, exact-start address stored by
       # func_80083BB8; size 0x1C, era -O2 -G0.
-      - [0x74420, c, func_80083C20]
+      - [0x74420, asm]  # func_80083C20: source not published (Psy-Q SDK or retail table); split from your disc
       # func_80083C3C — slot remap counter (guarded do/while outer loop). era -O2 -G0.
-      - [0x7443C, c, func_80083C3C]
+      - [0x7443C, asm]  # func_80083C3C: source not published (Psy-Q SDK or retail table); split from your disc
       # spill $s3 before the D_8009B740 load; epilogue fill
-      - [0x74504, c, func_80083D04]
+      - [0x74504, asm]  # func_80083D04: source not published (Psy-Q SDK or retail table); split from your disc
       # switch on a0[0x46]; case 2 stores the switch VALUE (int t) which defeats cc1's tail-merge of the
-      - [0x7459C, c, func_80083D9C]
+      - [0x7459C, asm]  # func_80083D9C: source not published (Psy-Q SDK or retail table); split from your disc
       # nested gate; the compare constants land in the branch delay slots
-      - [0x745F0, c, func_80083DF0]
+      - [0x745F0, asm]  # func_80083DF0: source not published (Psy-Q SDK or retail table); split from your disc
       # Volume campaign: callback/object initializer; size 0x20, era -O2 -G0.
-      - [0x74650, c, func_80083E50]
+      - [0x74650, asm]  # func_80083E50: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5CM: C leaf func_80083E70 — file 0x74670, size 0x14.
-      - [0x74670, c, func_80083E70]
+      - [0x74670, asm]  # func_80083E70: source not published (Psy-Q SDK or retail table); split from your disc
       # Volume campaign: initializer twin with tag 0x4C; size 0x20,
       # era -O2 -G0.
-      - [0x74684, c, func_80083E84]
+      - [0x74684, asm]  # func_80083E84: source not published (Psy-Q SDK or retail table); split from your disc
       # Volume campaign: initializer twin with tag 0x46; size 0x20,
       # era -O2 -G0.
-      - [0x746A4, c, func_80083EA4]
+      - [0x746A4, asm]  # func_80083EA4: source not published (Psy-Q SDK or retail table); split from your disc
       # Volume campaign: initializer twin with tag 0x47; size 0x20,
       # era -O2 -G0.
-      - [0x746C4, c, func_80083EC4]
+      - [0x746C4, asm]  # func_80083EC4: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5CN: C leaf func_80083EE4 — file 0x746E4, size 0x14.
-      - [0x746E4, c, func_80083EE4]
+      - [0x746E4, asm]  # func_80083EE4: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x746F8, asm]
       # D_8009B7A4 = D_8009B73C(a0); func_800830DC(a0,-2)
-      - [0x74704, c, func_80083F04]
-      - [0x74744, c, func_80083F44]
+      - [0x74704, asm]  # func_80083F04: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x74744, asm]  # func_80083F44: source not published (Psy-Q SDK or retail table); split from your disc
       # optional double D_8009B73C dispatch, then func_800832B4 with a 4-way result classifier writing D
-      - [0x7481C, c, func_8008401C]
+      - [0x7481C, asm]  # func_8008401C: source not published (Psy-Q SDK or retail table); split from your disc
       # func_800840DC — padseqd status probe; era cc1 2.8.1 -mno-split-addresses.
-      - [0x748DC, c, func_800840DC]
+      - [0x748DC, asm]  # func_800840DC: source not published (Psy-Q SDK or retail table); split from your disc
       # func_80084168 — libpad padseqd driver loop; era cc1 2.8.1 -mno-split-addresses + maspsx patch 10.
-      - [0x74968, c, func_80084168]
+      - [0x74968, asm]  # func_80084168: source not published (Psy-Q SDK or retail table); split from your disc
       # cc1 2.8.1 no-split
-      - [0x74CE4, c, func_800844E4]
+      - [0x74CE4, asm]  # func_800844E4: source not published (Psy-Q SDK or retail table); split from your disc
       # bulk field clear + 6-byte 0xFF fill; the duplicate sh at +0xE6 needs a volatile cast; a named fi
-      - [0x74E44, c, func_80084644]
+      - [0x74E44, asm]  # func_80084644: source not published (Psy-Q SDK or retail table); split from your disc
       # epilogue fill
-      - [0x74EAC, c, func_800846AC]
+      - [0x74EAC, asm]  # func_800846AC: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5CO: C leaf func_800847A0 — file 0x74FA0, size 0x10.
-      - [0x74FA0, c, func_800847A0]
+      - [0x74FA0, asm]  # func_800847A0: source not published (Psy-Q SDK or retail table); split from your disc
       # Tier-2 probe: root-counter checkpoint func_80084FC4.
       # Former 74FB0 asm prefix: 0x814, C 0x20, resume 0xA0.
       # default O2
-      - [0x74FB0, c, func_800847B0]
-      - [0x7506C, c, func_8008486C]
+      - [0x74FB0, asm]  # func_800847B0: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x7506C, asm]  # func_8008486C: source not published (Psy-Q SDK or retail table); split from your disc
       # Probe: two-entry D_800A5B70 address-to-slot mapper.
-      - [0x752E8, c, func_80084AE8]
+      - [0x752E8, asm]  # func_80084AE8: source not published (Psy-Q SDK or retail table); split from your disc
       # Probe: conditional D_800A5B70 address selector.
-      - [0x75320, c, func_80084B20]
+      - [0x75320, asm]  # func_80084B20: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x75340, asm]
       # Probe: three-entry callback table initializer.
-      - [0x75344, c, func_80084B44]
+      - [0x75344, asm]  # func_80084B44: source not published (Psy-Q SDK or retail table); split from your disc
       # restored after lane merge (row belongs to another agent)
-      - [0x75378, c, func_80084B78]
-      - [0x7544C, c, func_80084C4C]
+      - [0x75378, asm]  # func_80084B78: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x7544C, asm]  # func_80084C4C: source not published (Psy-Q SDK or retail table); split from your disc
       # per-frame state machine over a0[0x46]/[0x4A]; `goto bump` shares the a0[0x4A] increment between 
-      - [0x756B0, c, func_80084EB0]
-      - [0x7578C, c, func_80084F8C]
+      - [0x756B0, asm]  # func_80084EB0: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x7578C, asm]  # func_80084F8C: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x757B8, asm]
-      - [0x757C4, c, func_80084FC4]
+      - [0x757C4, asm]  # func_80084FC4: source not published (Psy-Q SDK or retail table); split from your disc
       # root-counter/DMA timing predicate over 0x1F801120/24/28. Levers: asm barrier on the `unsigned sh
-      - [0x757E4, c, func_80084FE4]
+      - [0x757E4, asm]  # func_80084FE4: source not published (Psy-Q SDK or retail table); split from your disc
       # Phase 5FX: constant-add getter func_80085084 — VRAM 0x80085084,
       # size 0x14, era -O2 -G0. Mid-74FB0 carve: prefix 0x8D4, C 0x14,
       # trailing asm resumes at 75898.
@@ -3606,59 +3606,59 @@ segments:
       - [0x75F44, c, func_80085744]
       - [0x75FE4, asm]
       # func_80085814 — SPU voice attribute setter over volatile *D_8009B7D0 records. era -O2 -G0.
-      - [0x76014, c, func_80085814]
+      - [0x76014, asm]  # func_80085814: source not published (Psy-Q SDK or retail table); split from your disc
       # func_800858B0 — bounded halfword getter through D_8009B7D0 with a
       # 16-byte stride; `a0 & 0xFFFF` in $v1 and the table base in $v0 are
       # pinned (retail's allocation, cc1 otherwise swaps them). era -O2 -G0,
       # LINK_EXACT (14 words). Prefix of the old 0x75F44 asm is 0x16C;
       # C 0x38, closes exactly at the next span 0x760E8.
-      - [0x760B0, c, func_800858B0]
+      - [0x760B0, asm]  # func_800858B0: source not published (Psy-Q SDK or retail table); split from your disc
       # func_800858E8 — D_8009B7CC[1] |= D_8009B7D4[a0 & 0xFFFF]; returns
       # (a0 & 0xFFFF) < 3. Signed `int i` keeps retail's `slti`; maspsx patch 5
       # (MASPSX_SYMBOL_AT_TEMP=1) gives the $at+%lo table read. era -O2 -G0.
-      - [0x760E8, c, func_800858E8]
+      - [0x760E8, asm]  # func_800858E8: source not published (Psy-Q SDK or retail table); split from your disc
       # func_80085918 — D_8009B7CC[1] &= ~D_8009B7D4[a0 & 0xFFFF]; returns 1.
       # era -O2 -G0 + maspsx patch 4 (MASPSX_SYMBOL_LOAD_DEST_TEMP=1).
-      - [0x76118, c, func_80085918]
-      - [0x7614C, c, func_8008594C]
+      - [0x76118, asm]  # func_80085918: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x7614C, asm]  # func_8008594C: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x76180, asm]
       # jal/j/jalr slot macro split (maspsx patch 8, MASPSX_FILL_CALL_DELAY_SLOT)
-      - [0x76184, c, func_80085984]
+      - [0x76184, asm]  # func_80085984: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x761F8, asm]
       # positive-gate DMA seed; register int r asm("$2") plus a named sh=D_8009B424 local fix the param 
-      - [0x76204, c, func_80085A04]
+      - [0x76204, asm]  # func_80085A04: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x76258, asm]
       # func_80085A64 — SPU flag mode set; returns D_8009B390. era cc1 2.8.1 -mno-split-addresses.
-      - [0x76264, c, func_80085A64]
+      - [0x76264, asm]  # func_80085A64: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x76330, asm]
       # walk of the 8-byte D_8009B464 block list. Three levers: `goto done` for the null guard (flips cc
-      - [0x76334, c, func_80085B34]
+      - [0x76334, asm]  # func_80085B34: source not published (Psy-Q SDK or retail table); split from your disc
       # twin of func_80085B34 with the query shifted by D_8009B424 first
-      - [0x763B4, c, func_80085BB4]
+      - [0x763B4, asm]  # func_80085BB4: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x76440, asm]
       # func_80085C44 — SPU ctrl bit-6 set/clear with 0xF00-poll timeout (error via func_80071A74). era -O2 -G0 + patch 8.
-      - [0x76444, c, func_80085C44]
+      - [0x76444, asm]  # func_80085C44: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x76580, asm]
       # jal/j/jalr slot macro split (maspsx patch 8, MASPSX_FILL_CALL_DELAY_SLOT)
-      - [0x76584, c, func_80085D84]
+      - [0x76584, asm]  # func_80085D84: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x765C0, asm]
       # Tier-2 B: direct-call-proven `func_80073CC4(9, value)` wrapper;
       # era -O2 -G0, exact first phrasing. The 0xC resume begins with
       # retail alignment nops before the next real function at 0x765F4.
-      - [0x765C4, c, func_80085DC4]
+      - [0x765C4, asm]  # func_80085DC4: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x765E8, asm]
       # clamp a1 to 0x7EFF0 (unsigned), call, conditional D_8009B430 clear, return the clamp
-      - [0x765F4, c, func_80085DF4]
+      - [0x765F4, asm]  # func_80085DF4: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x76650, asm]
       # twin of func_80085DF4 through func_8007D9F8
-      - [0x76654, c, func_80085E54]
+      - [0x76654, asm]  # func_80085E54: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x766B0, asm]
-      - [0x766B4, c, func_80085EB4]
+      - [0x766B4, asm]  # func_80085EB4: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x76710, asm]
       # func_80085F44 — guarded setter: if (a0 != D_8009B434) D_8009B434 = a0;
       # era -O2 -G0, +8-byte gas pad, LINK_EXACT.
-      - [0x76714, c, func_80085F14]
-      - [0x76744, c, func_80085F44]
+      - [0x76714, asm]  # func_80085F14: source not published (Psy-Q SDK or retail table); split from your disc
+      - [0x76744, asm]  # func_80085F44: source not published (Psy-Q SDK or retail table); split from your disc
       # func_800866A4 — write 0x21/a0&0xFFFF/a1&0xFFFFFF to
       # D_800BCD80/84/88 then tail-call func_8008CBA8(a0, a1). era -O2 -G0,
       # LINK_EXACT (3-reloc + 4-byte gas pad only).
@@ -3670,10 +3670,10 @@ segments:
       # 223w + 1 pad word SpuSetCommonAttr. Closes the MASPSX_DISPATCH_FOLD single-symbol hard block WIT
       # 223w + 1 pad SpuSetCommonAttr: two real switches, multi-table MASPSX_DISPATCH_FOLD
       # (jtbl_800120BC,jtbl_800120DC) under cc1 2.8.1. LEAF_STRONG=EXACT.
-      - [0x76774, c, func_80085F74]
+      - [0x76774, asm]  # func_80085F74: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x76AF0, asm]
       # libspu voice-volume setter: two switches + volatile x13 busy-wait; patch 11 fills j slot.
-      - [0x76AF4, c, func_800862F4]
+      - [0x76AF4, asm]  # func_800862F4: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x76C60, asm]
       - [0x76C64, c, func_80086464]
       - [0x76C98, c, func_80086498]
@@ -3802,16 +3802,16 @@ segments:
       - [0x7A4F0, c, func_80089CF0]
       - [0x7A510, c, func_80089D10]
       # clamp 0..0x3F then insert into the +0x1AA halfword; pins $2/$5 plus a `w |= t` compound assign f
-      - [0x7A6B8, c, func_80089EB8]
+      - [0x7A6B8, asm]  # func_80089EB8: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x7A700, asm]
       # func_80089F08 — VRAM 0x80089F08, size 0x1C: base D_8009B3FC + (a0<<4),
       # load u16 at +0xC into *a1; era -O2 -G0, LINK_EXACT.
-      - [0x7A708, c, func_80089F08]
+      - [0x7A708, asm]  # func_80089F08: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x7A724, asm]
       # func_8008A02C — 16-word-stride pair incrementer: `d = a1 - *a0` then
       # a do-while adding d to *a0 and *(a0+1), stepping 0x40. era -O2 -G0,
       # LINK_EXACT.
-      - [0x7A728, c, func_80089F28]
+      - [0x7A728, asm]  # func_80089F28: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x7A750, asm]
       # 24-field record reset then func_8008F178(a0,0)
       - [0x7A758, c, func_80089F58]
@@ -3938,13 +3938,13 @@ segments:
       - [0x7D354, c, func_8008CB54]
       # LINK_EXACT on swept stable source
       - [0x7D3A8, c, func_8008CBA8]
-      - [0x7D770, c, func_8008CF70]
+      - [0x7D770, asm]  # func_8008CF70: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x7D93C, asm]
       # Phase 5BV: C leaf func_8008D7C0 — VRAM 0x8008D7C0, size 0x10.
       # Store D_8009B3A0 into *a0 (lui/lw/jr/sw).
-      - [0x7D940, c, func_8008D140]
+      - [0x7D940, asm]  # func_8008D140: source not published (Psy-Q SDK or retail table); split from your disc
       # matching C leaf
-      - [0x7DE10, c, func_8008D610]
+      - [0x7DE10, asm]  # func_8008D610: source not published (Psy-Q SDK or retail table); split from your disc
       - [0x7DFA4, asm]
       - [0x7DFC0, c, func_8008D7C0]
       # explicit `unsigned int *p = &D_800C0D90;` makes the first store go through the call-argument bas
@@ -4750,15 +4750,15 @@ segments:
       - [0xC8678, c, func_800D7E78]
       - [0xC87BC, c, func_800D7FBC]
       - [0xC8B88, asm]
-      - [0xC8E8C, c, func_800D868C]
+      - [0xC8E8C, asm]  # func_800D868C: source not published (Psy-Q SDK or retail table); split from your disc
       - [0xC9178, c, func_800D8978]
       - [0xC936C, c, func_800D8B6C]
       # FieldEng effect dispatcher template: `switch (a0) { case 1: <field updates>; if (T < K) break; r
       - [0xC9514, c, func_800D8D14]
       - [0xC9674, c, func_800D8E74]
-      - [0xC9A7C, c, func_800D927C]
+      - [0xC9A7C, asm]  # func_800D927C: source not published (Psy-Q SDK or retail table); split from your disc
       - [0xC9D54, c, func_800D9554]
-      - [0xC9EF4, c, func_800D96F4]
+      - [0xC9EF4, asm]  # func_800D96F4: source not published (Psy-Q SDK or retail table); split from your disc
       - [0xCA28C, asm]
       # FieldEng effect dispatcher template: `switch (a0) { case 1: <field updates>; if (T < K) break; r
       - [0xCA65C, c, func_800D9E5C]

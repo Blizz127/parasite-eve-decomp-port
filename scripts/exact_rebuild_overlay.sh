@@ -66,7 +66,7 @@ if env | grep -qE '^(MASPSX_|ERA_)'; then
 fi
 
 # 1. Repo root + python.
-[[ -f "$ROOT/CLAUDE.md" && -f "$ROOT/configs/USA/overlays/manifest.yaml" ]] \
+[[ -f "$ROOT/configs/USA/disc1.yaml" && -f "$ROOT/configs/USA/overlays/manifest.yaml" ]] \
     || envfail "not a Parasite-Eve-Decompilation root: $ROOT"
 command -v python3 >/dev/null || envfail "python3 not found on PATH"
 

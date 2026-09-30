@@ -1,13 +1,4 @@
 {
   "schema_version": 1,
-  "sources": {
-    "src/func_800292EC.c": {
-      "disposition": "rejected-tail-draft",
-      "evidence": "docs/evidence/pe-btl139-func-800293F4/REPORT.md"
-    },
-    "src/func_800725DC.c": {
-      "disposition": "accepted-residual",
-      "evidence": "docs/acceptance/MATCHING_RESIDUAL_POLICY.md"
-    }
-  }
+  "sources": {}
 }

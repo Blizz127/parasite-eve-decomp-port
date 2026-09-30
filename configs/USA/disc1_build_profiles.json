@@ -2583,11 +2583,9 @@
     "era_o1_g0": [
       "func_8005DB44",
       "func_8008AB1C",
-      "func_80089F28",
       "func_80085174",
       "func_8008FC78",
       "func_80018E84",
-      "func_8007E4E0",
       "func_80070D6C"
     ],
     "era_o2_g0_expand_div": [
@@ -2644,104 +2642,6 @@
       "func_800D004C",
       "func_800D0728",
       "func_8006DFA8"
-    ],
-    "era_o2_g0_fill_store_delay_slot": [
-      "func_80074A14",
-      "func_8007A3EC",
-      "func_8007A4A8",
-      "func_8007A4BC",
-      "func_8007C130",
-      "func_8007C544",
-      "func_8007DEA4",
-      "func_8007FBC0",
-      "func_8007FBCC",
-      "func_8007FBD8",
-      "func_8007FBE4",
-      "func_80080930",
-      "func_80080CC8",
-      "func_80081254",
-      "func_80082CDC",
-      "func_80084B44",
-      "func_80084FC4",
-      "func_80085F14"
-    ],
-    "era_o2_g0_fill_epilogue_delay_slot": [
-      "func_80074D28",
-      "func_80074DC0",
-      "func_8007506C",
-      "func_800750CC",
-      "func_800751E4",
-      "func_800752AC",
-      "func_80075358",
-      "func_800753B4",
-      "func_80075424",
-      "func_800754E4",
-      "func_800755BC",
-      "func_80075AE8",
-      "func_80075B4C",
-      "func_80075B84",
-      "func_80075C04",
-      "func_80075C94",
-      "func_8007DD74",
-      "func_8007F72C",
-      "func_800811E4",
-      "func_800828F4",
-      "func_8007BAC0",
-      "func_8007DA7C",
-      "func_8007D9F8",
-      "func_8007DDD4",
-      "func_8007DEC0",
-      "func_8007DF50",
-      "func_8007C304",
-      "func_800808BC",
-      "func_80080778",
-      "func_80080164",
-      "func_8007F7E8",
-      "func_80080CDC",
-      "func_80080D5C",
-      "func_80080DC4",
-      "func_80081268",
-      "func_80081D18",
-      "func_80081DF8",
-      "func_800822BC",
-      "func_8008214C",
-      "func_80082974",
-      "func_8008292C",
-      "func_8008284C",
-      "func_80083BB8",
-      "func_80083F04",
-      "func_8008401C",
-      "func_80085DF4",
-      "func_80085E54",
-      "func_80074CC8",
-      "func_8007485C",
-      "func_800748C0",
-      "func_8007440C",
-      "func_80073554",
-      "func_80074218",
-      "func_8007F608",
-      "func_80072DF4",
-      "func_80074924",
-      "func_80081110",
-      "func_8007C044",
-      "func_80084EB0",
-      "func_80082680",
-      "func_80073E28",
-      "func_80074774",
-      "func_80074520",
-      "func_800723A4",
-      "func_800738D8",
-      "func_8007EB88",
-      "func_800762BC",
-      "func_80082314",
-      "func_800829C4",
-      "func_8007A4D0",
-      "func_800830DC",
-      "func_8007D074",
-      "func_80073454",
-      "func_8008D610",
-      "func_80073354",
-      "func_80083644"
     ],
     "era_o2_g8": [
       "func_800124F8",
@@ -3113,44 +3013,6 @@
       "func_800631AC",
       "func_80064C20",
       "func_8006EBD4",
-      "func_80073DE8",
-      "func_80073DF8",
-      "func_80074330",
-      "func_800744A4",
-      "func_8007474C",
-      "func_80074A28",
-      "func_80074CB8",
-      "func_8007633C",
-      "func_80077A28",
-      "func_80077B64",
-      "func_80077B84",
-      "func_80077BA4",
-      "func_80077BC4",
-      "func_80077BE4",
-      "func_80077C04",
-      "func_80077C24",
-      "func_80077C44",
-      "func_80077C64",
-      "func_8007A324",
-      "func_8007A334",
-      "func_8007A344",
-      "func_8007A354",
-      "func_8007DEB0",
-      "func_8007F778",
-      "func_8007FC08",
-      "func_8007FC18",
-      "func_8007FC28",
-      "func_8007FC34",
-      "func_8007FC44",
-      "func_8007FC54",
-      "func_8007FCAC",
-      "func_80080940",
-      "func_800822AC",
-      "func_800835A4",
-      "func_800835B0",
-      "func_80083E70",
-      "func_80083EE4",
-      "func_800847A0",
       "func_800870E0",
       "func_8008CA7C",
       "func_8008D7C0",
@@ -3261,19 +3123,6 @@
     "modern_o1_g8_no_tree_ter": [
       "func_80052F0C"
     ],
-    "era_o2_g0_symbol_load_dest_temp": [
-      "func_80076B20",
-      "func_80076B44",
-      "func_8007FBF0",
-      "func_80085918",
-      "func_800800F4",
-      "func_8007E5C4",
-      "func_800794C4",
-      "func_80079754",
-      "func_800799E4",
-      "func_80079C74",
-      "func_80079E14"
-    ],
     "era_o2_g8_force_descriptor_absolute": [
       "func_80052E30",
       "func_80052EC0",
@@ -3281,9 +3130,6 @@
       "func_8005C174",
       "func_8005409C",
       "func_80055760"
-    ],
-    "era_o1_g0_no_delayed_branch": [
-      "func_80078C94"
     ],
     "era_o2_g8_force_d800bd024_absolute": [
       "func_80042EDC"
@@ -3350,11 +3196,6 @@
     "era_o2_g8_force_d8009d2e8_d8009d254_d8009d278_absolute": [
       "func_80020C74"
     ],
-    "era_o2_g0_fill_epilogue_delay_slot_symbol_load_dest_temp": [
-      "func_800819D8",
-      "func_8007F418",
-      "func_8007E704"
-    ],
     "era_o2_g0_fill_branch_delay_slot": [
       "func_80043474"
     ],
@@ -3380,10 +3221,6 @@
     "era_o2_g8_force_d8009d278_plus25_absolute": [
       "func_80020DD0"
     ],
-    "era_o2_g0_no_schedule_insns_fill_epilogue_delay_slot": [
-      "func_800837C8",
-      "func_800846AC"
-    ],
     "era_o2_g8_force_d8009d20c_absolute": [
       "func_80065400"
     ],
@@ -3406,9 +3243,6 @@
       "func_800430A0",
       "func_80048254",
       "func_800494AC"
-    ],
-    "era_o2_g0_no_schedule_insns_dispatch_80011d0c": [
-      "func_80080220"
     ],
     "era_o2_g8_force_d800a1f84_plus10_absolute": [
       "func_80056C40"
@@ -3459,91 +3293,17 @@
     "era_o1_g0_sched2": [
       "func_8006A674"
     ],
-    "era_o2_g0_fill_call_delay_slot": [
-      "func_8007BBB0",
-      "func_8007FB04",
-      "func_8007D15C",
-      "func_8008227C",
-      "func_80085984",
-      "func_80073BBC",
-      "func_80082444",
-      "func_8007F994",
-      "func_80085C44",
-      "func_8007A214"
-    ],
-    "era_o2_g0_fill_call_delay_slot_fill_epilogue_delay_slot": [
-      "func_8007C2A0",
-      "func_80074BB8",
-      "func_80085D84",
-      "func_80082204",
-      "func_80072950",
-      "func_80082CF0",
-      "func_80081314",
-      "func_8007C13C",
-      "func_8007ED58",
-      "func_8007EC14",
-      "func_800727B4",
-      "func_8007D454"
-    ],
     "era_o2_g0_dispatch_8001086c": [
       "func_800255E4"
     ],
     "era_o2_g0_dispatch_80010f34": [
       "func_800405A4"
     ],
-    "era_o2_g0_fill_call_delay_slot_symbol_at_temp": [
-      "func_80083014"
-    ],
-    "era_o2_g0_cc1_281": [
-      "func_80074C14",
-      "func_80076170",
-      "func_80076208",
-      "func_80074FD4",
-      "func_80074F44",
-      "func_8007512C",
-      "func_800840DC",
-      "func_8007D6D0",
-      "func_80085A64",
-      "func_8007F88C",
-      "func_8007FA2C",
-      "func_8007FCFC",
-      "func_80077144",
-      "func_80075CE8",
-      "func_80075EE0",
-      "func_8008CF70",
-      "func_8007A360",
-      "func_80081D74",
-      "func_80083F44",
-      "func_800775E8",
-      "func_800776D4",
-      "func_80077904",
-      "func_80077294",
-      "func_800777C0",
-      "func_800844E4",
-      "func_80081E70",
-      "func_8007D778"
-    ],
-    "era_o2_g0_cc1_281_fill_call_delay_slot_symbol_at_temp_symbol_load_dest_temp": [
-      "func_80074A44"
-    ],
     "era_o2_g0_dispatch_80010c90": [
       "func_80030220"
     ],
     "era_o2_g0_dispatch_800113d0_aspsx_230": [
       "func_8006C1CC"
-    ],
-    "era_o2_g0_cc1_281_fill_call_delay_slot": [
-      "func_80073F00",
-      "func_80074E28",
-      "func_80076434",
-      "func_8007B010",
-      "func_8007B290"
-    ],
-    "era_o2_g0_no_schedule_insns_cc1_281_fill_call_delay_slot_symbol_load_dest_temp": [
-      "func_80081414"
-    ],
-    "era_o2_g0_dispatch_800120bc_800120dc_cc1_281": [
-      "func_80085F74"
     ],
     "era_o2_g8_force_d8009d2f0_d8009d254_absolute": [
       "func_800136C0",
@@ -3567,19 +3327,8 @@
       "func_8006DCE4",
       "func_8006DE80"
     ],
-    "era_o2_g0_fill_branch_macro_split": [
-      "func_800739C4",
-      "func_8007C214",
-      "func_80082B70"
-    ],
     "era_o2_g0_no_cse_skip_blocks": [
       "func_800C6C18"
-    ],
-    "era_o2_g0_dispatch_800120fc_8001211c_cc1_281_fill_jump_stack_store": [
-      "func_800862F4"
-    ],
-    "era_o2_g0_cc1_281_fill_jump_stack_store": [
-      "func_8007DCAC"
     ],
     "era_o2_g8_force_d8009d1a0_d8009d2a4_absolute": [
       "func_80015C7C"
@@ -3600,29 +3349,6 @@
       "func_80014228",
       "func_8003D94C"
     ],
-    "era_o2_g0_cc1_281_return_via_epilogue_jump": [
-      "func_80072334"
-    ],
-    "era_o2_g0_cc1_281_load_delay_call_slot_store": [
-      "func_800742B8"
-    ],
-    "era_o2_g0_cc1_281_fill_call_delay_slot_branch_macro_split": [
-      "func_800809E0"
-    ],
-    "era_o2_g0_cc1_281_fill_branch_macro_split": [
-      "func_80084168"
-    ],
-    "era_o2_g0_dispatch_8001206c_cc1_281": [
-      "func_80082778"
-    ],
-    "era_o2_g0_fill_branch_macro_split_epilogue": [
-      "func_80082E00",
-      "func_8007A60C",
-      "func_8007A740"
-    ],
-    "era_o2_g0_load_delay_call_slot_store": [
-      "func_8007A2A4"
-    ],
     "era_o2_g8_dispatch_800100a0_force_d800b0cd8_d8009d1a0_absolute": [
       "func_800144FC"
     ],
@@ -3642,12 +3368,6 @@
     "era_o2_g8_dispatch_800112a4": [
       "func_80057834"
     ],
-    "era_o2_g0_cc1_281_load_delay_nop_before_label": [
-      "func_80083578",
-      "func_8007BF44",
-      "func_800832B4",
-      "func_80080404"
-    ],
     "era_o2_g8_force_d8009d20c_d8009d254_absolute": [
       "func_8002156C",
       "func_8002F0B0"
@@ -3656,22 +3376,14 @@
       "func_8006D078"
     ],
     "era_o2_g0_cc1_281_unfill_epilogue_delay_slot": [
-      "func_8007D614",
-      "func_80077404",
       "func_8008A750",
       "func_8008A068"
-    ],
-    "era_o2_g0_cc1_281_div_no_reuse_nop_expand_div": [
-      "func_80077E64"
     ],
     "era_o2_g8_force_d800b1620_absolute": [
       "func_8001A918"
     ],
     "era_o2_g8_la_absolute_small_data": [
       "func_80044274"
-    ],
-    "era_o2_g0_fill_call_volatile_store_fill_epilogue_delay_slot": [
-      "func_80076354"
     ],
     "era_o2_g8_dispatch_80011170_force_d8009d254_absolute": [
       "func_800512AC"
@@ -3732,12 +3444,6 @@
       "func_800275CC",
       "func_80026FF8"
     ],
-    "era_o2_g0_spu_init_8007d1d4": [
-      "func_8007D1D4"
-    ],
-    "era_o2_g0_cc1_281_fill_call_delay_slot_load_delay_nop_before_label": [
-      "func_8007FE24"
-    ],
     "era_o2_g8_force_d8009d254_d8009cddc_d8009d1e8_absolute": [
       "func_80034104"
     ],
@@ -3771,26 +3477,11 @@
     "era_o2_g8_expand_div_force_d8009d278_d8009d254_d8009d2e8_d8009d228_d8009cddc_absolute": [
       "func_8001F9C4"
     ],
-    "era_o2_g8_rodata_fold_8001074c_80010760_force_d8009d2a0_d8009d1a0_d8009d278_d8009d254_d8009d20c_d800942e4_absolute": [
-      "func_80022394"
-    ],
     "era_o2_g0_dispatch_8001213c": [
       "func_8008E2DC"
     ],
     "era_o2_g0_dispatch_800113b0": [
       "func_8006BECC"
-    ],
-    "era_o2_g8_dispatch_800107d4_rodata_fold_80010760_force_d8009d1a0_d8009d254_d8009d278_d8009d2e8_d8009d1ac_absolute": [
-      "func_80024250"
-    ],
-    "era_o2_g0_no_delayed_branch_reorder_fill_calls": [
-      "func_80084B78"
-    ],
-    "era_o2_g0_no_schedule_insns2_cc1_281": [
-      "func_8007E048"
-    ],
-    "era_o2_g0_div_no_reuse_nop_expand_div": [
-      "func_8007DB24"
     ],
     "era_o2_g0_dispatch_8001070c": [
       "func_80020288"
@@ -3798,32 +3489,14 @@
     "era_o2_g0_dispatch_800113f0": [
       "func_8006C5BC"
     ],
-    "era_o2_g0_fill_epilogue_delay_slot_spill_before_symbol_load": [
-      "func_80083D04"
-    ],
     "era_o2_g0_cc1_281_sink_return_zero_into_flag_delay_unfill_epilogue_delay_slot": [
       "func_8006AD40"
     ],
     "era_o2_g0_no_schedule_insns_cc1_281_unfill_epilogue_delay_slot": [
       "func_80087428"
     ],
-    "era_o2_g0_sink_zero_store_into_beqz": [
-      "func_8007C484"
-    ],
-    "era_o2_g0_cc1_281_fill_call_delay_slot_unaligned_word_copy_return_temp": [
-      "func_80080E34"
-    ],
-    "era_o2_g0_no_schedule_insns_no_schedule_insns2": [
-      "func_800746A0"
-    ],
-    "era_o2_g0_cc1_281_fill_call_delay_slot_unfill_epilogue_delay_slot": [
-      "func_8007BBFC"
-    ],
     "era_o2_g8_drop_unused_var8": [
       "func_8005382C"
-    ],
-    "era_o2_g0_cc1_281_load_delay_nop_before_label_nop_before_label_skip_empty_app_swap_s2_s1_save_pairs": [
-      "func_80080F98"
     ],
     "era_o2_g0_no_strength_reduce": [
       "func_8003999C"
@@ -3837,36 +3510,17 @@
     "era_o2_g0_frame48_s5_after_s2": [
       "func_800677FC"
     ],
-    "era_o2_g0_cc1_281_fill_branch_macro_split_symbol_load_dest_temp": [
-      "func_80076EE4",
-      "func_8007EE84"
-    ],
-    "era_o2_g0_cc1_281_addu_neg1_beq_delay": [
-      "func_8007E964"
-    ],
     "era_o2_g8_div_delay_reuse_v0_expand_div_force_d8009d2f0_absolute": [
       "func_800133E8"
     ],
-    "era_o2_g0_drop_jump_to_epilogue": [
-      "func_8007E160"
-    ],
-    "era_o2_g0_sltu_a0_lt_a2_dest_v1": [
-      "func_80073244"
-    ],
     "era_o2_g0_dup_half_shift": [
       "func_8006EC08"
-    ],
-    "era_o2_g0_mult_mflo_to_multu": [
-      "func_80078CC4"
     ],
     "era_o1_g0_mflo_before_mfhi": [
       "func_80070FAC"
     ],
     "era_o2_g0_mflo_before_mfhi": [
       "func_8003708C"
-    ],
-    "era_o2_g0_cc1_281_beqz_sym_store_delay_fill_call_delay_slot_index_pair_jal_schedule": [
-      "func_8007BDDC"
     ],
     "era_o2_g8_abs_800b0e64": [
       "func_8006D2B8"
@@ -3904,9 +3558,6 @@
     "era_o2_g8_force_d8009d224_d8009d308_d8009d2e8_d800942ec_d800b8a18_d800b0ce4_d800b162c_d800b1628_absolute": [
       "func_8003F074"
     ],
-    "era_o2_g0_cc1_281_div_no_reuse_nop_expand_div_symbol_load_dest_temp": [
-      "func_80079FB4"
-    ],
     "era_o2_g8_force_d8009d278_d8009d20c_d8009d254_absolute": [
       "func_80025BD8"
     ],
@@ -3919,18 +3570,8 @@
     "era_o2_g0_dispatch_80011388": [
       "func_80069B08"
     ],
-    "era_o2_g0_no_schedule_insns_cc1_281": [
-      "func_80073A44",
-      "func_800740D0"
-    ],
     "era_o2_g8_dispatch_80010fcc": [
       "func_80043DA4"
-    ],
-    "era_o2_g0_cc1_281_fill_call_delay_slot_fill_jump_symbol_store": [
-      "func_80076C34"
-    ],
-    "era_o2_g0_cc1_281_drop_target_dup_li": [
-      "func_80084C4C"
     ],
     "era_o2_g8_force_d800b0d88_actor": [
       "func_8002B94C"
@@ -3943,9 +3584,6 @@
     ],
     "era_o2_g8_dispatch_80011428": [
       "func_8006CDA4"
-    ],
-    "era_o2_g0_symbol_load_dest_temp_fill_call_epilogue_jump_reg_store": [
-      "func_80081A7C"
     ],
     "era_o2_g8_hud_colour_block_tail1": [
       "func_8002BC90"
@@ -3962,12 +3600,6 @@
     "era_o2_g8_hud_colour_block_tail1_0158": [
       "func_8002DC58"
     ],
-    "era_o2_g0_symbol_load_dest_temp_fill_call_epilogue": [
-      "func_80081714"
-    ],
-    "era_o2_g0_dispatch_80011b8c_cc1_281_fill_call_delay_slot_symbol_load_dest_temp": [
-      "func_8007AAB4"
-    ],
     "era_o2_g8_func_8002312C": [
       "func_8002312C"
     ],
@@ -3980,48 +3612,11 @@
     "era_o2_g8_dispatch_80010e6c_force_d8009cddc_d8009d1f4_d8009169d_absolute": [
       "func_80037870"
     ],
-    "era_o2_g0_cc1_281_fill_call_delay_slot_reload_cse_const_fill_branch_tested_li_void": [
-      "func_8008486C"
-    ],
-    "era_o2_g0_dispatch_80011c9c_cc1_281_three_word_symbol_store_symbol_load_dest_temp_ulw_load_delay_nop_shift_count_const": [
-      "func_8007F0C8"
-    ],
-    "era_o2_g0_cc1_281_swap_s1_s2_save_pairs_rev_symbol_pointer_load_li_after": [
-      "func_80076664",
-      "func_800768A0"
-    ],
-    "era_o2_g0_cc1_281_return_via_epilogue_jump_shift_count_const_reload_cse_const_branch_steal_jump_slot": [
-      "func_80083944"
-    ],
-    "era_o2_g0_cc1_281_symbol_load_dest_temp": [
-      "func_800755F0"
-    ],
     "era_o2_g8_dispatch_80010f6c_force_d8009ee70_d80092224_d80092230_d800a1704_d800a1838_d800a1854_d800a1864_d800a186c_absolute": [
       "func_80041108"
     ],
     "era_o2_g8_dispatch_80010ff4_80011014": [
       "func_8004A9A0"
-    ],
-    "era_o2_g0_fill_jump_stack_store_fill_epilogue_delay_slot_sink_volatile_stack_load": [
-      "func_800735C4"
-    ],
-    "era_o2_g0_fill_epilogue_delay_slot_branch_steal_target_insn_fill_jump_preceding_move_load_delay_nop_before_any_label": [
-      "func_80072A74"
-    ],
-    "era_o2_g0_fill_epilogue_delay_slot_branch_steal_target_insn_any_load_delay_nop_before_any_label": [
-      "func_80072F64"
-    ],
-    "era_o2_g0_nosr_c564": [
-      "func_8007C564"
-    ],
-    "era_o2_g0_cc1_281_fill_call_delay_slot_symbol_load_dest_temp_branch_macro_split": [
-      "func_8007B558"
-    ],
-    "era_o2_g0_cc1_281_fill_call_delay_slot_numeric_load_aspsx": [
-      "func_8007CEAC"
-    ],
-    "era_o2_g0_cc1_272cdk_hard_float_three_word_symbol_store_fill_epilogue_delay_slot_dispatch_fold_cdk_split_dispatch": [
-      "func_80071A84"
     ],
     "era_o2_g8_force_d8009d1a0_d8009d1f4_d8009d2a4_d800bcffe_absolute": [
       "func_80035558"
