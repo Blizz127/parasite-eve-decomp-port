@@ -1,0 +1,28 @@
+* Build r3 = checkpoint 2 (0f979349) + fullscreen/packaging. Day 1 plays end to end with the
+  automated route (movies skipped); with movies on it currently stops after the
+  car ride (see known issues). Every fix below is verified against the retail game.
+* New since r2 — please check:
+  - Memory-card SAVES now persist: save at a save point, quit, relaunch,
+    Continue -> your save loads (card file:
+    ~/.local/share/parasite-eve-port/memcard1.mcd).
+  - Play time now counts (it was frozen at 00:00:00).
+  - Eve 2 battle vocals are back (they were missing in r2).
+  - Game Over: dying now shows the fade and "Game Over" screen, then returns
+    to the title, as on the real game.
+  - Pause now stops the music and sound effects.
+  - Effects: Eve's spells and the rats' effects draw as glowing balls again
+    (not streaks); more room sounds and one room's music that never played.
+* Known issues to ignore (being fixed):
+  - With movies ON, the game currently stops right after the car ride at
+    the very end of Day 1 (a graphics wait). Everything before that plays.
+    Fix in progress; it comes in the next update.
+  - Floor shadows under characters are not on yet (fixed, being switched on).
+  - Aya's gun model is not drawn in battle (the muzzle flash is).
+  - Character models are shaded slightly differently from the real game.
+  - A few particle effects in the alligator boss's second phase are missing.
+  - The date doesn't walk to the door with Aya in the plaza.
+* Cheats (off unless pressed): F1 help, F2 god mode, F3 ammo/PE, F4 win
+  battle, F5 key items, F6 fast-forward, F7 FF speed, F8 warp. "CHEATS" shows
+  on screen when any is on.
+* Bug reports: the time and room, a screenshot, and the newest log file in
+  ~/.local/state/parasite-eve-port/logs/ (written automatically).

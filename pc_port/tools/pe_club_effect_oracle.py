@@ -1,0 +1,124 @@
+#!/usr/bin/env python3
+"""Execute original club effect graphs, including shared VM and sprite drawing."""
+import hashlib,itertools,struct,sys
+from pathlib import Path
+from pe_battle_hud_oracle import ROOT,execute
+from pe_hit_init_oracle import fixture as init_fixture,RANGES as INIT_RANGES
+from pe_hit_draw_oracle import fixture as draw_fixture,RANGES as DRAW_RANGES
+from pe_scripted_exit_oracle import words
+
+# Merge inherited fixture ranges so every byte is hashed exactly once.
+points=set()
+for a,n in INIT_RANGES+DRAW_RANGES+((0xE22A8,44),(0xE2808,8),(0xE2848,4),(0xB0DC7,1)):
+ points.update(range(a,a+n))
+RANGES=[]
+for a in sorted(points):
+ if RANGES and RANGES[-1][0]+RANGES[-1][1]==a:RANGES[-1][1]+=1
+ else:RANGES.append([a,1])
+ENTRIES=(0x800CE084,0x800CE1FC,0x800CE2B4,0x800CE3B4,
+         0x800CE16C,0x800CE144,0x8006F6D4,0x800CE464,0x800CE470,0x8006F39C)
+
+def cases():
+ for kind in range(6):yield dict(entry=0,kind=kind)
+ for index,more in itertools.product((0,1,7),(False,True)):
+  yield dict(entry=1,index=index,more=more)
+ for seed,pos in itertools.product((0,1,65535,0x7FFFFFFF,0x80000000,0xFFFFFFFF),
+                                  ((0,0,0),(-32768,32767,-1),(100,-200,50))):
+  yield dict(entry=2,seed=seed,pos=pos)
+ for bank,age,tick in itertools.product((0,1),(1,127,128,255),(0,5)):
+  yield dict(entry=3,bank=bank,age=age,tick=tick)
+ for entry in (4,5):
+  for children in (False,True):yield dict(entry=entry,children=children)
+ for index,value in ((0,2),(1,0x80173000),(7,0xFFFFFFFF)):
+  yield dict(entry=6,index=index,value=value)
+ yield dict(entry=7)
+ for tick in (0,4,5,6,127,255):yield dict(entry=8,tick=tick)
+ yield dict(entry=9)
+
+def fixture(exe,c):
+ draw=c['entry'] in (3,5)
+ if draw:r,s,_=draw_fixture(exe,dict(entry=0,bank=c.get('bank',0)))
+ else:r,s=init_fixture(exe,dict(entry=0,index=c.get('index',0),more=c.get('more',False)))
+ def put(a,b):r[a:a+len(b)]=b;s[a:a+len(b)]=b
+ def w(a,v):put(a,struct.pack('<I',v&0xFFFFFFFF))
+ def h(a,v):put(a,struct.pack('<H',v&65535))
+ def b(a,v):put(a,bytes((v&255,)))
+ put(0xE22A8,bytes((i*17+3)&255 for i in range(44)))
+ for i,v in enumerate(c.get('pos',(100,-200,50))):h(0xE2808+i*2,v)
+ w(0xE2848,0x76543210)
+ put(0x94188,bytes(r[0x94188:0x942E0]))
+ put(0xE0FB4,bytes(r[0xE0FB4:0xE1044]))
+ slot=0x150000;rec=slot+128;data=slot+512
+ if draw:
+  # Shared renderer fixture has valid texture-cache entries and both OTs.
+  put(0xE22A8,bytes(r[0xF33E8:0xF33E8+44]))
+  for i,v in enumerate((80,-40,20)):h(data+6+i*2,v)
+  b(data+1,c.get('age',127));b(data+3,c.get('tick',0))
+  put(slot,bytes(0x200));b(slot,1);b(slot+1,6);w(slot+8,0x80140000)
+  w(slot+120,0x800E0FFC)
+  if c.get('children'):b(rec,1);b(rec+1,1);h(rec+4,0)
+ else:
+  b(slot+1,6)
+  for i,v in enumerate((0x800CE1FC,0x800CE2B4,0xFFFFFFFF)):w(0x171100+i*4,v)
+  if c['entry']==0:
+   kind=c['kind'];w(slot+8,0x80140000);w(0x9D254,0x80143000)
+   if kind==0:w(slot+8,0)
+   elif kind==1:w(0x140000,0)
+   elif kind==2:w(0x144010,0)
+   elif kind==4:b(slot+1,7)
+   elif kind==5:w(0x9D254,0x80140000)
+  if c['entry']==4:
+   program=(0x10000,0x10001,0x20002,0xFFFFFFFF) if c.get('children') else (0xFFFFFFFF,)
+   for i,op in enumerate(program):w(0x172000+i*4,op)
+  if c['entry'] in (7,8):b(rec+1,1);b(data+3,c.get('tick',0))
+  if c['entry']==6:
+   w(0x942E4,0x80150000);w(0x942E0,0x80094188);b(slot,1)
+  if c['entry']==9:
+   w(0x942E4,0x80150000);w(0x942E0,0x80094188)
+   for i in range(11):b(slot+i*0xA0C,0)
+ args=(0x80150000,) if c['entry'] in (0,4,5) else (0x80150000,0x80150080,0x80150200)
+ if c['entry']==6:args=(0,0,c['index'],c['value'],0,0)
+ if c['entry']==9:args=(6,0x80140000)
+ # Both fixture families compare the union, including untouched globals.
+ for a,n in RANGES:s[a:a+n]=r[a:a+n]
+ return r,s,args
+
+def fingerprint(r):
+ h=14695981039346656037
+ for a,n in RANGES:
+  for b in r[a:a+n]:h=((h^b)*1099511628211)&0xFFFFFFFFFFFFFFFF
+ return h
+
+def main():
+ exe=(ROOT/'build/disc1.candidate.exe').read_bytes()
+ assert hashlib.sha1(exe).hexdigest()=='452fb033f2eaa4b18aa20a5bca60b8125af3a37b'
+ bases={};patches=[];rows=[]
+ for k,c in enumerate(cases()):
+  r,s,args=fixture(exe,c);initial=words(s)
+  family=int(c['entry'] in (3,5));bases.setdefault(family,initial)
+  first=len(patches);patches.extend((i*4,v) for i,(v,b) in enumerate(zip(initial,bases[family])) if v!=b)
+  before=bytes(r)
+  regs=execute(r,ENTRIES[c['entry']],args,bios_seed=c.get('seed',1),
+      initial_cop_control={24:160<<16,25:112<<16,26:256,29:0x155})
+  for a,(old,new) in enumerate(zip(before[:0x1F0000],r[:0x1F0000])):
+   if old!=new:assert a in points,('uncompared original write',k,hex(a))
+  if c['entry']==4 and c.get('children'):
+   assert r[0x150012]==2 and r[0x150081]==1 and r[0x150087]==1
+  result=regs[2] if c['entry'] in (0,4,5,6,9) else 0
+  rows.append((c['entry'],family,c.get('seed',1),first,len(patches),args,result,fingerprint(r)))
+  print(k,c,hex(result),hex(rows[-1][-1]),flush=True)
+  if '--dump' in sys.argv:Path(f'/tmp/pe-club-original-{k}.bin').write_bytes(r)
+ out=['/* Generated by pe_club_effect_oracle.py --write-header. */']
+ tables=[('ranges',RANGES),('patches',patches)]
+ tables += [(f'common{family}',[(i*4,v) for i,v in enumerate(base) if v]) for family,base in sorted(bases.items())]
+ for name,data in tables:
+  out.append(f'static const uint32_t DAY1_club_{name}[][2]={{')
+  out.extend(f' {{0x{a:X}u,0x{v:X}u}},' for a,v in data);out.append('};')
+ out.append('static const struct { unsigned entry,family,seed,first,end; uint32_t args[6],result; uint64_t hash; } DAY1_club_cases[]={')
+ for e,family,seed,a,b,args,result,hsh in rows:
+  params=','.join(f'0x{x:08X}u' for x in list(args)+[0]*(6-len(args)))
+  out.append(f' {{{e}u,{family}u,{seed}u,{a}u,{b}u,{{{params}}},0x{result:08X}u,UINT64_C(0x{hsh:016X})}},')
+ out.append('};')
+ if '--write-header' in sys.argv:(ROOT/'pc_port/tests/retail_club_effect_cases.h').write_text('\n'.join(out)+'\n')
+ print('PASS:',len(rows),'complete original club effect cases')
+if __name__=='__main__':main()

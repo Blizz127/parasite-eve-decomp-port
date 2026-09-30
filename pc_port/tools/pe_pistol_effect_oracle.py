@@ -1,0 +1,108 @@
+#!/usr/bin/env python3
+"""Complete original pistol callbacks and textured-quad drawing call graphs.
+
+Texture-cache hits are instruction-tested here. Actual GPU uploads use the
+native transfer provider and are verified separately against VRAM contents.
+"""
+import hashlib
+import struct
+import sys
+from pe_battle_hud_oracle import ROOT,execute
+from pe_effect_mesh_oracle import fixture as mesh_fixture,RANGES as MESH_RANGES
+from pe_scripted_exit_oracle import words
+
+RANGES=MESH_RANGES+((0x142000,0x1800),(0xE22F8,24),(0xE2358,8),
+                   (0xE27A4,12),(0xF3300,0x200))
+ENTRIES=(0x800C42A4,0x800C9C20,0x800C9C8C,0x800C9D9C,0x800C9EA8,0x800C9FD8,
+         0x800C2EAC,0x800C3098,0x800C2FF0,0x800C3238,0x800C608C,0x800CEDA8)
+CASES=[]
+def case(entry=0,**kw):CASES.append(dict(entry=entry,**kw))
+for mode in (0,1,256):
+    for bank in (0,1):
+        for flip in range(4):case(mode=mode,bank=bank,flip=flip)
+    for depth in (-100,0,1,31,32,16384,65535):case(mode=mode,depth=depth)
+    for rotation in (1,2):case(mode=mode,rotation=rotation,translation=(500,-300,400))
+for brightness in (-32768,-1,0,1,127,128,129,300,32767):case(level=brightness)
+for texture in (0,15,16,31,128,255):case(texture=texture,shift=96)
+for bias in (-1000,0,5000):case(bias=bias)
+case(1)
+for seed in (1,2,3,10,65535):case(2,seed=seed)
+for kind in range(1,6):case(3,kind=kind)
+for age in (0,1,20,127,128,255):
+    for kind in (1,2,4):case(4,age=age,kind=kind)
+for level in (0,1,20,64,127,255,32767):
+    for rotation in (0,1,2):case(5,level=level,rotation=rotation)
+case(5,depth=-100);case(5,translation=(30000,-32768,66000))
+for page in (0,1,2,3,4,255,259):case(6,page=page)
+for colors in (16,256,65552):case(7,colors=colors)
+for width,height in ((0,0),(1,1),(16,16),(32,16),(255,255),(256,257)):case(8,width=width,height=height)
+for blend in (0,1,2,3,4,5,255,258):case(9,blend=blend)
+for level in (-32768,-1,0,1,127,128,129,300,32767):case(10,level=level)
+for texture in (0,1,-1,32767):case(11,texture=texture)
+
+def fixture(exe,c):
+    r,s,args=mesh_fixture(exe,dict(c,entry=0))
+    def put(a,b):r[a:a+len(b)]=b;s[a:a+len(b)]=b
+    def sw(a,v):put(a,struct.pack('<I',v&0xFFFFFFFF))
+    def sh(a,v):put(a,struct.pack('<H',v&65535))
+    def sb(a,v):put(a,bytes((v&255,)))
+    for a,n in RANGES[len(MESH_RANGES):]:put(a,bytes((i*17+7)&255 for i in range(n)))
+    for a,n in ((0x966EC,0x4000),(0xE0AD8,0x60),(0xC21A4,0x20),(0xC2128,20)):
+        put(a,exe[a-0x10000+0x800:a-0x10000+0x800+n])
+    sw(0x9D254,0x80142000);sw(0x142000,0x80142800);sw(0x142868,0x80142900)
+    sh(0x142906,c.get('kind',1));sw(0x142238,0x80142A00);sw(0x143008,0x80142000)
+    for offset in (0,608):
+        put(0x142A00+offset,bytes(r[0x140040:0x140060]))
+    for i,v in enumerate((100,-200,50)):sw(0x142C74+i*4,v);sh(0xE2358+i*2,v)
+    sw(0xE27A4,0x80142000);sh(0xF34E4,c.get('texture',0) if c['entry']==11 else 0)
+    put(0x143210,bytes(r[0x140040:0x140060]))
+    for i,v in enumerate(c.get('translation',(200,-300,500))):sh(0x143208+i*2,v)
+    sb(0x143201,c.get('age',1));sh(0x143204,c.get('level',127))
+    for a in (0x141000,0xE22F8,0xF34B8):
+        put(a,bytes((120,160,200,0,c.get('texture',0x12)&255,0x35,c.get('flip',0),0)))
+        sh(a+8,c.get('bias',0));sh(a+10,c.get('level',128))
+    sh(0xE27AC,0x123);sh(0xF341C,32);sh(0xF341E,400);sb(0xF3422,c.get('shift',0))
+    sb(0xF337A,c.get('semi',1));sb(0xF33AC,0);sb(0xE224C,0)
+    sh(0xF3424,832);sh(0xF3426,256)
+    width,height=c.get('width',16),c.get('height',16)
+    for i in range(4):
+        sh(0xF3310+i*8,(1 if i&1 else -1)*width*16)
+        sh(0xF3312+i*8,(1 if i&2 else -1)*height*16);sh(0xF3314+i*8,0)
+    sb(0xF345C,width-1);sb(0xF345D,height-1)
+    args=((0x80141000,0x80140040,c.get('mode',0)),)+((0x80143000,0x80143080,0x80143200),)*5
+    args+=((c.get('page',3),),(c.get('colors',16),),(width,height),(c.get('blend',0),),
+           (c.get('level',128),0x80141000,0x80141020),(c.get('texture',0),))
+    return r,s,tuple(v&0xFFFFFFFF for v in args[c['entry']])
+
+def fingerprint(r):
+    h=14695981039346656037
+    for a,n in RANGES:
+        for b in r[a:a+n]:h=((h^b)*1099511628211)&0xFFFFFFFFFFFFFFFF
+    return h
+
+def main():
+    exe=(ROOT/'build/disc1.candidate.exe').read_bytes()
+    assert hashlib.sha1(exe).hexdigest()=='452fb033f2eaa4b18aa20a5bca60b8125af3a37b'
+    _,s,_=fixture(exe,CASES[0]);base=words(s);common=[(i*4,v) for i,v in enumerate(base) if v]
+    patches=[];cases=[]
+    for k,c in enumerate(CASES):
+        r,s,args=fixture(exe,c);first=len(patches)
+        patches.extend((i*4,v) for i,(v,b) in enumerate(zip(words(s),base)) if v!=b)
+        execute(r,ENTRIES[c['entry']],args,bios_seed=c.get('seed',1),
+                initial_cop_control={24:160<<16,25:112<<16,26:256,29:0x155})
+        cases.append((c['entry'],c.get('seed',1),first,len(patches),args,fingerprint(r)))
+        print(k,c,hex(fingerprint(r)),flush=True)
+        if '--dump' in sys.argv:(ROOT/f'pc_port/build/pistol-effect-oracle-{k}.bin').write_bytes(r)
+    out=['/* Generated by pe_pistol_effect_oracle.py --write-header. */']
+    for name,rows in (('ranges',RANGES),('common',common),('patches',patches)):
+        out.append(f'static const uint32_t ATK34_pistol_{name}[][2]={{')
+        out.extend(f'    {{0x{a:X}u,0x{b:X}u}},' for a,b in rows);out.append('};')
+    out.append('static const struct { unsigned entry,seed,first,end; uint32_t args[3]; uint64_t hash; } ATK34_pistol_cases[]={')
+    for e,seed,a,b,args,h in cases:
+        params=','.join(f'0x{x:08X}u' for x in args) or '0'
+        out.append(f'    {{{e},{seed},{a},{b},{{{params}}},UINT64_C(0x{h:016X})}},')
+    out.append('};')
+    if '--write-header' in sys.argv:(ROOT/'pc_port/tests/retail_pistol_effect_cases.h').write_text('\n'.join(out)+'\n')
+    print(f'PASS: {len(cases)} complete original pistol / textured quad cases')
+
+if __name__=='__main__':main()

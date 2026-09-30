@@ -1,0 +1,81 @@
+# Splat config — Parasite Eve (USA) Disc 1, PE.IMG overlay ovl_0457
+# (credits / XA overlay, XASTREAM CREDITS.XA, image-load range [0x457,0x4FC)).
+#
+# The target blob is extracted locally by `scripts/extract_overlays.sh` into
+# build/extracted/disc1/peimg/ovl_0457.bin (git-ignored) and is NEVER
+# committed. Split via `scripts/split_overlay.sh ovl_0457`; the exact
+# reassembly proof is `scripts/exact_rebuild_overlay.sh ovl_0457`.
+#
+# Verified facts (configs/USA/overlays/manifest.yaml, tools/extract/peimg.py):
+#   size   0x52800
+#   SHA-1  08b5c11984153ba1fd6ec23d4a2b79a0c9acada6
+#   vram   0x80120D00
+#   no PS-X header, no relocations: one fixed-address `code` segment.
+#
+# Geometry (2026-09-22 boundary audit of the extracted blob):
+#   0x0000-0x28DC  container header (u32 count 10, "\XASTREAM\CREDITS.XA;1"),
+#                  the credits text table, and switch jump tables (pointer runs
+#                  such as 0x80123DFC / 0x80124244 ... ending at 0x28D8) that
+#                  the .text below indexes. Raw `bin`: the probe link binds the
+#                  jtbl_/D_ references by address.
+#   0x28DC-0x4E48  .text: first framed prologue at 0x28DC, last `jr $ra` at
+#                  0x4E40 plus its delay slot (23 prologues, 27 `jr $ra`).
+#   0x4E48-0x52800 data (0x80120D04 ...) and bulk assets to the end. Raw `bin`.
+#
+# Every function in this overlay is named func_<VRAM> and lives, once carved,
+# under src/overlays/ovl_0457/ (the directory is the namespace).
+name: Parasite Eve (USA) Disc 1 PE.IMG overlay ovl_0457
+sha1: 08b5c11984153ba1fd6ec23d4a2b79a0c9acada6
+options:
+  platform: psx
+  compiler: GCC
+  basename: ovl_0457
+  base_path: ../../..
+  target_path: build/extracted/disc1/peimg/ovl_0457.bin
+  asm_path: asm/overlays/ovl_0457
+  src_path: src/overlays/ovl_0457
+  asset_path: assets/overlays/ovl_0457
+  ld_script_path: linkers/overlays/ovl_0457.ld
+  cache_path: asm/overlays/ovl_0457/.splache
+  undefined_funcs_auto_path: asm/overlays/ovl_0457/undefined_funcs_auto.txt
+  undefined_syms_auto_path: asm/overlays/ovl_0457/undefined_syms_auto.txt
+  find_file_boundaries: no
+segments:
+  - name: main
+    type: code
+    start: 0x0
+    vram: 0x80120D00
+    subsegments:
+      - [0x0, bin]
+      # Switch jump tables jtbl_80122FA4 ... jtbl_801235BC (pool for
+      # MASPSX_DISPATCH_FOLD; the leaves' own cc1 tables are stripped).
+      - [0x22A4, rodata]
+      - [0x28DC, c, func_801235DC]
+      - [0x2C50, c, func_80123950]
+      - [0x2E1C, c, func_80123B1C]
+      - [0x2FAC, c, func_80123CAC]
+      - [0x3108, c, func_80123E08]
+      - [0x328C, c, func_80123F8C]
+      - [0x3334, c, func_80124034]
+      - [0x333C, c, func_8012403C]
+      - [0x3898, c, func_80124598]
+      - [0x392C, c, func_8012462C]
+      - [0x3A04, c, func_80124704]
+      - [0x3AF4, c, func_801247F4]
+      - [0x3B9C, c, func_8012489C]
+      - [0x3DA4, c, func_80124AA4]
+      - [0x3F04, c, func_80124C04]
+      - [0x4240, c, func_80124F40]
+      - [0x4394, c, func_80125094]
+      - [0x4744, c, func_80125444]
+      - [0x4764, c, func_80125464]
+      - [0x48A4, c, func_801255A4]
+      - [0x492C, c, func_8012562C]
+      - [0x4A44, c, func_80125744]
+      - [0x4B94, c, func_80125894]
+      - [0x4BEC, c, func_801258EC]
+      - [0x4C80, c, func_80125980]
+      - [0x4D40, c, func_80125A40]
+      - [0x4DF0, c, func_80125AF0]
+      - [0x4E48, bin]
+  - [0x52800]

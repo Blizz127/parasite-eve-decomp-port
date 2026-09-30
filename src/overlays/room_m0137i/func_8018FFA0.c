@@ -1,0 +1,45 @@
+/* room_m0137i (PE.IMG room m0137i chunk 2, VRAM 0x8018EFE8)
+ * func_8018FFA0 — blob offset 0xFB8, 0x110 bytes. Profile era_o2_g0 (default);
+ * LINK_EXACT at the room VMA (docs/evidence/room-lane-2026-09-23/REPORT.md).
+ * Draw 6 drops: sprite at each active position, then a quarter-size shadow at floor height D_800942EC. */
+
+typedef struct { short m[3][3]; int t[3]; } MATRIX;
+typedef struct { short x, y, z, pad; } SV;
+typedef struct {
+    MATRIX m;
+    SV pos[6];
+    SV vel[6];
+    unsigned char pad80[0xC];
+    short size[6];
+    short act[6];
+} Drops;
+typedef struct { unsigned char pad[0xA]; short fA; } Lt;
+extern unsigned char *func_800C2B50();
+extern void func_800C2EAC();
+extern void func_800C2FF0();
+extern void func_800C3098();
+extern void func_800C3238();
+extern void func_800C42A4();
+extern Lt D_80190F90;
+extern short D_800942EC;
+void func_8018FFA0(int a0, int a1, Drops *p)
+{
+    unsigned int i;
+
+    func_800C2EAC(func_800C2B50()[0x10]);
+    func_800C2FF0(16, 16);
+    func_800C3098(16);
+    func_800C3238(1);
+    for (i = 0; i < 6; i++) {
+        if (p->act[i] == 1) {
+            p->m.t[0] = p->pos[i].x;
+            p->m.t[1] = p->pos[i].y;
+            p->m.t[2] = p->pos[i].z;
+            D_80190F90.fA = p->size[i];
+            func_800C42A4(&D_80190F90, p, 1);
+            D_80190F90.fA = p->size[i] >> 2;
+            p->m.t[1] = D_800942EC;
+            func_800C42A4(&D_80190F90, p, 1);
+        }
+    }
+}

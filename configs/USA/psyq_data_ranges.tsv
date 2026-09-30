@@ -1,0 +1,23 @@
+# Psy-Q SDK data tables inside SLUS_006.62 (address ranges ONLY -- no bytes).
+# Consumed by tools/analysis/psyq_port_guard.py, which reads the bytes from the
+# user's own retail EXE at check time and fails if the port or its tests embed
+# them.  Evidence: build/lanes/psyq/PLAN.md section "Psy-Q data tables".
+#   * SQRT / rcossin_tbl / ratan_tbl: byte-identical (192 / 8192 / 1025 int16)
+#     to the libgte tables shipped by PsyCross src/gte/{sqrt,rcossin,ratan}_tbl.h.
+#   * rsin_tbl (1025 int16 quarter-wave sin*4096) and the 192-entry reciprocal
+#     sqrt table sit in the same libgte .data block (0x8009589C..0x8009AEEE),
+#     next to libgte's "Can't push matrix" PushMatrix error strings.
+name	start	end	library	source
+libgte_rsin_tbl	0x8009589C	0x8009609E	libgte	exe
+libgte_SQRT	0x800960BC	0x8009623C	libgte	exe
+libgte_rsqrt_tbl	0x80096250	0x800963D0	libgte	exe
+libgte_rcossin_tbl	0x800966EC	0x8009A6EC	libgte	exe
+libgte_ratan_tbl	0x8009A6EC	0x8009AEEE	libgte	exe
+# NOT scanned: the libcd command-class tables (6 x 32 u32 of 0/1 flags at
+# 0x8009B07C/B0FC/B17C/B1FC/B5A4/B624) are too low-entropy for a byte/literal
+# scan (false positives everywhere). Known embedder: tests/retail_cd_device_tables.h
+# (manual finding, build/lanes/psyq/test_data_audit.tsv).
+# libpress DecDCT tables in PE.IMG ovl_039F (vram 0x8010BCF8): the MDEC quant
+# command block (MPEG-1 default intra matrix) and the IDCT scale block.
+libpress_quant_block	0x8010DA10	0x8010DA90	libpress	ovl_039F@0x8010BCF8
+libpress_scale_block	0x8010DA94	0x8010DB14	libpress	ovl_039F@0x8010BCF8

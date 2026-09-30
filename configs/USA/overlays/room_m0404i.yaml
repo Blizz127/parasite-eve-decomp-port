@@ -1,0 +1,95 @@
+# Splat config — Parasite Eve (USA) Disc 1, PE.IMG room package m0404i, chunk 2.
+#
+# Blob: `python3 tools/extract/peimg.py room m0404i` ->
+# build/extracted/disc1/peimg/room_m0404i_c2.bin (git-ignored, NEVER committed).
+# Split `scripts/split_overlay.sh room_m0404i`; gate `scripts/exact_rebuild_overlay.sh room_m0404i`.
+#
+# Facts (peimg.py room m0404i, 2026-09-23): slot 403, PE.IMG sectors
+# [0x16B7A,0x16BFD), size 0x41800, vram 0x8018EFE8, SHA-1 c611bd599af3f8e0961c1dc5016e31d3d30e3971.
+# Geometry (room_census text-window rule, build/fanout/overlays2/roomscan.py):
+#   0x0-0x220  header + switch jump tables (bin); 0x220-0x4E4C .text;
+#   0x4E4C-0x41800 behaviour tables + room data (bin).
+name: Parasite Eve (USA) Disc 1 PE.IMG room m0404i chunk 2
+sha1: c611bd599af3f8e0961c1dc5016e31d3d30e3971
+options:
+  platform: psx
+  compiler: GCC
+  basename: room_m0404i
+  base_path: ../../..
+  target_path: build/extracted/disc1/peimg/room_m0404i_c2.bin
+  asm_path: asm/overlays/room_m0404i
+  src_path: src/overlays/room_m0404i
+  asset_path: assets/overlays/room_m0404i
+  ld_script_path: linkers/overlays/room_m0404i.ld
+  cache_path: asm/overlays/room_m0404i/.splache
+  undefined_funcs_auto_path: asm/overlays/room_m0404i/undefined_funcs_auto.txt
+  undefined_syms_auto_path: asm/overlays/room_m0404i/undefined_syms_auto.txt
+  find_file_boundaries: no
+segments:
+  - name: main
+    type: code
+    start: 0x0
+    vram: 0x8018EFE8
+    subsegments:
+      - [0x0, bin]
+      # header switch jump tables: MASPSX_DISPATCH_FOLD pool
+      - [0xC, rodata]
+      - [0x220, asm]
+      - [0x244, c, func_8018F22C]
+      - [0x2E4, c, func_8018F2CC]
+      - [0x568, c, func_8018F550]
+      - [0x570, c, func_8018F558]
+      - [0x5F8, c, func_8018F5E0]
+      - [0x6A0, c, func_8018F688]
+      - [0xBE8, c, func_8018FBD0]
+      - [0xCC8, c, func_8018FCB0]
+      - [0xF08, c, func_8018FEF0]
+      - [0xFA4, c, func_8018FF8C]
+      - [0xFAC, c, func_8018FF94]
+      - [0xFB4, c, func_8018FF9C]
+      - [0x1030, c, func_80190018]
+      - [0x12A8, c, func_80190290]
+      - [0x12B0, c, func_80190298]
+      - [0x1338, c, func_80190320]
+      - [0x13E0, c, func_801903C8]
+      - [0x196C, c, func_80190954]
+      - [0x19F0, c, func_801909D8]
+      - [0x1A48, c, func_80190A30]
+      - [0x1A50, c, func_80190A38]
+      - [0x1A58, c, func_80190A40]
+      - [0x1AF4, c, func_80190ADC]
+      - [0x1D3C, c, func_80190D24]
+      - [0x1D44, c, func_80190D2C]
+      - [0x1D6C, c, func_80190D54]
+      - [0x1DDC, c, func_80190DC4]
+      - [0x2168, c, func_80191150]
+      - [0x2170, c, func_80191158]
+      - [0x2510, c, func_801914F8]
+      - [0x256C, c, func_80191554]
+      - [0x2574, c, func_8019155C]
+      - [0x257C, c, func_80191564]
+      - [0x260C, c, func_801915F4]
+      - [0x2854, c, func_8019183C]
+      - [0x285C, c, func_80191844]
+      - [0x2884, c, func_8019186C]
+      - [0x28F4, c, func_801918DC]
+      - [0x2D70, c, func_80191D58]
+      - [0x2D78, c, func_80191D60]
+      - [0x3100, c, func_801920E8]
+      - [0x315C, c, func_80192144]
+      - [0x3164, c, func_8019214C]
+      - [0x316C, c, func_80192154]
+      - [0x31A8, c, func_80192190]
+      - [0x3240, c, func_80192228]
+      - [0x3248, c, func_80192230]
+      - [0x3270, c, func_80192258]
+      - [0x32A0, c, func_80192288]
+      - [0x33B4, c, func_8019239C]
+      - [0x3534, c, func_8019251C]
+      - [0x3550, c, func_80192538]
+      - [0x3558, asm]
+      - [0x4380, c, func_80193368]
+      - [0x45F8, asm]
+      - [0x4E3C, c, func_80193E24]
+      - [0x4E4C, bin]
+  - [0x41800]

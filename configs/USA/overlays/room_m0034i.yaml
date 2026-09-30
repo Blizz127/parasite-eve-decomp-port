@@ -1,0 +1,55 @@
+# Splat config — Parasite Eve (USA) Disc 1, PE.IMG room package m0034i, chunk 2.
+#
+# Blob: `python3 tools/extract/peimg.py room m0034i` ->
+# build/extracted/disc1/peimg/room_m0034i_c2.bin (git-ignored, NEVER committed).
+# Split `scripts/split_overlay.sh room_m0034i`; gate `scripts/exact_rebuild_overlay.sh room_m0034i`.
+#
+# Facts (peimg.py room m0034i, 2026-09-23): slot 33, PE.IMG sectors
+# [0x3CE0,0x3D44), size 0x32000, vram 0x8018EFE8, SHA-1 2d09f16a1668c9133294b92bc3bd6acc36052d16.
+# Geometry (room_census text-window rule, build/fanout/overlays2/roomscan.py):
+#   0x0-0x24  header + switch jump tables (bin); 0x24-0xF4C .text;
+#   0xF4C-0x32000 behaviour tables + room data (bin).
+name: Parasite Eve (USA) Disc 1 PE.IMG room m0034i chunk 2
+sha1: 2d09f16a1668c9133294b92bc3bd6acc36052d16
+options:
+  platform: psx
+  compiler: GCC
+  basename: room_m0034i
+  base_path: ../../..
+  target_path: build/extracted/disc1/peimg/room_m0034i_c2.bin
+  asm_path: asm/overlays/room_m0034i
+  src_path: src/overlays/room_m0034i
+  asset_path: assets/overlays/room_m0034i
+  ld_script_path: linkers/overlays/room_m0034i.ld
+  cache_path: asm/overlays/room_m0034i/.splache
+  undefined_funcs_auto_path: asm/overlays/room_m0034i/undefined_funcs_auto.txt
+  undefined_syms_auto_path: asm/overlays/room_m0034i/undefined_syms_auto.txt
+  find_file_boundaries: no
+segments:
+  - name: main
+    type: code
+    start: 0x0
+    vram: 0x8018EFE8
+    subsegments:
+      - [0x0, bin]
+      - [0x24, c, func_8018F00C]
+      - [0xD0, c, func_8018F0B8]
+      - [0xFC, c, func_8018F0E4]
+      - [0x144, c, func_8018F12C]
+      - [0x1D0, c, func_8018F1B8]
+      - [0x254, c, func_8018F23C]
+      - [0x25C, c, func_8018F244]
+      - [0x264, c, func_8018F24C]
+      - [0x384, c, func_8018F36C]
+      - [0x38C, c, func_8018F374]
+      - [0x398, c, func_8018F380]
+      - [0x3D4, c, func_8018F3BC]
+      - [0x3DC, c, func_8018F3C4]
+      - [0x44C, asm]
+      - [0x848, c, func_8018F830]
+      - [0xC6C, c, func_8018FC54]
+      - [0xDEC, c, func_8018FDD4]
+      - [0xDFC, c, func_8018FDE4]
+      - [0xEF8, c, func_8018FEE0]
+      - [0xF4C, bin]
+  - [0x32000]

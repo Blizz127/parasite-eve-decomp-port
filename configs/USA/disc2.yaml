@@ -1,0 +1,15 @@
+# Splat config — Parasite Eve (USA) Disc 2, SLUS_006.68
+#
+# DELIBERATELY NOT A SEPARATE CONFIG. `SLUS_006.68` is byte-identical to
+# disc 1's `SLUS_006.62` — verified 2026-07-04, SHA-1
+# 452fb033f2eaa4b18aa20a5bca60b8125af3a37b for both (see
+# docs/disc_info.md and docs/reverse_engineering_notes.md). `PE.IMG` is
+# likewise byte-identical across discs; the discs differ only in FMV/XA
+# streams and volume metadata.
+#
+# The canonical Phase 2+ target is therefore configs/USA/disc1.yaml, and
+# every split/rebuild result for it applies to both discs' executables.
+#
+# Create a real config here ONLY if a concrete technical reason emerges
+# (none is currently known or expected), and record that reason in
+# docs/reverse_engineering_notes.md first.

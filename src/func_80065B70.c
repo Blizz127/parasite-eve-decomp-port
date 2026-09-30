@@ -1,0 +1,35 @@
+extern int D_800BCF88;
+extern char D_800BCFFC;
+extern short D_800BCFFE;
+extern char D_800BD027, D_800BD026, D_800BD025;
+extern int D_800BCF8C, D_800BCF90, D_800BCF94, D_800BCF98, D_800BCF9C, D_800BCFA0;
+extern int D_800BCFA4, D_800BCFA8, D_800BCFAC, D_800BCFB0, D_800BCFB4;
+extern char D_800BCFFD;
+extern short D_800BD022, D_800BD020;
+extern char D_800BD024;
+extern int D_800BD028;
+int func_80065B70(int a0, int a1) {
+    D_800BCF88 = 0x70;
+    D_800BCFFC = 0x60;
+    D_800BCFFE = 0x180;
+    D_800BD027 = 0xFF;
+    D_800BD026 = 0xFF;
+    D_800BD025 = 0xFF;
+    D_800BCF8C = 0;
+    D_800BCF90 = 0;
+    D_800BCF94 = 0;
+    D_800BCF98 = 0;
+    D_800BCF9C = 0;
+    D_800BCFA0 = 0;
+    D_800BCFA4 = a0;
+    D_800BCFA8 = a1;
+    D_800BCFAC = 0;
+    D_800BCFB0 = 0;
+    D_800BCFB4 = 0;
+    D_800BCFFD = 0;
+    D_800BD022 = 0;
+    D_800BD020 = 0;
+    D_800BD024 = 0;
+    D_800BD028 = 0;
+    return 0;
+}

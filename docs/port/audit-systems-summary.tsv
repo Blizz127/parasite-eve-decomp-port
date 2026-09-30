@@ -1,0 +1,27 @@
+scope	system	total	gen	decomp_hand	hand	cut-only	static-only	stub	absent	ambiguous(plain hand def)	partial
+exe	atb	4	2	0	1	1	0	0	0	0	1
+exe	audio	234	96	110	24	1	1	0	2	0	10
+exe	boot/sys	32	13	2	15	0	0	0	2	0	1
+exe	combat	174	64	15	88	1	0	3	3	0	19
+exe	death/gameover	4	2	0	2	0	0	0	0	0	1
+exe	equipment	109	54	13	42	0	0	0	0	0	5
+exe	exp/levelup	16	3	4	8	0	0	0	1	0	2
+exe	field-scripts/events	545	235	156	133	1	0	3	17	0	25
+exe	input	4	3	1	0	0	0	0	0	0	0
+exe	items	124	25	20	75	1	0	1	2	0	15
+exe	menus	227	109	24	89	0	0	5	0	0	10
+exe	movies	16	4	7	5	0	0	0	0	0	1
+exe	pe-spells	10	4	0	6	0	0	0	0	0	0
+exe	psyq-sdk	474	215	76	101	0	9	22	51	0	0
+exe	rendering	130	49	20	56	3	1	0	1	0	20
+exe	room-transitions	32	9	2	18	1	0	2	0	0	7
+exe	save/memcard	102	57	17	27	0	0	1	0	0	4
+exe	unclassified	4	2	0	2	0	0	0	0	0	0
+ovl	overlay:ovl_03C5	9	3	0	3	0	0	3	0	0	0
+ovl	overlay:ovl_03C9	12	7	0	0	0	0	0	5	0	0
+ovl	overlay:ovl_03D2	26	4	0	15	0	0	3	0	4	0
+ovl	overlay:ovl_0457	27	9	0	0	0	0	1	17	0	1
+ovl	overlay:ovl_0700	45	18	0	17	0	0	0	1	9	0
+ovl	overlay:room	3194	1151	0	4	0	0	0	2012	27	11
+ovl	psyq-sdk	18	0	0	6	0	0	1	11	0	0
+[(('exe', 'absent'), 79), (('exe', 'cut-only'), 9), (('exe', 'decomp_hand'), 467), (('exe', 'gen'), 946), (('exe', 'hand'), 692), (('exe', 'static-only'), 11), (('exe', 'stub'), 37), (('ovl', 'absent'), 2046), (('ovl', 'ambiguous(plain hand def)'), 40), (('ovl', 'gen'), 1192), (('ovl', 'hand'), 45), (('ovl', 'stub'), 8)]

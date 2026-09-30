@@ -1,0 +1,141 @@
+#!/usr/bin/env python3
+"""Retail EA301/303/401/402/405/409 graphs on synthetic guest state.
+
+Executes the original dispatcher and callees. Only BIOS memcpy is supplied
+as a byte-copy contract. CD register pointers target synthetic RAM; separate
+native checks cover the actual controller volume latches. No audible or
+whole-scene fidelity claim follows from these cases.
+"""
+import hashlib
+import itertools
+import struct
+import sys
+
+from pe_battle_hud_oracle import ROOT, execute
+from pe_music_bank_oracle import fixture as bank_fixture
+from pe_script_sound_oracle import fixture as sound_fixture
+
+RANGES = (
+    (0x9B27C, 16), (0x9CDF0, 4), (0x9CE00, 4), (0x9D170, 24),
+    (0x9D20C, 4), (0x9D24C, 12), (0x9D268, 4), (0x9D2F0, 8),
+    (0x9D300, 20), (0xB0CD8, 0x240), (0xB8628, 0x300),
+    (0xBCD80, 0x240), (0x130000, 0x240), (0x140000, 0x500),
+    (0x141000, 0x40), (0x150000, 0x800), (0x160000, 0x800),
+    (0x170000, 16), (0x180000, 0x40),
+)
+VALUES = (0, 1, 127, 128, 255, 256, 0x80000000, 0xFFFFFFFF)
+
+
+def cases():
+    for key, value, queue in itertools.product((301, 303), VALUES, (0, 1, 17)):
+        yield key, value, queue, 0
+    for key, kind, block in itertools.product((401, 402), (1, 2, 3, 4, 6, 8, 9), (0, 1, 2, 0xFFFFFFFF)):
+        # Busy DMA polls must be nonblocking; a busy blocking call cannot return.
+        if kind != 8 or block:
+            yield key, kind, 0, block
+    for key, value in itertools.product((405, 409), VALUES):
+        yield key, value, 0, 0
+
+
+def fixture(exe, key, value, queue, block):
+    def sw(a, v):
+        struct.pack_into('<I', ram, a, v & 0xFFFFFFFF)
+
+    if key in (401, 402):
+        ram = bank_fixture(exe, value)
+        if value == 8:
+            # Real 6CDA4 state10 -> 870E0 busy getter -> nonblocking return1.
+            ram[0xB0DC8] = 10
+            sw(0x9D24C, 1)
+        args = (key, 7, block, 0xAAAAAAAA, 0xBBBBBBBB, 0xDEADBEEF)
+    else:
+        ram = sound_fixture(exe, dict(key=300, sound=1, queue=queue))
+        args = (key, 0xFEDC0000 | value, 0xAB000000 | value,
+                value, value, 0xDEADBEEF)
+        if key in (405, 409):
+            args = (key, value, 0, 0, 0, 0xDEADBEEF)
+            ram[0xB0CEA] = 0xFE
+            ram[0xB0DBE] = 0x55
+    # Avoid MMIO emulation in this instruction oracle: the unmodified SDK
+    # writes through its retail pointer table into four distinct RAM bytes.
+    for i in range(4):
+        sw(0x9B27C + i * 4, 0x80170000 + i)
+    ram[0x170000:0x170010] = bytes([0xA5]) * 16
+    ram[0x180000:0x180040] = bytes([0xC7]) * 64
+    sw(0x9D300, 0x80180000)
+    sw(0x9CE00, 0x801D1234)
+    for i, arg in enumerate(args):
+        sw(0x140200 + i * 4, 0x80140240 + i * 4)
+        sw(0x140240 + i * 4, arg)
+    return ram
+
+
+def original(ram):
+    regs = execute(ram, 0x80015DAC, (0x80140200,), stop_at=(0x80071A34,))
+    while regs[31]:
+        assert regs[31] == 0x8006D5A4, hex(regs[31])
+        dst, src, size = regs[4:7]
+        for i in range(size):
+            ram[(dst + i) & 0x1FFFFF] = ram[(src + i) & 0x1FFFFF]
+        regs[2] = dst
+        regs = execute(ram, regs[31], stop_at=(0x80071A34,),
+                       initial_regs=dict(enumerate(regs)))
+    return regs[2]
+
+
+def fingerprint(ram):
+    h = 14695981039346656037
+    for address, size in RANGES:
+        for b in ram[address:address + size]:
+            h = ((h ^ b) * 1099511628211) & 0xFFFFFFFFFFFFFFFF
+    return h
+
+
+def main():
+    exe = (ROOT / 'build/extracted/disc1/SLUS_006.62').read_bytes()
+    assert hashlib.sha1(exe).hexdigest() == '452fb033f2eaa4b18aa20a5bca60b8125af3a37b'
+    common = None
+    patches, rows = [], []
+    for key, value, queue, block in cases():
+        ram = fixture(exe, key, value, queue, block)
+        seed = {a + i: struct.unpack_from('<I', ram, a + i)[0]
+                for a, n in RANGES for i in range(0, n, 4)}
+        if common is None:
+            common = {a: v for a, v in seed.items() if v}
+        first = len(patches)
+        patches.extend((a, v) for a, v in seed.items() if v != common.get(a, 0))
+        result = original(ram)
+        assert result == (0 if key in (401, 402) and value == 8 else 1)
+        if result == 0:
+            assert struct.unpack_from('<I', ram, 0x9CE00)[0] == 0x801D1214
+            assert struct.unpack_from('<I', ram, 0x180010)[0] == 1
+            assert struct.unpack_from('<I', ram, 0x140254)[0] == 0xDEADBEEF
+        if key == 301:
+            assert struct.unpack_from('<3I', ram, 0xBCD80) == (0x21, value & 65535, value & 0xFFFFFF)
+        if key == 303:
+            assert struct.unpack_from('<5I', ram, 0xBCD80) == (0xA1, value & 65535, value & 0xFFFFFF, (value << 1) & 255, value & 127)
+        if key == 405:
+            assert ram[0xB0CEA] == 1
+        if key == 409:
+            assert ram[0xB0DBE] == value & 255
+            assert ram[0x170000:0x170004] == bytes((3, value & 255, 0, 32))
+        rows.append((first, len(patches), result, fingerprint(ram)))
+    lines = ['/* Original EA301/303/401/402/405/409, generated by pe_day2_audio_dispatch_oracle.py. */']
+    for name, values in (('ranges', RANGES), ('common', sorted(common.items())), ('patches', patches)):
+        lines.append(f'static const uint32_t D2AD_{name}[][2]={{')
+        lines.extend(f'{{0x{a:X}u,0x{v:X}u}},' for a, v in values)
+        lines.append('};')
+    lines.append('static const struct { unsigned first,end,result; uint64_t hash; } D2AD_cases[]={')
+    lines.extend(f'{{{a},{b},{r},UINT64_C(0x{h:016X})}},' for a, b, r, h in rows)
+    lines.append('};')
+    output = '\n'.join(lines) + '\n'
+    path = ROOT / 'pc_port/tests/retail_day2_audio_dispatch_cases.h'
+    if '--check' in sys.argv:
+        assert path.read_text() == output
+    else:
+        path.write_text(output)
+    print(f'PASS {len(rows)} original audio-dispatch graphs (BIOS memcpy contract; RAM CD destinations)')
+
+
+if __name__ == '__main__':
+    main()

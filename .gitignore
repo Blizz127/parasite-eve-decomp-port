@@ -1,0 +1,169 @@
+# Game images / copyrighted input
+*.bin
+*.cue
+*.iso
+*.img
+*.img.zip
+*.ccd
+*.sub
+*.chd
+rom/image/*
+!rom/image/.gitkeep
+
+# Local editor / agent rule files dropped in the tree by mistake
+decomp.mdc
+
+# Extracted game data
+assets/*
+!assets/.gitkeep
+
+# Build/generated output
+build/
+build-san/
+!tools/build/
+!tools/build/*.py
+asm/
+linkers/
+expected/
+.splache
+# splat's auto-generated symbol/function lists (written to repo root)
+undefined_funcs_auto.txt
+undefined_syms_auto.txt
+*.o
+*.elf
+*.map
+*.ninja
+build.ninja
+rules.ninja
+compile_commands.json
+
+# Local tooling/cache
+__pycache__/
+*.pyc
+.venv/
+.env
+.DS_Store
+
+# splat boilerplate copied into include/ on split (keep include/.gitkeep)
+include/*.inc
+include/*.h
+
+# Tree-local rootless mipsel-linux-gnu toolchain (scripts/setup_mipsel_host.sh):
+# downloaded/unpacked Debian .debs + shims; never tracked.
+tools/mipsel-host/
+
+# Era compiler toolchain (fetched by scripts/setup_era.sh) — ignore everything,
+# EXCEPT the maspsx package file(s) that carry local patches. Git cannot
+# re-include files inside an ignored directory, so this is written as
+# per-level negations. setup_era.sh re-clones upstream AROUND the tracked file.
+tools/era/*
+!tools/era/maspsx/
+tools/era/maspsx/*
+!tools/era/maspsx/maspsx/
+tools/era/maspsx/maspsx/*
+!tools/era/maspsx/maspsx/__init__.py
+!tools/era/maspsx/tests/
+tools/era/maspsx/tests/*
+!tools/era/maspsx/tests/test_fill_store_delay_slot.py
+!tools/era/maspsx/tests/test_fill_epilogue_delay_slot.py
+!tools/era/maspsx/tests/test_spill_before_symbol_load.py
+!tools/era/maspsx/tests/test_sink_return_zero_into_flag_delay.py
+!tools/era/maspsx/tests/test_sink_zero_store_into_beqz.py
+!tools/era/maspsx/tests/test_unaligned_word_copy_return_temp.py
+!tools/era/maspsx/tests/test_drop_unused_var8.py
+!tools/era/maspsx/tests/test_swap_s2_s1_save_pairs.py
+!tools/era/maspsx/tests/test_load_before_stack_half.py
+!tools/era/maspsx/tests/test_bnez_postdec_from_minus_one.py
+!tools/era/maspsx/tests/test_beqz_sym_store_delay.py
+!tools/era/maspsx/tests/test_beqz_sym_store_delay_any.py
+!tools/era/maspsx/tests/test_numeric_load_aspsx.py
+!tools/era/maspsx/tests/test_cdk_split_dispatch.py
+!tools/era/maspsx/tests/test_frame48_s5_after_s2.py
+!tools/era/maspsx/tests/test_sink_reg_sw_into_bnez.py
+!tools/era/maspsx/tests/test_three_word_symbol_store.py
+!tools/era/maspsx/tests/test_dispatch_fold.py
+!tools/era/maspsx/tests/test_dispatch_fold_multi.py
+!tools/era/maspsx/tests/test_fill_jump_stack_store.py
+!tools/era/maspsx/tests/test_fill_jump_symbol_store.py
+!tools/era/maspsx/tests/test_drop_target_dup_li.py
+!tools/era/maspsx/tests/test_return_via_epilogue_jump.py
+!tools/era/maspsx/tests/test_load_delay_call_slot_store.py
+!tools/era/maspsx/tests/test_load_delay_nop_before_label.py
+!tools/era/maspsx/tests/test_unfill_epilogue_delay_slot.py
+!tools/era/maspsx/tests/test_div_no_reuse_nop.py
+!tools/era/maspsx/tests/test_la_absolute_small_data.py
+!tools/era/maspsx/tests/test_gp_rel.py
+!tools/era/maspsx/tests/test_dispatch_fold_la.py
+!tools/era/maspsx/tests/test_fill_branch_split_li.py
+!tools/era/maspsx/tests/test_rodata_fold.py
+!tools/era/maspsx/tests/test_load_delay_nop_before_loop_label.py
+!tools/era/maspsx/tests/test_reorder_fill_calls.py
+!tools/era/maspsx/tests/test_fill_call_volatile_store.py
+!tools/era/maspsx/tests/test_symbol_load_dest_temp.py
+!tools/era/maspsx/tests/test_symbol_at_temp.py
+!tools/era/maspsx/tests/test_lo_store_passthrough.py
+!tools/era/maspsx/tests/test_fill_branch_macro_split.py
+!tools/era/maspsx/tests/test_addu_neg1_beq_delay.py
+!tools/era/maspsx/tests/test_div_delay_reuse_v0.py
+!tools/era/maspsx/tests/test_drop_jump_to_epilogue.py
+!tools/era/maspsx/tests/test_sltu_a0_lt_a2_dest_v1.py
+!tools/era/maspsx/tests/test_dup_half_shift.py
+!tools/era/maspsx/tests/test_mult_mflo_to_multu.py
+!tools/era/maspsx/tests/test_mflo_before_mfhi.py
+!tools/era/maspsx/tests/test_fill_branch_delay_slot.py
+!tools/era/maspsx/tests/test_extern_gp_load_delay.py
+!tools/era/maspsx/tests/test_fill_call_delay_slot.py
+!tools/era/maspsx/tests/test_narrow_shifted_word_load.py
+!tools/era/maspsx/tests/test_hoist_block_li.py
+!tools/era/maspsx/tests/test_narrow_shifted_reg_load.py
+!tools/era/maspsx/tests/test_fill_jump_reg_store.py
+!tools/era/maspsx/tests/test_hoist_block_li_tail1.py
+!tools/era/maspsx/tests/test_ulw_load_delay_nop.py
+!tools/era/maspsx/tests/test_shift_count_const.py
+!tools/era/maspsx/tests/test_swap_s1_s2_save_pairs_rev.py
+!tools/era/maspsx/tests/test_symbol_pointer_load_li_after.py
+!tools/era/maspsx/tests/test_branch_steal_jump_slot.py
+!tools/era/maspsx/tests/test_fill_branch_tested_li_void.py
+!tools/era/maspsx/tests/test_sink_volatile_stack_load.py
+!tools/era/maspsx/tests/test_branch_steal_target_insn.py
+!tools/era/maspsx/tests/test_fill_jump_preceding_move.py
+!tools/era/maspsx/tests/test_load_delay_nop_before_any_label.py
+build-port/
+pc_port/build/
+pc_port/build-san/
+pc_port/build-*/
+
+# Local disc pointer used by native battle oracles (path only; never the BIN)
+local/pe_disc1.path
+
+# Agent scratch / local verify trees (leaves lane)
+.claude/
+.mimocode/
+/*.csv
+then
+pe-decomp-main-verify/
+
+# live inspection dumps (RAM/RGB snapshots)
+local/live/
+
+# Generated decomp-derived port TUs (tools/analysis/gen_decomp_ports.py)
+pc_port/game/decomp/
+# Generated overlay-derived TUs + guest-code registry (tools/analysis/gen_overlay_ports.py)
+pc_port/game/decomp_ovl/
+
+# PsyCross (OpenDriver2, MIT) — fetched by scripts/fetch_psycross.sh, never committed
+pc_port/third_party/psycross/
+
+# Game frames / audio are retail data: never under docs/ (retail_data_guard.py
+# media rule; keep screenshots under build/). Allowlisted exceptions: git add -f.
+docs/**/*.png
+docs/**/*.jpg
+docs/**/*.jpeg
+docs/**/*.gif
+docs/**/*.bmp
+docs/**/*.webp
+docs/**/*.wav
+docs/**/*.mp3
+docs/**/*.ogg
+docs/**/*.flac
+docs/**/*.mp4

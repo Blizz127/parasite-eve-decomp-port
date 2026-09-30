@@ -1,0 +1,114 @@
+#!/usr/bin/env python3
+"""Original battle menu completion, input and ready Triangle call graphs."""
+import hashlib
+import struct
+import sys
+from pe_battle_hud_oracle import ROOT,execute
+from pe_inventory_use_oracle import fixture as use_fixture,RANGES as USE_RANGES
+from pe_command_input_oracle import fixture as command_fixture
+from pe_scripted_exit_oracle import words
+
+RANGES=USE_RANGES+((0xBE830,360),(0x9E000,0x68),(0xBCD80,20),(0xB8628,36),
+                  (0x170000,0x8000),(0xBCEA8,224))
+ENTRIES=(0x80026824,0x80025EE8,0x80029A84)
+CASES=[]
+def case(entry=0,**kw):
+    if entry==1:kw.setdefault('mode',0)
+    CASES.append(dict(entry=entry,**kw))
+for mode in (-128,-2,-1,0,1,2,3,127,128,255,256,257):case(mode=mode)
+for command in (-32768,-2,-1,0,1,3,9,386,*range(387,411),1000):case(command=command)
+for command in (407,408):
+    for battle in (0,1):case(command=command,battle=battle)
+for targets in (1,2,3):
+    for actions in (0,1,2,255):case(command=406,targets=targets,actions=actions)
+for panel in (4,5,6,7):
+    for event in (0,0x10,0x40,0x200,0x400,0x600):case(mode=2,panel=panel,event=event)
+for mode in (0,1,2):
+    for actions in (0,1,2):
+        for event in (0,0x80,0x400,0x2000):case(1,mode=mode,actions=actions,event=event)
+for mode in (0,1,2):
+    for command in (-1,0,9,393,407,409):case(1,mode=mode,command=command)
+for event in (0x80,0x480,0x280,0x2000,0x2200,0x2400):
+    for remaining in (1,3):
+        for existing in (0,1):case(1,event=event,remaining=remaining,existing=existing)
+for event in (0,0x80,0x200,0x280):
+    for at in (8999,9000):
+        for flags in (0,0x2000):case(2,event=event,at=at,flags=flags)
+for event in (0x80,0x200):
+    for queued in (0,1):case(2,event=event,queued=queued,targets=0)
+
+
+def fixture(exe,c):
+    r,s,_=use_fixture(exe,dict(entry=0,battle=c.get('battle',1)))
+    def put(a,b):a&=0x1FFFFF;r[a:a+len(b)]=b;s[a:a+len(b)]=b
+    def sw(a,v):put(a,struct.pack('<I',v&0xFFFFFFFF))
+    def sh(a,v):put(a,struct.pack('<H',v&65535))
+    def sb(a,v):put(a,bytes((v&255,)))
+    cr=command_fixture(exe,2)
+    for a,n in ((0x141000,0x7000),(0xB0DF8,4),(0xBCFA4,4),(0xBCF94,4),
+                (0x9CDD0,8),(0xB0E58,8),(0x10DE4,84),(0x966EC,4)):
+        put(a,cr[a:a+n])
+    execute(r,0x80062F9C)
+    # Command entry scans the real, allocated effect pools. Use dormant slots;
+    # a null pool is an invalid fixture even though the PSX can read RAM zero.
+    sw(0x942E4,0x80170000);sw(0x942E8,0x80177000);sw(0x942E0,0x80178000)
+    put(0x170000,bytes(0x8300))
+    for i in range(11):
+        sw(0x170000+i*0xA0C,0xFFFFFF00);sw(0x177000+i*0x10C,0xFFFFFF00)
+    for i in range(3):
+        sw(0x9E000+i*12,0x80141000+i*0x300 if i<c.get('targets',3) else 0)
+        sw(0x9E004+i*12,150+i*100)
+    sw(0x9D278,0x8015C100);sw(0x9D254,0x8015C000);sw(0x15C000,0x8015C100)
+    sh(0x15C110,c.get('at',9000));sw(0x15C14C,c.get('flags',0));sb(0x15C00E,4)
+    sh(0x15D102,200);sh(0x15D106,1);sw(0x15D10C,0x100006);sw(0x15D110,0x23)
+    sb(0x9D1DC,c.get('remaining',3));sb(0x9D2D8,c.get('actions',2));sb(0x9D1F0,c.get('mode',1))
+    sb(0x9D2B0,c.get('targets',3));sb(0x9D2A0,c.get('targets',3));sb(0x9D288,1)
+    sw(0x9D250,0);sw(0x9CDDC,0);sw(0x9D28C,0);sw(0x9D290,1);sw(0x9D20C,0)
+    sw(0x9D1F4,c.get('event',0));sh(0x9D2A4,c.get('command',9));sb(0x9CE40,c.get('panel',4))
+    sh(0x9CE50,393);sb(0x9CE44,0);sb(0x9CE3C,c.get('queued',0));sw(0x9D014,0x800A1AA0)
+    for i in range(4):
+        sw(0xBE830+i*8,0x8015C000);sh(0xBE834+i*8,9);sh(0xBE836+i*8,1)
+    sw(0x9D0E8,0);sw(0x9D0EC,0);sw(0x9D26C,0)
+    if c.get('existing'):execute(r,0x800438EC)
+    args=(c.get('mode',1),) if c['entry']==0 else ()
+    for a,n in RANGES:s[a:a+n]=r[a:a+n]
+    return r,s,tuple(v&0xFFFFFFFF for v in args)
+
+def run(r,c,args):
+    if c['entry']==2:
+        return execute(r,0x80029A84,stop_at=(0x8002A470,),initial_regs={17:1},
+            initial_cop_control={26:256},instruction_budget=900000)
+    return execute(r,ENTRIES[c['entry']],args,initial_cop_control={26:256},instruction_budget=900000)
+
+def fingerprint(r):
+    h=14695981039346656037
+    for a,n in RANGES:
+        for b in r[a:a+n]:h=((h^b)*1099511628211)&0xFFFFFFFFFFFFFFFF
+    return h
+
+def main():
+    exe=(ROOT/'build/disc1.candidate.exe').read_bytes()
+    assert hashlib.sha1(exe).hexdigest()=='452fb033f2eaa4b18aa20a5bca60b8125af3a37b'
+    _,s,_=fixture(exe,CASES[0]);base=words(s);common=[(i*4,v) for i,v in enumerate(base) if v]
+    patches=[];cases=[]
+    for k,c in enumerate(CASES):
+        r,s,args=fixture(exe,c);first=len(patches)
+        patches.extend((i*4,v) for i,(v,b) in enumerate(zip(words(s),base)) if v!=b)
+        regs=run(r,c,args)
+        result=regs[17] if c['entry']==2 else regs[2];h=fingerprint(r)
+        cases.append((c['entry'],first,len(patches),args,result,h))
+        print(k,c,hex(result),hex(h),flush=True)
+        if '--dump' in sys.argv:(ROOT/f'pc_port/build/battle-items-oracle-{k}.bin').write_bytes(r)
+    out=['/* Generated by pe_battle_items_oracle.py --write-header. */']
+    for name,rows in (('ranges',RANGES),('common',common),('patches',patches)):
+        out.append(f'static const uint32_t INV13_battle_items_{name}[][2]={{')
+        out.extend(f'    {{0x{a:X}u,0x{b:X}u}},' for a,b in rows);out.append('};')
+    out.append('static const struct { unsigned entry,first,end; uint32_t args[2],result; uint64_t hash; } INV13_battle_items_cases[]={')
+    for e,a,b,args,result,h in cases:
+        params=','.join(f'0x{x:08X}u' for x in args) or '0'
+        out.append(f'    {{{e},{a},{b},{{{params}}},0x{result:08X}u,UINT64_C(0x{h:016X})}},')
+    out.append('};')
+    if '--write-header' in sys.argv:(ROOT/'pc_port/tests/retail_battle_items_cases.h').write_text('\n'.join(out)+'\n')
+    print(f'PASS: {len(cases)} original battle menu results, command input and ready Triangle entry cases')
+
+if __name__=='__main__':main()

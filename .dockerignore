@@ -1,0 +1,18 @@
+# The compiler image installs packages only; it never needs repository data.
+# Keep legal retail inputs and generated reverse-engineering artifacts out of
+# the Docker build context even on the private self-hosted runner.
+.git
+.github
+.venv
+asm
+assets
+build
+build-san
+linkers
+pc_port/build
+pc_port/build-san
+rom
+tools/era
+*.bin
+*.cue
+*.iso

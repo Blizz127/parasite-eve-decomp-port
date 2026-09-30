@@ -1,0 +1,109 @@
+#!/usr/bin/env python3
+"""Original list navigation and queued name-input dispatch, complete call graphs."""
+import hashlib
+import struct
+import sys
+from pe_battle_hud_oracle import ROOT,execute
+from pe_name_input_oracle import fixture as name_fixture,RANGES,fingerprint
+from pe_scripted_exit_oracle import words
+
+ENTRIES=(0x80063E0C,0x800650E0,0x8005E30C)
+CASES=[]
+def case(entry=0,**kw):CASES.append(dict(entry=entry,**kw))
+for event in (0,4,8,32,64,0x800,0x1000,0x2000,0x4000,0x8000,0x10000,0x25000):
+    for column,row in ((0,0),(0,1),(1,4),(4,5),(6,8)):
+        case(event=event,column=column,row=row)
+for flags in (0,1,2,3,4,8,12,16,31,32,64,255):
+    for event in (0x1000,0x4000,0x8000,0x2000):case(event=event,flags=flags,row=0,column=0)
+for row,top,scroll in ((0,3,0),(4,3,0),(8,3,0),(0,3,-8),(8,3,8)):
+    for event in (0x1000,0x4000):case(event=event,row=row,top=top,scroll=scroll)
+for row,column in ((8,0),(8,1),(7,1),(7,2)):
+    for event in (0x4000,0x2000,8):case(event=event,row=row,column=column,partial=1,pages=1)
+for side in (120,124):
+    for row in (0,3,8):
+        for partial in (0,1):case(event=0x8000 if side==120 else 0x2000,
+                                  column=0 if side==120 else 6,row=row,neighbor=side,partial=partial)
+for saved in ((0,0),(1,4),(0,8)):
+    case(event=64,saved=saved,top=3)
+    for side in (120,124):case(event=64,neighbor=side,other_saved=saved,top=3)
+for event in (0,4,8,32,0x1000,0x4000,0x5000,0x1004,0x4008):
+    for top,scroll in ((0,0),(3,0),(6,0),(3,8)):
+        case(1,event=event,top=top,scroll=scroll)
+for event in (4,8,32):
+    for row in (0,4,8):case(event=event,row=row,pages=1)
+for pad in (8,0x20000000,0x20000008):case(event=0x4000,armed=1,pad=pad)
+for event_type in (0,1,2,3,4,5,0xFFFFFFFF):
+    for event in (0,32,64,0x800,0x2000,0x1000):case(2,queued_type=event_type,event=event)
+case(2,queued_type=0,event=0,second_type=4,second_event=32)
+case(2,queued_type=4,event=32,second_type=1,second_event=0x2000)
+for focus in (0,1):case(2,no_queue=1,focus=focus,armed=1,pad=0)
+for pads in ((0,16,0,0x20000000,0),(0,4,0,4,0),
+             (0,0x40000000,0,0x40000000,0),
+             (0,8,8,8,8,8,8,8,8,8,8,0)):
+    case(2,no_queue=1,pads=pads)
+
+def fixture(exe,c):
+    r,s,_=name_fixture(exe,dict(c,entry=0))
+    def put(a,b):a&=0x1FFFFF;r[a:a+len(b)]=b;s[a:a+len(b)]=b
+    def sw(a,v):put(a,struct.pack('<I',v&0xFFFFFFFF))
+    def word(a):return struct.unpack_from('<I',r,a&0x1FFFFF)[0]
+    node=word(0x9D15C)
+    if c['entry']<2:
+        for off,value in ((52,7),(56,3),(84,7),(88,9),(60,18),(64,18),
+                          (68,c.get('column',0)),(72,c.get('row',0)),(76,-1),(80,-1),
+                          (92,c.get('top',0)),(96,c.get('scroll',0)),
+                          (100,c.get('flags',0)),(104,c.get('partial',0)),(120,0),(124,0),(128,0)):
+            sw(node+off,value)
+        if 'saved' in c:
+            sw(node+76,c['saved'][0]);sw(node+80,c['saved'][1])
+        other=0x80145100;scroll=0x80145000
+        if c.get('neighbor'):
+            put(other,r[(node&0x1FFFFF):(node&0x1FFFFF)+144])
+            sw(other+92,2);sw(other+68,-1);sw(other+72,0);sw(node+c['neighbor'],other)
+            if 'other_saved' in c:
+                sw(other+76,c['other_saved'][0]);sw(other+80,c['other_saved'][1])
+        sw(scroll+52,node);sw(scroll+64,c.get('flags',0))
+        if c.get('pages'):sw(node+128,scroll)
+        args=(node if c['entry']==0 else scroll,c.get('event',0))
+    else:
+        sw(0x9D0EC,0 if c.get('no_queue') else 1)
+        if not c.get('focus',1):sw(0x9D15C,0)
+        if not c.get('no_queue'):
+            q=0x80140500;second='second_type' in c
+            sw(q,q+12 if second else 0);sw(q+4,c.get('queued_type',1));sw(q+8,c.get('event',0))
+            if second:sw(q+12,0);sw(q+16,c['second_type']);sw(q+20,c.get('second_event',0))
+            sw(0x9D0E0,q);sw(0x9D0E4,q+12 if second else q)
+        args=()
+    return r,s,args
+
+def main():
+    exe=(ROOT/'build/disc1.candidate.exe').read_bytes()
+    assert hashlib.sha1(exe).hexdigest()=='452fb033f2eaa4b18aa20a5bca60b8125af3a37b'
+    _,s,_=fixture(exe,CASES[0]);base=words(s);common=[(i*4,v) for i,v in enumerate(base) if v]
+    patches=[];cases=[];steps=[]
+    for k,c in enumerate(CASES):
+        r,s,args=fixture(exe,c);first=len(patches);first_step=len(steps)
+        patches.extend((i*4,v) for i,(v,b) in enumerate(zip(words(s),base)) if v!=b)
+        if 'pads' in c:
+            for pad in c['pads']:
+                struct.pack_into('<I',r,0x9D26C,pad);execute(r,ENTRIES[c['entry']],args);steps.append(pad)
+            result=0
+        else:
+            regs=execute(r,ENTRIES[c['entry']],args);result=0 if c['entry']==2 else regs[2]
+        cases.append((c['entry'],first,len(patches),args,result,fingerprint(r),first_step,len(steps)))
+        print(k,c,hex(result),hex(fingerprint(r)),flush=True)
+        if '--dump' in sys.argv:(ROOT/f'pc_port/build/menu-input-oracle-{k}.bin').write_bytes(r)
+    out=['/* Generated by pe_menu_input_oracle.py --write-header. */']
+    for name,rows in (('ranges',RANGES),('common',common),('patches',patches)):
+        out.append(f'static const uint32_t NAM4_menu_input_{name}[][2]={{')
+        out.extend(f'    {{0x{a:X}u,0x{b:X}u}},' for a,b in rows);out.append('};')
+    out.append('static const uint32_t NAM4_menu_input_steps[]={'+','.join(f'0x{x:X}u' for x in steps)+'};')
+    out.append('static const struct { unsigned entry,first,end; uint32_t args[2],result; uint64_t hash; unsigned first_step,end_step; } NAM4_menu_input_cases[]={')
+    for e,a,b,args,v,h,first,end in cases:
+        params=','.join(f'0x{x:08X}u' for x in args) or '0'
+        out.append(f'    {{{e},{a},{b},{{{params}}},0x{v:08X}u,UINT64_C(0x{h:016X}),{first},{end}}},')
+    out.append('};')
+    if '--write-header' in sys.argv:(ROOT/'pc_port/tests/retail_menu_input_cases.h').write_text('\n'.join(out)+'\n')
+    print(f'PASS: {len(cases)} complete original menu input cases')
+
+if __name__=='__main__':main()

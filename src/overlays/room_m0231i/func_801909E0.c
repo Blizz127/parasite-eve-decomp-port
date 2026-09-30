@@ -1,0 +1,46 @@
+/* room_m0231i (PE.IMG room m0231i chunk 2, VRAM 0x8018EFE8)
+ * func_801909E0 — blob offset 0x19f8, 0x58 bytes. Profile era_o2_g0 (default).
+ * Masked-body twin of room_m0022i func_80190980; C re-targeted by symbol address
+ * (docs/evidence/room_m0231i-ports-2026-09-23/REPORT.md). */
+
+typedef struct Inner {
+    unsigned char pad[0x18];
+    unsigned char *f18;
+} Inner;
+typedef struct Ctx {
+    Inner *p0;
+    unsigned char pad4[0xA];
+    unsigned char fE;
+    unsigned char padF[7];
+    unsigned short f16;
+    unsigned short pad18;
+    unsigned short f1A;
+} Ctx;
+typedef struct Sub {
+    void (*fn)();
+    int *link;
+} Sub;
+typedef struct Obj {
+    unsigned char state;
+    unsigned char pad1[2];
+    unsigned char f3;
+    int pad4;
+    Ctx *ctx;
+    Sub sub;
+    short f14;
+    signed char f16, f17;
+} Obj;
+int func_801909E0(Obj *o)
+{
+    Sub *s = &o->sub;
+
+    o->state = 4;
+    o->f3 = 0;
+    if (o->f14 != 0 && o->ctx->p0 != 0) {
+        *o->ctx->p0->f18 = 4;
+    }
+    if (s->link != 0) {
+        *s->link = 0;
+    }
+    return 0;
+}

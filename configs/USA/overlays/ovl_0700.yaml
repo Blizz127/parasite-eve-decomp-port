@@ -1,0 +1,117 @@
+# Splat config — Parasite Eve (USA) Disc 1, PE.IMG overlay ovl_0700
+# (map-exit / destination-chooser overlay, image-load range [0x700,0x7B7)).
+#
+# The target blob is extracted locally by `scripts/extract_overlays.sh` into
+# build/extracted/disc1/peimg/ovl_0700.bin (git-ignored) and is NEVER
+# committed. Split via `scripts/split_overlay.sh ovl_0700`; the exact
+# reassembly proof is `scripts/exact_rebuild_overlay.sh ovl_0700`.
+#
+# Verified facts (configs/USA/overlays/manifest.yaml, tools/extract/peimg.py):
+#   size   0x5B800 = 183 sectors x 2048
+#   SHA-1  9f8786a9d6f8b11548a14680d34fc540d8e909de
+#   vram   0x8018EFF0 (EXE dest table D_8001160C[2] = D_80011614)
+#   no PS-X header, no relocations: one fixed-address `code` segment.
+#
+# Geometry (2026-09-22 boundary audit of the extracted blob):
+#   0x0000-0x006C  container header: u32 count (13), 13 x 8-byte entries, then
+#                  a 10-word handler pointer table (0x801920FC ...). Kept as a
+#                  raw `bin` span so reassembly is byte-exact by construction.
+#   0x006C-0xCFD4  .text: first prologue at 0x6C, last `jr $ra` at 0xCFCC plus
+#                  its delay slot (44 framed prologues, 57 `jr $ra`; 157 of the
+#                  186 in-blob `jal` targets land on a prologue at this base).
+#   0xCFD4-0x5B800 zero alignment pad, then data (0x94000000 ...) to the end
+#                  of the blob; no further `jr $ra`. Raw `bin`.
+#
+# Every function in this overlay is named func_<VRAM> and lives, once carved,
+# under src/overlays/ovl_0700/. That directory is the namespace: ovl_03D2 and
+# every room chunk 2 share the 0x8018EFF0 arena, so the same func_801xxxxx
+# name means a DIFFERENT function in another overlay.
+name: Parasite Eve (USA) Disc 1 PE.IMG overlay ovl_0700
+sha1: 9f8786a9d6f8b11548a14680d34fc540d8e909de
+options:
+  platform: psx
+  compiler: GCC
+  basename: ovl_0700
+  # Paths are relative to base_path, which is relative to this file:
+  # configs/USA/overlays/ -> repo root.
+  base_path: ../../..
+  target_path: build/extracted/disc1/peimg/ovl_0700.bin
+  asm_path: asm/overlays/ovl_0700
+  src_path: src/overlays/ovl_0700
+  asset_path: assets/overlays/ovl_0700
+  ld_script_path: linkers/overlays/ovl_0700.ld
+  # Keep every splat side output inside the overlay's own ignored directory so
+  # an overlay split never overwrites the EXE's undefined_*_auto.txt / .splache.
+  cache_path: asm/overlays/ovl_0700/.splache
+  undefined_funcs_auto_path: asm/overlays/ovl_0700/undefined_funcs_auto.txt
+  undefined_syms_auto_path: asm/overlays/ovl_0700/undefined_syms_auto.txt
+  find_file_boundaries: no
+segments:
+  - name: main
+    type: code
+    start: 0x0
+    vram: 0x8018EFF0
+    subsegments:
+      - [0x0, bin]
+      # 10-entry switch table jtbl_8018F034 (pool for func_80192030's
+      # MASPSX_DISPATCH_FOLD; the leaf's own cc1 table is stripped).
+      - [0x44, rodata]
+      - [0x6C, c, func_8018F05C]
+      - [0x354, asm]
+      - [0x56C, c, func_8018F55C]
+      - [0x93C, asm]
+      - [0x1004, c, func_8018FFF4]
+      - [0x1134, c, func_80190124]
+      - [0x1264, c, func_80190254]
+      - [0x14C0, c, func_801904B0]
+      - [0x19A8, c, func_80190998]
+      - [0x1AFC, c, func_80190AEC]
+      - [0x1B88, c, func_80190B78]
+      - [0x1C2C, c, func_80190C1C]
+      - [0x1D18, c, func_80190D08]
+      - [0x1D4C, c, func_80190D3C]
+      - [0x1E14, asm]
+      - [0x2590, c, func_80191580]
+      - [0x25EC, c, func_801915DC]
+      - [0x2688, c, func_80191678]
+      # First overlay C leaf: func_80191740 — VRAM 0x80191740, blob 0x2750,
+      # size 0x14 (5 words): `D_8019CC50 = 200` as a 16-bit store. Era
+      # -O2 -G0 (default profile), LINK_EXACT at the overlay VMA via
+      # `tools/analysis/era_link_check.py --target ovl_0700 ...`.
+      - [0x2750, c, func_80191740]
+      - [0x2764, c, func_80191754]
+      - [0x27CC, c, func_801917BC]
+      - [0x2844, c, func_80191834]
+      - [0x2864, c, func_80191854]
+      - [0x2CA4, c, func_80191C94]
+      - [0x2DF8, c, func_80191DE8]
+      - [0x2E40, c, func_80191E30]
+      - [0x2F0C, c, func_80191EFC]
+      - [0x2FF8, c, func_80191FE8]
+      - [0x301C, c, func_8019200C]
+      - [0x3040, c, func_80192030]
+      - [0x335C, c, func_8019234C]
+      - [0x3750, c, func_80192740]
+      - [0x3810, asm]
+      - [0x4488, c, func_80193478]
+      - [0x48F8, c, func_801938E8]
+      - [0x49C0, c, func_801939B0]
+      - [0x4AC0, c, func_80193AB0]
+      - [0x4B6C, asm]
+      - [0x5118, c, func_80194108]
+      - [0x51B4, c, func_801941A4]
+      - [0x530C, asm]
+      - [0x68E4, c, func_801958D4]
+      - [0x69A4, c, func_80195994]
+      - [0x6BD8, c, func_80195BC8]
+      - [0x6D4C, c, func_80195D3C]
+      - [0x6E5C, c, func_80195E4C]
+      - [0x6F7C, c, func_80195F6C]
+      - [0x74A8, asm]
+      - [0xA5AC, c, func_8019959C]
+      - [0xA5CC, asm]
+      - [0xCD88, c, func_8019BD78]
+      - [0xCF60, c, func_8019BF50]
+      - [0xCF9C, c, func_8019BF8C]
+      - [0xCFD4, bin]
+  - [0x5B800]

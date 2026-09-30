@@ -1,0 +1,52 @@
+# Splat config — Parasite Eve (USA) Disc 1, PE.IMG room package m0269i, chunk 2.
+#
+# Blob: `python3 tools/extract/peimg.py room m0269i` ->
+# build/extracted/disc1/peimg/room_m0269i_c2.bin (git-ignored, NEVER committed).
+# Split `scripts/split_overlay.sh room_m0269i`; gate `scripts/exact_rebuild_overlay.sh room_m0269i`.
+#
+# Facts (peimg.py room m0269i, 2026-09-23): slot 268, PE.IMG sectors
+# [0x10D32,0x10DB6), size 0x42000, vram 0x8018EFE8, SHA-1 06c90576dba22ef80781421d5e9c0e802c0a339a.
+# Geometry (room_census text-window rule, build/fanout/overlays2/roomscan.py):
+#   0x0-0x60  header + switch jump tables (bin); 0x60-0x31E0 .text;
+#   0x31E0-0x42000 behaviour tables + room data (bin).
+name: Parasite Eve (USA) Disc 1 PE.IMG room m0269i chunk 2
+sha1: 06c90576dba22ef80781421d5e9c0e802c0a339a
+options:
+  platform: psx
+  compiler: GCC
+  basename: room_m0269i
+  base_path: ../../..
+  target_path: build/extracted/disc1/peimg/room_m0269i_c2.bin
+  asm_path: asm/overlays/room_m0269i
+  src_path: src/overlays/room_m0269i
+  asset_path: assets/overlays/room_m0269i
+  ld_script_path: linkers/overlays/room_m0269i.ld
+  cache_path: asm/overlays/room_m0269i/.splache
+  undefined_funcs_auto_path: asm/overlays/room_m0269i/undefined_funcs_auto.txt
+  undefined_syms_auto_path: asm/overlays/room_m0269i/undefined_syms_auto.txt
+  find_file_boundaries: no
+segments:
+  - name: main
+    type: code
+    start: 0x0
+    vram: 0x8018EFE8
+    subsegments:
+      - [0x0, bin]
+      - [0x60, asm]
+      - [0x78, c, func_8018F060]
+      - [0x9C, c, func_8018F084]
+      - [0x148, c, func_8018F130]
+      - [0x150, c, func_8018F138]
+      - [0x178, c, func_8018F160]
+      - [0x1A4, c, func_8018F18C]
+      - [0x350, c, func_8018F338]
+      - [0x5EC, c, func_8018F5D4]
+      - [0x6D4, c, func_8018F6BC]
+      - [0x810, c, func_8018F7F8]
+      - [0x818, c, func_8018F800]
+      - [0xA7C, asm]
+      - [0x31A4, c, func_8019218C]
+      - [0x31B4, c, func_8019219C]
+      - [0x31C4, c, func_801921AC]
+      - [0x31E0, bin]
+  - [0x42000]

@@ -1,0 +1,167 @@
+# Splat config — Parasite Eve (USA) Disc 1, PE.IMG room package m0273i, chunk 2.
+#
+# Blob: `python3 tools/extract/peimg.py room m0273i` ->
+# build/extracted/disc1/peimg/room_m0273i_c2.bin (git-ignored, NEVER committed).
+# Split `scripts/split_overlay.sh room_m0273i`; gate `scripts/exact_rebuild_overlay.sh room_m0273i`.
+#
+# Facts (peimg.py room m0273i, 2026-09-23): slot 272, PE.IMG sectors
+# [0x1117C,0x1121D), size 0x50800, vram 0x8018EFE8, SHA-1 692fdf1477e29d8eb1e2e6c8a7e1cc8ac51dda3a.
+# Geometry (room_census text-window rule, build/fanout/overlays2/roomscan.py):
+#   0x0-0x1FC  header + switch jump tables (bin); 0x1FC-0xB828 .text;
+#   0xB828-0x50800 behaviour tables + room data (bin).
+name: Parasite Eve (USA) Disc 1 PE.IMG room m0273i chunk 2
+sha1: 692fdf1477e29d8eb1e2e6c8a7e1cc8ac51dda3a
+options:
+  platform: psx
+  compiler: GCC
+  basename: room_m0273i
+  base_path: ../../..
+  target_path: build/extracted/disc1/peimg/room_m0273i_c2.bin
+  asm_path: asm/overlays/room_m0273i
+  src_path: src/overlays/room_m0273i
+  asset_path: assets/overlays/room_m0273i
+  ld_script_path: linkers/overlays/room_m0273i.ld
+  cache_path: asm/overlays/room_m0273i/.splache
+  undefined_funcs_auto_path: asm/overlays/room_m0273i/undefined_funcs_auto.txt
+  undefined_syms_auto_path: asm/overlays/room_m0273i/undefined_syms_auto.txt
+  find_file_boundaries: no
+segments:
+  - name: main
+    type: code
+    start: 0x0
+    vram: 0x8018EFE8
+    subsegments:
+      - [0x0, bin]
+      # header switch jump tables: MASPSX_DISPATCH_FOLD pool
+      - [0xC, rodata]
+      - [0x1FC, asm]
+      - [0x208, c, func_8018F1F0]
+      - [0x2A8, c, func_8018F290]
+      - [0x52C, c, func_8018F514]
+      - [0x534, c, func_8018F51C]
+      - [0x5BC, c, func_8018F5A4]
+      - [0x664, c, func_8018F64C]
+      - [0xBAC, c, func_8018FB94]
+      - [0xC8C, c, func_8018FC74]
+      - [0xECC, c, func_8018FEB4]
+      - [0xF68, c, func_8018FF50]
+      - [0xF70, c, func_8018FF58]
+      - [0xF78, c, func_8018FF60]
+      - [0xFF4, c, func_8018FFDC]
+      - [0x126C, c, func_80190254]
+      - [0x1274, c, func_8019025C]
+      - [0x12FC, c, func_801902E4]
+      - [0x13A4, c, func_8019038C]
+      - [0x1930, c, func_80190918]
+      - [0x19B4, c, func_8019099C]
+      - [0x1A0C, c, func_801909F4]
+      - [0x1A14, c, func_801909FC]
+      - [0x1A1C, c, func_80190A04]
+      - [0x1AB8, c, func_80190AA0]
+      - [0x1D00, c, func_80190CE8]
+      - [0x1D08, c, func_80190CF0]
+      - [0x1D30, c, func_80190D18]
+      - [0x1DA0, c, func_80190D88]
+      - [0x212C, c, func_80191114]
+      - [0x2134, c, func_8019111C]
+      - [0x24D4, c, func_801914BC]
+      - [0x2530, c, func_80191518]
+      - [0x2538, c, func_80191520]
+      - [0x2540, c, func_80191528]
+      - [0x25D0, c, func_801915B8]
+      - [0x2818, c, func_80191800]
+      - [0x2820, c, func_80191808]
+      - [0x2848, c, func_80191830]
+      - [0x28B8, c, func_801918A0]
+      - [0x2D34, c, func_80191D1C]
+      - [0x2D3C, c, func_80191D24]
+      - [0x30C4, c, func_801920AC]
+      - [0x3120, c, func_80192108]
+      - [0x3128, c, func_80192110]
+      - [0x3130, c, func_80192118]
+      - [0x316C, c, func_80192154]
+      - [0x3204, c, func_801921EC]
+      - [0x320C, c, func_801921F4]
+      - [0x3234, c, func_8019221C]
+      - [0x3264, c, func_8019224C]
+      - [0x3378, c, func_80192360]
+      - [0x34F8, c, func_801924E0]
+      - [0x3514, c, func_801924FC]
+      - [0x351C, c, func_80192504]
+      - [0x3524, c, func_8019250C]
+      - [0x35C8, c, func_801925B0]
+      - [0x3620, c, func_80192608]
+      - [0x3628, c, func_80192610]
+      - [0x3650, c, func_80192638]
+      - [0x367C, c, func_80192664]
+      - [0x3850, asm]
+      - [0x3C18, c, func_80192C00]
+      - [0x3D68, c, func_80192D50]
+      - [0x3DA4, c, func_80192D8C]
+      - [0x3E54, c, func_80192E3C]
+      - [0x3E5C, c, func_80192E44]
+      - [0x3E64, c, func_80192E4C]
+      - [0x3E7C, c, func_80192E64]
+      - [0x3F6C, c, func_80192F54]
+      - [0x3F74, c, func_80192F5C]
+      - [0x4100, c, func_801930E8]
+      - [0x4124, c, func_8019310C]
+      - [0x412C, c, func_80193114]
+      - [0x4224, c, func_8019320C]
+      - [0x43B8, c, func_801933A0]
+      - [0x4554, c, func_8019353C]
+      - [0x4708, c, func_801936F0]
+      - [0x4888, c, func_80193870]
+      - [0x49CC, c, func_801939B4]
+      - [0x4B74, c, func_80193B5C]
+      - [0x4CD0, c, func_80193CB8]
+      - [0x4F48, c, func_80193F30]
+      - [0x5140, c, func_80194128]
+      - [0x529C, c, func_80194284]
+      - [0x5488, c, func_80194470]
+      - [0x55C0, c, func_801945A8]
+      - [0x57E4, c, func_801947CC]
+      - [0x5A04, c, func_801949EC]
+      - [0x5B74, c, func_80194B5C]
+      - [0x5D6C, c, func_80194D54]
+      - [0x5E84, asm]
+      - [0x699C, c, func_80195984]
+      - [0x6BE8, c, func_80195BD0]
+      - [0x6E28, c, func_80195E10]
+      - [0x6F90, c, func_80195F78]
+      - [0x710C, c, func_801960F4]
+      - [0x7360, asm]
+      - [0x79F0, c, func_801969D8]
+      - [0x7F44, c, func_80196F2C]
+      - [0x8084, c, func_8019706C]
+      - [0x8248, c, func_80197230]
+      - [0x8378, c, func_80197360]
+      - [0x84F4, c, func_801974DC]
+      - [0x8660, c, func_80197648]
+      - [0x8810, c, func_801977F8]
+      - [0x8A60, c, func_80197A48]
+      - [0x8BD4, asm]
+      - [0x9078, c, func_80198060]
+      - [0x91BC, asm]
+      - [0x9B34, c, func_80198B1C]
+      - [0x9CEC, c, func_80198CD4]
+      - [0x9EAC, asm]
+      - [0xA408, c, func_801993F0]
+      - [0xA580, c, func_80199568]
+      - [0xA6DC, c, func_801996C4]
+      - [0xA968, c, func_80199950]
+      - [0xAAA8, c, func_80199A90]
+      - [0xAC68, asm]
+      - [0xAF88, c, func_80199F70]
+      - [0xAF9C, c, func_80199F84]
+      - [0xB080, c, func_8019A068]
+      - [0xB1B8, c, func_8019A1A0]
+      - [0xB2A8, c, func_8019A290]
+      - [0xB3B0, c, func_8019A398]
+      - [0xB4E4, c, func_8019A4CC]
+      - [0xB5EC, c, func_8019A5D4]
+      - [0xB640, c, func_8019A628]
+      - [0xB724, c, func_8019A70C]
+      - [0xB738, c, func_8019A720]
+      - [0xB828, bin]
+  - [0x50800]

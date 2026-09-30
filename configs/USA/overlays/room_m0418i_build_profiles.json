@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "_comment": "Build profiles for the room_m0418i room target. Profile DEFINITIONS are inherited from the EXE manifest via profiles_from; only the ASSIGNMENTS are owned here.",
+  "profiles_from": "configs/USA/disc1_build_profiles.json",
+  "default_profile": "era_o2_g0",
+  "assignments": {
+    "room_m0418i_dispatch_8018F068": [
+      "func_80195400"
+    ],
+    "room_m0418i_dispatch_8018F0E8": [
+      "func_8019614C"
+    ],
+    "room_m0418i_dispatch_8018F170": [
+      "func_80196C10"
+    ],
+    "room_m0418i_dispatch_8018F1D8": [
+      "func_80197728"
+    ],
+    "era_o2_g0_expand_div": [
+      "func_801964FC",
+      "func_80196EF8",
+      "func_8019728C",
+      "func_80197E94",
+      "func_801957BC",
+      "func_80197A10"
+    ]
+  },
+  "local_profiles": {
+    "room_m0418i_dispatch_8018F068": {
+      "toolchain": "era",
+      "flags": [
+        "-O2",
+        "-G0"
+      ],
+      "environment": {
+        "MASPSX_THREE_WORD_SYMBOL_STORE": "1",
+        "MASPSX_DISPATCH_FOLD": "jtbl_8018F068"
+      }
+    },
+    "room_m0418i_dispatch_8018F0E8": {
+      "toolchain": "era",
+      "flags": [
+        "-O2",
+        "-G0"
+      ],
+      "environment": {
+        "MASPSX_THREE_WORD_SYMBOL_STORE": "1",
+        "MASPSX_DISPATCH_FOLD": "jtbl_8018F0E8"
+      }
+    },
+    "room_m0418i_dispatch_8018F170": {
+      "toolchain": "era",
+      "flags": [
+        "-O2",
+        "-G0"
+      ],
+      "environment": {
+        "MASPSX_THREE_WORD_SYMBOL_STORE": "1",
+        "MASPSX_DISPATCH_FOLD": "jtbl_8018F170"
+      }
+    },
+    "room_m0418i_dispatch_8018F1D8": {
+      "toolchain": "era",
+      "flags": [
+        "-O2",
+        "-G0"
+      ],
+      "environment": {
+        "MASPSX_THREE_WORD_SYMBOL_STORE": "1",
+        "MASPSX_DISPATCH_FOLD": "jtbl_8018F1D8"
+      }
+    }
+  }
+}

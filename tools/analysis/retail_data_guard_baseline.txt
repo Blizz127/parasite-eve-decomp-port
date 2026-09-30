@@ -1,0 +1,6 @@
+# retail_data_guard known debt: <allowed retail bytes>	<tracked file>
+# Files listed here predate the 2026-09-28 "run off the disc" decision and
+# still carry retail bytes.  The guard lets them keep (never grow) that
+# amount; every other file must be clean.  Shrink this list: move the bytes
+# to runtime disc reads and delete the line.  Regenerate only by lead
+# decision: retail_data_guard.py --write-baseline (needs the disc).

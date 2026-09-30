@@ -1,0 +1,118 @@
+#!/usr/bin/env python3
+"""Original inventory help selectors, filtered lists and complete menu drawing.
+
+Memory-card prompts 36..39 retain their separate native boundary and are not
+included here. All other original help selections execute without hooks.
+"""
+import hashlib
+import struct
+import sys
+from pe_battle_hud_oracle import ROOT,execute
+from pe_inventory_draw_oracle import fixture as draw_fixture,RANGES as DRAW_RANGES
+from pe_scripted_exit_oracle import words
+
+RANGES=DRAW_RANGES
+ENTRIES=(0x8005DCEC,0x8005415C,0x80054288,0x800556E8,0x80058E08,0x80057ED8,
+         0x80058BBC,0x80059F08,0x80055610,0x8004C608,0x80062FEC)
+CASES=[]
+def case(entry=9,**kw):CASES.append(dict(entry=entry,**kw))
+for index in (-1,0,1,259,260):case(0,index=index)
+for entry in (1,2,3,4,5,6):
+    for index in (-1,0,1,3,4):case(entry,index=index)
+for category in (0,1,9,19,21,22,255):case(1,kind=category)
+for item in (-32768,-1,0,1,255,256,383,384,511,512,520,521):case(6,item=item)
+for index in (0,1,2,0xFFFFFFFF):
+    for reuse in (0,1):
+        for alternate in (0,1):case(7,index=index,reuse=reuse,alternate=alternate)
+for bits in (0,1,0x80000,0xFFFFF,0xFFF00000,0xAAAAAAAA,0xFFFFFFFF):case(8,bits=bits)
+for group in range(62):
+    if group not in (36,37,38,39):case(group=group,index=1)
+for battle in (0,1):
+    for enabled in (0,0x1F,0x1EF,0x1FF):
+        for index in (-1,0,4,8):case(group=0,battle=battle,enabled=enabled,index=index)
+for group in (1,51,52):
+    for kind in (1,19,21,22):
+        for selected in (-1,0):case(group=group,kind=kind,selected_item=selected)
+for group in (5,6,11,29,60):
+    for equipment in (0,1):
+        for index in (-1,0,1):case(group=group,equipment=equipment,index=index)
+for group in (7,13,16):
+    for mode in (0,1):case(group=group,mode=mode,reuse=1,alternate=1)
+for profile in (0,1,2):
+    for index in (0,1,2,3):case(group=50,profile=profile,index=index)
+case(focused=0)
+for battle in (0,1):
+    for bank in (0,1):
+        for selected in (0,2):case(10,battle=battle,bank=bank,selected=selected,frame=31)
+for entry in (0,9,10):case(entry,offset=0x3FE0)
+
+def fixture(exe,c):
+    r,s,_=draw_fixture(exe,dict(c,entry=0))
+    def put(a,b):a&=0x1FFFFF;r[a:a+len(b)]=b;s[a:a+len(b)]=b
+    def sw(a,v):put(a,struct.pack('<I',v&0xFFFFFFFF))
+    def sh(a,v):put(a,struct.pack('<H',v&65535))
+    def sb(a,v):put(a,bytes((v&255,)))
+    def word(a):return struct.unpack_from('<I',r,a&0x1FFFFF)[0]
+    def find(kind,id):
+        p=word(0x9D154)
+        while p:
+            if word(p+32)==kind and word(p+36)==id:return p
+            p=word(p)
+        raise AssertionError((kind,id))
+    for a,n in ((0x92258,0xFC),):put(a,exe[a-0x10000+0x800:a-0x10000+0x800+n])
+    node=find(2,0);help_window=find(1,19)
+    if c['entry']==9:
+        sw(node+36,c.get('group',0));sw(node+68,c.get('index',0));sw(node+72,0)
+    sw(0x9D15C,node if c.get('focused',1) else 0)
+    sw(0x9CF8C,c.get('selected_item',-1));sw(0x9CF18,c.get('equipment',1));sw(0x9CF20,0x800C0EAC)
+    sw(0x9CF1C,c.get('mode',0));sw(0x9CEFC,c.get('mode',0));sw(0x9CF0C,c.get('profile',0))
+    for a in (0xC0EAC,0xC0ECC):
+        for i in range(6):sb(a+21+i,(i*13+3)&255)
+    sw(0x14080C,0x15F000-0x140800);sh(0x15F000,260)
+    for i in range(260):
+        offset=-16 if i==1 else 0x210+i*4
+        sh(0x15F002+i*2,offset);put(0x15F000+offset,bytes((16+i%90,32,255)))
+    for table,count in ((0xA1D9C,0x9D040),(0xA1E00,0x9D044),(0xA1FD4,0x9D078)):
+        sw(count,4)
+        for i,v in enumerate((0,1,-1,255)):sh(table+i*2,v)
+    sw(0x9D07C,0x8015C400);sw(0x9D04C,0x8015F800 if c.get('alternate') else 0);sw(0x9D054,2)
+    for i in range(2):
+        sw(0x9D090+i*4,i);sw(0x9D098+i*4,c.get('reuse',0));sh(0x15F800+i*2,256+i);sh(0xC0E48+i*2,256+i)
+    sw(0xC0E24,c.get('bits',0));sw(0x9D018,0)
+    index=c.get('index',0)
+    args=((index,),(index,),(),(index,),(index,),(index,),(index,),(index,),(),(help_window,),())[c['entry']]
+    for a,n in RANGES:s[a:a+n]=r[a:a+n]
+    return r,s,tuple(v&0xFFFFFFFF for v in args)
+
+def fingerprint(r):
+    h=14695981039346656037
+    for a,n in RANGES:
+        for b in r[a:a+n]:h=((h^b)*1099511628211)&0xFFFFFFFFFFFFFFFF
+    return h
+
+def main():
+    exe=(ROOT/'build/disc1.candidate.exe').read_bytes()
+    assert hashlib.sha1(exe).hexdigest()=='452fb033f2eaa4b18aa20a5bca60b8125af3a37b'
+    _,s,_=fixture(exe,CASES[0]);base=words(s);common=[(i*4,v) for i,v in enumerate(base) if v]
+    patches=[];cases=[]
+    for k,c in enumerate(CASES):
+        r,s,args=fixture(exe,c);first=len(patches)
+        patches.extend((i*4,v) for i,(v,b) in enumerate(zip(words(s),base)) if v!=b)
+        regs=execute(r,ENTRIES[c['entry']],args,instruction_budget=750000)
+        result=regs[2] if c['entry']<8 else 0;h=fingerprint(r)
+        cases.append((c['entry'],first,len(patches),args,result,h,c.get('frame',0)))
+        print(k,c,hex(result),hex(h),flush=True)
+        if '--dump' in sys.argv:(ROOT/f'pc_port/build/inventory-help-oracle-{k}.bin').write_bytes(r)
+    out=['/* Generated by pe_inventory_help_oracle.py --write-header. */']
+    for name,rows in (('ranges',RANGES),('common',common),('patches',patches)):
+        out.append(f'static const uint32_t INV5_inventory_help_{name}[][2]={{')
+        out.extend(f'    {{0x{a:X}u,0x{b:X}u}},' for a,b in rows);out.append('};')
+    out.append('static const struct { unsigned entry,first,end; uint32_t args[1],result; uint64_t hash; uint32_t frame; } INV5_inventory_help_cases[]={')
+    for e,a,b,args,result,h,frame in cases:
+        params=','.join(f'0x{x:08X}u' for x in args) or '0'
+        out.append(f'    {{{e},{a},{b},{{{params}}},0x{result:08X}u,UINT64_C(0x{h:016X}),{frame}u}},')
+    out.append('};')
+    if '--write-header' in sys.argv:(ROOT/'pc_port/tests/retail_inventory_help_cases.h').write_text('\n'.join(out)+'\n')
+    print(f'PASS: {len(cases)} original inventory help and drawing cases')
+
+if __name__=='__main__':main()

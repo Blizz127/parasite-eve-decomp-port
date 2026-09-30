@@ -1,0 +1,11 @@
+services:
+  pe-mipsel:
+    build:
+      context: ../..
+      dockerfile: dev/mipsel/Dockerfile
+    image: parasite-eve-mipsel:trixie
+    working_dir: /workspace
+    volumes:
+      - ../..:/workspace
+    stdin_open: true
+    tty: true

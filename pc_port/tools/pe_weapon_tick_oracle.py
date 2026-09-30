@@ -1,0 +1,111 @@
+#!/usr/bin/env python3
+"""Complete original weapon VM, child scheduler, allocation and tick leaves."""
+import hashlib
+import struct
+import sys
+from pe_battle_hud_oracle import ROOT,execute
+from pe_effect_tick_oracle import fixture as effect_fixture,RANGES as EFFECT_RANGES
+from pe_scripted_exit_oracle import words
+
+RANGES=EFFECT_RANGES+((0xE2248,4),(0xF32A8,4),(0xF3330,4),(0xF33B0,4),(0xF34F4,4))
+ENTRIES=(0x800C2758,0x800C251C,0x800C2414,0x800C2B90,0x800C2D0C,
+         0x800C2DA0,0x800C2E08,0x800C9B90,0x800CD8F0,0x800C9B68,0x800CD8C8,
+         0x800CA4A8,0x800CA4B4,0x800CA540,0x800CDF40,0x800CDF4C,0x800CDFE0)
+CASES=[]
+def case(entry=0,**kw):CASES.append(dict(entry=entry,**kw))
+case();case(delay=1);case(delay=-1);case(delay=32767)
+case(program=[0x20003,0xFFFFFFFF])
+case(program=[0xFFFFFFFE,0xFFFFFFFF])
+case(program=[0xFFFFFFFD,0xFFFFFFFF],children=3)
+case(program=[0x0010FFFF,0x00200002,0x00300004,0x00500003,0x00400003,0xFFFFFFFF])
+case(program=[0x001FFFFF,0x002F0002,0x003FFFFE,0x005F0000,0x004F0000,0xFFFFFFFF])
+for compare in (0x1001,0x2001):
+    for value in (0,1):case(program=[compare<<16,0x00100008,0x20002,0xFFFFFFFF],local=value)
+case(program=[0x30010000,0x00100009,0x20002,0xFFFFFFFF])
+case(program=[0x00100000,0x00200001,0x20FE0003,0xFFFFFFFF])
+case(program=[0x10000,0x20001,0xFFFFFFFF])
+case(program=[0x10000,0xFFFFFFFF],children=64)
+case(program=[0xFFFFFFFF],children=2)
+for kind in (0,1,2,3,4,5):
+    for state in (0,1,2):case(1,kind=kind,children=2,child_state=state,ended=1)
+case(1,kind=3,code=36,action=1)
+case(1,kind=3,status=0x180E,action=0)
+case(1,kind=3,status=0x180E,action=1)
+case(1,children=64,child_state=2,ended=1)
+case(1,children=1,child_state=1,callback=0x800CA540,timer=65535)
+case(2,children=0);case(2,children=3,callback=0x800C9EA0)
+for kind in (0,1,2,3,4,5):case(3,kind=kind)
+case(3,children=64);case(3,children=63);case(3,offset=0x807)
+for offset in (0,0x7FC,0x807,-1):case(4,offset=offset)
+for children in (0,1,2,64):
+    for ended in (0,1):case(5,children=children,ended=ended)
+case(6,children=0);case(6,children=64,ended=1);case(6,children=5)
+for entry in (7,8,9,10):case(entry)
+for entry in range(11,17):
+    for value in (0,1,16,128,255):case(entry,value=value)
+
+def fixture(exe,c):
+    r,s,_=effect_fixture(exe,{'entry':0})
+    def put(a,b):r[a:a+len(b)]=b;s[a:a+len(b)]=b
+    def sw(a,v):put(a,struct.pack('<I',v&0xFFFFFFFF))
+    def sh(a,v):put(a,struct.pack('<H',v&65535))
+    def sb(a,v):put(a,bytes((v&255,)))
+    put(0x15000C,bytes(0xA00))
+    sw(0x150078,0x80172000);sh(0x15000C,c.get('delay',0));sh(0x150010,c.get('offset',0))
+    sb(0x150012,c.get('children',0));sb(0x150013,c.get('ended',0));sw(0x150014,c.get('local',0))
+    sw(0xE2248,0x8015000C);sw(0xF34F4,0x80150080);sw(0xF3330,0x80150200)
+    for i,op in enumerate(c.get('program',[0xFFFFFFFF])):sw(0x172000+i*4,op)
+    for i in range(64):
+        p=0x150080+i*6
+        sb(p,0);sb(p+1,c.get('child_state',1) if i<c.get('children',0) else 0)
+        sh(p+2,c.get('timer',17));sh(p+4,i*16)
+    for i in range(8):sw(0x171100+i*4,c.get('callback',0x800CA4A8));sh(0x171180+i*2,16)
+    sb(0x150001,c.get('code',2));sw(0x9D254,0x80143000)
+    kind=c.get('kind',5)
+    if kind==0:sw(0x150008,0)
+    elif kind==1:sw(0x140000,0)
+    elif kind==2:sw(0x144010,0)
+    elif kind==4:sb(0x150001,7)
+    elif kind==5:sw(0x9D254,0x80140000)
+    sw(0x144000,c.get('status',0));sb(0x145000,c.get('action',1));sb(0x14401C,c.get('action',1))
+    if c['entry']>=11:
+        put(0x150200,bytes((i*13+7)&255 for i in range(128)))
+        sb(0x150201,c.get('value',0));sb(0x150202,c.get('value',0));sh(0x150204,c.get('value',0))
+        sb(0x150081,1)
+    args=((0x80150000,0x80171100,0x80171180),(0x80150000,0x80171100),
+          (0x80150000,0x80171100),(0x80150000,0,0x80171180,0x80171100),
+          (0,0,16),(0,),(),(0x80150000,),(0x80150000,),(0x80150000,),(0x80150000,))
+    return r,s,args[c['entry']] if c['entry']<11 else (0x80150000,0x80150080,0x80150200)
+
+def fingerprint(r):
+    h=14695981039346656037
+    for a,n in RANGES:
+        for b in r[a:a+n]:h=((h^b)*1099511628211)&0xFFFFFFFFFFFFFFFF
+    return h
+
+def main():
+    exe=(ROOT/'build/disc1.candidate.exe').read_bytes()
+    assert hashlib.sha1(exe).hexdigest()=='452fb033f2eaa4b18aa20a5bca60b8125af3a37b'
+    _,s,_=fixture(exe,CASES[0]);base=words(s);common=[(i*4,v) for i,v in enumerate(base) if v]
+    patches=[];cases=[]
+    for k,c in enumerate(CASES):
+        r,s,args=fixture(exe,c);first=len(patches)
+        patches.extend((i*4,v) for i,(v,b) in enumerate(zip(words(s),base)) if v!=b)
+        regs=execute(r,ENTRIES[c['entry']],args)
+        if c['entry']==4 or c['entry']>=11:regs[2]=0
+        cases.append((c['entry'],first,len(patches),args,regs[2],fingerprint(r)))
+        print(k,c,hex(regs[2]),hex(fingerprint(r)),flush=True)
+        if '--dump' in sys.argv:(ROOT/f'pc_port/build/weapon-tick-oracle-{k}.bin').write_bytes(r)
+    out=['/* Generated by pe_weapon_tick_oracle.py --write-header. */']
+    for name,rows in (('ranges',RANGES),('common',common),('patches',patches)):
+        out.append(f'static const uint32_t ATK24_weapon_{name}[][2]={{')
+        out += [f'    {{0x{a:X}u,0x{b:X}u}},' for a,b in rows];out.append('};')
+    out.append('static const struct { unsigned entry,first,end; uint32_t args[4],result; uint64_t hash; } ATK24_weapon_cases[]={')
+    for e,a,b,args,v,h in cases:
+        params=','.join(f'0x{x:08X}u' for x in args) or '0'
+        out.append(f'    {{{e},{a},{b},{{{params}}},0x{v:08X}u,UINT64_C(0x{h:016X})}},')
+    out.append('};')
+    if '--write-header' in sys.argv:(ROOT/'pc_port/tests/retail_weapon_tick_cases.h').write_text('\n'.join(out)+'\n')
+    print(f'PASS: {len(cases)} complete original weapon VM / scheduler / callback cases')
+
+if __name__=='__main__':main()

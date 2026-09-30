@@ -1,0 +1,116 @@
+# Splat config — Parasite Eve (USA) Disc 1, PE.IMG room package m0419i, chunk 2.
+#
+# Blob: `python3 tools/extract/peimg.py room m0419i` ->
+# build/extracted/disc1/peimg/room_m0419i_c2.bin (git-ignored, NEVER committed).
+# Split `scripts/split_overlay.sh room_m0419i`; gate `scripts/exact_rebuild_overlay.sh room_m0419i`.
+#
+# Facts (peimg.py room m0419i, 2026-09-23): slot 418, PE.IMG sectors
+# [0x17721,0x1779B), size 0x3D000, vram 0x8018EFE8, SHA-1 3583c4ecd060f5d4ef6b8c7f7a65c58b4e65492a.
+# Geometry (room_census text-window rule, build/fanout/overlays2/roomscan.py):
+#   0x0-0x238  header + switch jump tables (bin); 0x238-0x5C20 .text;
+#   0x5C20-0x3D000 behaviour tables + room data (bin).
+name: Parasite Eve (USA) Disc 1 PE.IMG room m0419i chunk 2
+sha1: 3583c4ecd060f5d4ef6b8c7f7a65c58b4e65492a
+options:
+  platform: psx
+  compiler: GCC
+  basename: room_m0419i
+  base_path: ../../..
+  target_path: build/extracted/disc1/peimg/room_m0419i_c2.bin
+  asm_path: asm/overlays/room_m0419i
+  src_path: src/overlays/room_m0419i
+  asset_path: assets/overlays/room_m0419i
+  ld_script_path: linkers/overlays/room_m0419i.ld
+  cache_path: asm/overlays/room_m0419i/.splache
+  undefined_funcs_auto_path: asm/overlays/room_m0419i/undefined_funcs_auto.txt
+  undefined_syms_auto_path: asm/overlays/room_m0419i/undefined_syms_auto.txt
+  find_file_boundaries: no
+segments:
+  - name: main
+    type: code
+    start: 0x0
+    vram: 0x8018EFE8
+    subsegments:
+      - [0x0, bin]
+      # header switch jump tables: MASPSX_DISPATCH_FOLD pool
+      - [0x24, rodata]
+      - [0x240, c, func_8018F228]
+      - [0x26C, c, func_8018F254]
+      - [0x298, c, func_8018F280]
+      - [0x2E0, c, func_8018F2C8]
+      - [0x3A4, c, func_8018F38C]
+      - [0x428, c, func_8018F410]
+      - [0x430, c, func_8018F418]
+      - [0x438, c, func_8018F420]
+      - [0x770, c, func_8018F758]
+      - [0x778, c, func_8018F760]
+      - [0x7F8, c, func_8018F7E0]
+      - [0x870, asm]
+      - [0xBA0, c, func_8018FB88]
+      - [0xC44, c, func_8018FC2C]
+      - [0xCBC, asm]
+      - [0xF6C, c, func_8018FF54]
+      - [0xFD0, c, func_8018FFB8]
+      - [0x146C, c, func_80190454]
+      - [0x172C, c, func_80190714]
+      - [0x18E0, c, func_801908C8]
+      - [0x1B50, c, func_80190B38]
+      - [0x1BB0, c, func_80190B98]
+      - [0x1C60, c, func_80190C48]
+      - [0x1C68, c, func_80190C50]
+      - [0x1D08, c, func_80190CF0]
+      - [0x1F8C, c, func_80190F74]
+      - [0x1F94, c, func_80190F7C]
+      - [0x201C, c, func_80191004]
+      - [0x20C4, c, func_801910AC]
+      - [0x260C, c, func_801915F4]
+      - [0x26EC, c, func_801916D4]
+      - [0x292C, c, func_80191914]
+      - [0x29C8, c, func_801919B0]
+      - [0x29D0, c, func_801919B8]
+      - [0x29D8, c, func_801919C0]
+      - [0x2A54, c, func_80191A3C]
+      - [0x2CCC, c, func_80191CB4]
+      - [0x2CD4, c, func_80191CBC]
+      - [0x2D5C, c, func_80191D44]
+      - [0x2E04, c, func_80191DEC]
+      - [0x3390, c, func_80192378]
+      - [0x3414, c, func_801923FC]
+      - [0x346C, c, func_80192454]
+      - [0x3474, c, func_8019245C]
+      - [0x347C, c, func_80192464]
+      - [0x3518, c, func_80192500]
+      - [0x3760, c, func_80192748]
+      - [0x3768, c, func_80192750]
+      - [0x3790, c, func_80192778]
+      - [0x3800, c, func_801927E8]
+      - [0x3B8C, c, func_80192B74]
+      - [0x3B94, c, func_80192B7C]
+      - [0x3F34, c, func_80192F1C]
+      - [0x3F90, c, func_80192F78]
+      - [0x3F98, c, func_80192F80]
+      - [0x3FA0, c, func_80192F88]
+      - [0x4030, c, func_80193018]
+      - [0x4278, c, func_80193260]
+      - [0x4280, c, func_80193268]
+      - [0x42A8, c, func_80193290]
+      - [0x4318, c, func_80193300]
+      - [0x4794, c, func_8019377C]
+      - [0x479C, c, func_80193784]
+      - [0x4B24, c, func_80193B0C]
+      - [0x4B80, c, func_80193B68]
+      - [0x4B88, c, func_80193B70]
+      - [0x4B90, c, func_80193B78]
+      - [0x4BCC, c, func_80193BB4]
+      - [0x4C64, c, func_80193C4C]
+      - [0x4C6C, c, func_80193C54]
+      - [0x4C94, c, func_80193C7C]
+      - [0x4CC4, c, func_80193CAC]
+      - [0x4DD8, c, func_80193DC0]
+      - [0x4F58, c, func_80193F40]
+      - [0x4F74, c, func_80193F5C]
+      - [0x4F7C, asm]
+      - [0x593C, c, func_80194924]
+      - [0x5C04, c, func_80194BEC]
+      - [0x5C20, bin]
+  - [0x3D000]

@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "_comment": "Build profiles for the ovl_03D2 overlay target. Profile DEFINITIONS are inherited from the EXE manifest via profiles_from; only the ASSIGNMENTS are owned here and may name only C spans of configs/USA/overlays/ovl_03D2.yaml.",
+  "profiles_from": "configs/USA/disc1_build_profiles.json",
+  "default_profile": "era_o2_g0",
+  "assignments": {
+    "era_o2_g0_no_cse_skip_blocks": [
+      "func_8018F2F4",
+      "func_80190660"
+    ],
+    "era_o2_g0_no_schedule_insns": [
+      "func_80191DC8"
+    ]
+  }
+}

@@ -1,0 +1,61 @@
+# Splat config — Parasite Eve (USA) Disc 1, PE.IMG overlay ovl_03C5
+# (movie controller overlay, FMV filename table, image-load range [0x3C5,0x3C9)).
+#
+# The target blob is extracted locally by `scripts/extract_overlays.sh` into
+# build/extracted/disc1/peimg/ovl_03C5.bin (git-ignored) and is NEVER
+# committed. Split via `scripts/split_overlay.sh ovl_03C5`; the exact
+# reassembly proof is `scripts/exact_rebuild_overlay.sh ovl_03C5`.
+#
+# Verified facts (configs/USA/overlays/manifest.yaml, tools/extract/peimg.py):
+#   size   0x2000
+#   SHA-1  f8f6ea3892df4a7b1c8b58c7fb76222e4bb52736
+#   vram   0x80120D00
+#   no PS-X header, no relocations: one fixed-address `code` segment.
+#
+# Geometry (2026-09-22 boundary audit of the extracted blob):
+#   0x0000-0x0300  container header: u32 count (9) then the FMV filename table
+#                  ("\FMV035.STR;1" ... "\FMV000.STR;1", "\FMV1"). Raw `bin`.
+#   0x0300-0x16F4  .text: first instruction `lui $a1,0x32` scheduled ahead of
+#                  the first framed prologue at 0x304; last `jr $ra` at 0x16EC
+#                  plus its delay slot (8 prologues, 9 `jr $ra`; all 6 in-blob
+#                  `jal` targets land on a prologue at this base).
+#   0x16F4-0x2000  data (0x01020000 ..., pointers into the header table such as
+#                  0x80120FE4) and zero pad. Raw `bin`.
+#
+# Every function in this overlay is named func_<VRAM> and lives, once carved,
+# under src/overlays/ovl_03C5/ (the directory is the namespace).
+name: Parasite Eve (USA) Disc 1 PE.IMG overlay ovl_03C5
+sha1: f8f6ea3892df4a7b1c8b58c7fb76222e4bb52736
+options:
+  platform: psx
+  compiler: GCC
+  basename: ovl_03C5
+  base_path: ../../..
+  target_path: build/extracted/disc1/peimg/ovl_03C5.bin
+  asm_path: asm/overlays/ovl_03C5
+  src_path: src/overlays/ovl_03C5
+  asset_path: assets/overlays/ovl_03C5
+  ld_script_path: linkers/overlays/ovl_03C5.ld
+  cache_path: asm/overlays/ovl_03C5/.splache
+  undefined_funcs_auto_path: asm/overlays/ovl_03C5/undefined_funcs_auto.txt
+  undefined_syms_auto_path: asm/overlays/ovl_03C5/undefined_syms_auto.txt
+  find_file_boundaries: no
+segments:
+  - name: main
+    type: code
+    start: 0x0
+    vram: 0x80120D00
+    subsegments:
+      - [0x0, bin]
+      - [0x300, asm]
+      - [0x304, c, func_80121004]
+      - [0x570, c, func_80121270]
+      - [0x7D4, c, func_801214D4]
+      - [0x9C4, c, func_801216C4]
+      - [0xD00, c, func_80121A00]
+      - [0xF04, c, func_80121C04]
+      - [0x1340, c, func_80122040]
+      - [0x1654, c, func_80122354]
+      - [0x16A8, c, func_801223A8]
+      - [0x16F4, bin]
+  - [0x2000]

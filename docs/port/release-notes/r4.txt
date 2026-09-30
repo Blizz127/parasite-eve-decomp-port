@@ -1,0 +1,27 @@
+* Build r4. Day 1 now plays end to end WITH MOVIES ON and continues into
+  Day 2 (the old stop after the car ride is fixed). Every fix below is
+  checked against the retail game (matched code, the emulator oracle or the
+  retail video).
+* New since r3 — please check:
+  - With movies on, after the car ride at the end of Day 1 the game goes on
+    to the Day 2 title, the precinct and the chief's office.
+  - Pausing (Start in the field) now shows the real dimmed pause screen.
+    In r3 the picture just froze; press Start again to resume.
+  - Floor shadows under characters are drawn, and character shading is
+    closer to the real game (first room about 99% identical to the emulator).
+  - More of the game runs the exact decompiled code (menus, sound, field
+    script); two hidden internal bugs this uncovered are fixed.
+* Known issues to ignore (being fixed):
+  - A few particle effects in the alligator boss's second phase (the
+    fire-breath beam) are still missing; the fix is being verified.
+  - Aya's gun model may still be missing when she readies it (being checked).
+  - The date doesn't walk to the door with Aya in the plaza.
+  - Floor-shadow edges may look slightly more dithered than on a PS1 emulator.
+  - Full list: docs/port/KNOWN_DIVERGENCES.md (17 open).
+* Saves: memory-card saves persist (card file:
+  ~/.local/share/parasite-eve-port/memcard1.mcd).
+* Cheats (off unless pressed): F1 help, F2 god mode, F3 ammo/PE, F4 win
+  battle, F5 key items, F6 fast-forward, F7 FF speed, F8 warp. "CHEATS" shows
+  on screen when any is on.
+* Bug reports: the time and room, a screenshot, and the newest log file in
+  ~/.local/state/parasite-eve-port/logs/ (written automatically).

@@ -1,0 +1,54 @@
+/* room_m0174i — func_801934C8, blob offset 0x44E0, 0x18C bytes. Flags -O2 -G0;
+ * LINK_EXACT at the target VMA (lane ovl5 2026-09-27).
+ * 8-sprite draw; SVECTOR fields via a2+i*8+off (a (SVECTOR*)(a2+4) base adds a giv). */
+
+typedef struct { short m[3][3]; int t[3]; } MATRIX;
+typedef struct { int vx, vy, vz, pad; } VECTOR;
+typedef struct { short vx, vy, vz, pad; } SVECTOR;
+typedef struct { unsigned char pad0[4]; unsigned char b4; unsigned char pad1[5]; short hA; } OBJ;
+extern OBJ D_80197420;
+extern unsigned char D_80196F0C[];
+extern unsigned char *func_800C2B50();
+extern void func_800C2EAC();
+extern void func_800C2FF0();
+extern void func_800C3098();
+extern void func_800C3238();
+extern void func_80071A44();
+extern void func_80078CC4();
+extern void func_800C3134();
+extern void func_800C42A4();
+
+void func_801934C8(int a0, int a1, unsigned char *a2)
+{
+    MATRIX m;
+    VECTOR s;
+    VECTOR v;
+    unsigned int i;
+    unsigned char *x;
+
+    x = func_800C2B50();
+    asm volatile("");
+    func_800C2EAC(x[0x44]);
+    func_800C2FF0(0x20, 0x20);
+    func_800C3098(0x10);
+    func_800C3238(2);
+    for (i = 0; i < 8; i++) {
+        if ((a2 + i)[0xB4] != 0) {
+            m.m[0][0] = m.m[1][1] = m.m[2][2] = 0x1000;
+            m.t[0] = m.t[1] = m.t[2] = 0;
+            m.m[0][1] = m.m[0][2] = m.m[1][0] = m.m[1][2] = m.m[2][0] = m.m[2][1] = 0;
+            func_80071A44(&v, 0, 0x10);
+            v.vx = *(short *)(a2 + i * 2 + 0x84);
+            v.vy = *(short *)(a2 + i * 2 + 0x84);
+            v.vz = 0x1000;
+            s = v;
+            func_80078CC4(&m, &s);
+            D_80197420.hA = *(short *)(a2 + i * 2 + 0x94);
+            m.t[0] = *(short *)(a2 + i * 8 + 4);
+            m.t[1] = *(short *)(a2 + i * 8 + 6);
+            m.t[2] = *(short *)(a2 + i * 8 + 8);
+            func_800C3134(D_80196F0C, *(short *)(a2 + i * 2 + 0xA4), &D_80197420);
+            func_800C42A4(&D_80197420, &m, 1);
+        }
+    }
+}

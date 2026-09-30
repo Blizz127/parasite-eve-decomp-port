@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "_comment": "Build profiles for the ovl_0457 overlay target. Profile DEFINITIONS are inherited from the EXE manifest via profiles_from; only the ASSIGNMENTS are owned here and may name only C spans of configs/USA/overlays/ovl_0457.yaml.",
+  "profiles_from": "configs/USA/disc1_build_profiles.json",
+  "default_profile": "era_o2_g0",
+  "assignments": {
+    "ovl_0457_dispatch_80122FBC_80123134": [
+      "func_80123B1C"
+    ],
+    "ovl_0457_dispatch_801232AC_80123424": [
+      "func_80123CAC"
+    ],
+    "ovl_0457_dispatch_80122FA4": [
+      "func_801235DC"
+    ],
+    "ovl_0457_dispatch_801235BC": [
+      "func_80125094"
+    ],
+    "ovl_0457_dispatch_8012359C_expand_div": [
+      "func_8012403C"
+    ]
+  },
+  "local_profiles": {
+    "ovl_0457_dispatch_80122FBC_80123134": {
+      "toolchain": "era",
+      "flags": [
+        "-O2",
+        "-G0"
+      ],
+      "environment": {
+        "MASPSX_THREE_WORD_SYMBOL_STORE": "1",
+        "MASPSX_DISPATCH_FOLD": "jtbl_80122FBC,jtbl_80123134"
+      }
+    },
+    "ovl_0457_dispatch_801232AC_80123424": {
+      "toolchain": "era",
+      "flags": [
+        "-O2",
+        "-G0"
+      ],
+      "environment": {
+        "MASPSX_THREE_WORD_SYMBOL_STORE": "1",
+        "MASPSX_DISPATCH_FOLD": "jtbl_801232AC,jtbl_80123424"
+      }
+    },
+    "ovl_0457_dispatch_80122FA4": {
+      "toolchain": "era",
+      "flags": [
+        "-O2",
+        "-G0"
+      ],
+      "environment": {
+        "MASPSX_THREE_WORD_SYMBOL_STORE": "1",
+        "MASPSX_DISPATCH_FOLD": "jtbl_80122FA4"
+      }
+    },
+    "ovl_0457_dispatch_801235BC": {
+      "toolchain": "era",
+      "flags": [
+        "-O2",
+        "-G0"
+      ],
+      "environment": {
+        "MASPSX_THREE_WORD_SYMBOL_STORE": "1",
+        "MASPSX_DISPATCH_FOLD": "jtbl_801235BC"
+      }
+    },
+    "ovl_0457_dispatch_8012359C_expand_div": {
+      "toolchain": "era",
+      "flags": [
+        "-O2",
+        "-G0"
+      ],
+      "environment": {
+        "MASPSX_THREE_WORD_SYMBOL_STORE": "1",
+        "MASPSX_DISPATCH_FOLD": "jtbl_8012359C",
+        "MASPSX_EXPAND_DIV": "1"
+      }
+    }
+  }
+}

@@ -1,3 +1,12 @@
+Scope: this MIT license covers only the original work in this repository
+(the decompiled C written by this project, the native PC port and host
+layer, tools, scripts, configuration and documentation). It does not cover
+Parasite Eve or any of its code, data or trademarks, which belong to
+Square Enix. It also does not cover the files imported from another
+decompilation, which are listed in UPSTREAM_FILES.md and remain their
+authors' work, or third-party components, which keep their own licenses
+(see NOTICE.md and CREDITS.md).
+
 MIT License
 
 Copyright (c) 2026 Blizz127

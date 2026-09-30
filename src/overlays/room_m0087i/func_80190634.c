@@ -1,0 +1,1210 @@
+/* vendor-derived: khasinski/parasite-eve-decomp@3067919e7b82f0334b873117eef07e7157f4ed69 src/overlays/room_m087/RoomLib_HandlerD.c — attribution khasinski (Chris Hasinski) */
+/* inline GTE/asm: this function uses the vendor's inline PSY-Q GTE (COP2) asm macros — count separately from plain C. */
+/* Imported under the owner's explicit authorization (2026-09-28, via Devbox Coordinator, vendor lane).
+ * Upstream tree kept verbatim in vendor/khasinski-parasite-eve-decomp/ (see its PROVENANCE.md).
+ * This file is that vendor TU run through the era cpp with the vendor CPP flags
+ * (-undef -P, -I include, -I tools/m2c), `RoomLib_HandlerD` renamed to `func_80190634`, and vendor symbol
+ * names mapped (post-cpp, token-wise) to this repo's address names from the vendor sym tables. */
+/* vendor markers: MASPSX_FLAGS: --expand-div */
+typedef signed char s8;
+typedef unsigned char u8;
+typedef signed short s16;
+typedef unsigned short u16;
+typedef signed int s32;
+typedef unsigned int u32;
+typedef signed long long s64;
+typedef unsigned long long u64;
+typedef float f32;
+int func_80077DC4(int angle);
+int func_80077CF4(int angle);
+typedef struct RoomSpriteMatrix {
+    short m[3][3];
+    short pad;
+    int t[3];
+} RoomSpriteMatrix;
+typedef struct RoomFxSeed8 {
+    unsigned char bytes[8];
+} RoomFxSeed8;
+typedef struct RoomFxVec4 {
+    int x;
+    int y;
+    int z;
+    int w;
+} RoomFxVec4;
+typedef struct RoomUniformSpriteFxParams {
+    short x;
+    short y;
+    short z;
+    short pad6;
+    short scale;
+    unsigned short depth;
+} RoomUniformSpriteFxParams;
+typedef struct RoomOrbitParticlePosition {
+    unsigned short x;
+    unsigned short y;
+    unsigned short z;
+    unsigned short pad6;
+} RoomOrbitParticlePosition;
+typedef struct RoomOrbitParticleVelocity {
+    short x;
+    unsigned short angle;
+    short z;
+    short pad6;
+} RoomOrbitParticleVelocity;
+typedef struct RoomOrbitParticleLaneView {
+    RoomOrbitParticlePosition position;
+    unsigned char remainingPositions[7 * sizeof(RoomOrbitParticlePosition)];
+    RoomOrbitParticleVelocity velocity;
+} RoomOrbitParticleLaneView;
+typedef struct RoomOrbitParticleState {
+    RoomOrbitParticlePosition position[8];
+    RoomOrbitParticleVelocity velocity[8];
+    unsigned short height;
+    short decay;
+    unsigned char frame;
+    unsigned char intensity;
+    short radius;
+    short radiusStep;
+} RoomOrbitParticleState;
+typedef struct RoomOrbitBurstVector {
+    short x;
+    short y;
+    short z;
+    short pad6;
+} RoomOrbitBurstVector;
+typedef struct RoomOrbitBurstState {
+    RoomOrbitBurstVector position[8];
+    RoomOrbitBurstVector velocity[8];
+    RoomOrbitBurstVector secondary[8];
+    unsigned char active[8];
+    unsigned char frame[8];
+    short scale;
+    unsigned short depth;
+    unsigned char count;
+    unsigned char padD5;
+    short phaseStep;
+} RoomOrbitBurstState;
+typedef char pe1_static_assert_room_orbit_burst_velocity_offset [( ((u32)&((( RoomOrbitBurstState  *)0)->  velocity ))  == 0x40 ) ? 1 : -1] ;
+typedef char pe1_static_assert_room_orbit_burst_secondary_offset [( ((u32)&((( RoomOrbitBurstState  *)0)->  secondary ))  == 0x80 ) ? 1 : -1] ;
+typedef char pe1_static_assert_room_orbit_burst_active_offset [( ((u32)&((( RoomOrbitBurstState  *)0)->  active ))  == 0xC0 ) ? 1 : -1] ;
+typedef char pe1_static_assert_room_orbit_burst_state_size [( sizeof(RoomOrbitBurstState) == 0xD8 ) ? 1 : -1] ;
+typedef struct RoomSpriteFxParams {
+    short x;
+    short y;
+    short z;
+    unsigned char pad6[0xA];
+    short scale;
+    unsigned short depth;
+    unsigned char pad14;
+    unsigned char alpha;
+} RoomSpriteFxParams;
+typedef struct RoomOrbitSpriteFxParams {
+    short x;
+    short y;
+    short z;
+    unsigned char pad6[0xA];
+    short scale;
+    unsigned short depth;
+    unsigned char pad14[2];
+    unsigned short alpha;
+} RoomOrbitSpriteFxParams;
+typedef struct RoomSeededSpriteFxParams {
+    short x;
+    short y;
+    short z;
+    unsigned char pad6[0x2];
+    RoomFxSeed8 seed;
+    short scale;
+    unsigned short depth;
+} RoomSeededSpriteFxParams;
+typedef struct RoomDoubleSpriteFxParams {
+    short x;
+    short y;
+    short z;
+    unsigned char pad6[2];
+    RoomFxSeed8 seed;
+    short scale;
+    unsigned short depth;
+    unsigned char alpha;
+} RoomDoubleSpriteFxParams;
+typedef struct RoomDoubleSpriteGlobals {
+    unsigned char alpha;
+    unsigned char pad1[5];
+    unsigned short depth;
+} RoomDoubleSpriteGlobals;
+typedef char pe1_static_assert_room_double_sprite_seed_offset [( ((u32)&((( RoomDoubleSpriteFxParams  *)0)->  seed ))  == 8 ) ? 1 : -1] ;
+typedef char pe1_static_assert_room_double_sprite_scale_offset [( ((u32)&((( RoomDoubleSpriteFxParams  *)0)->  scale ))  == 0x10 ) ? 1 : -1] ;
+typedef char pe1_static_assert_room_double_sprite_depth_offset [( ((u32)&((( RoomDoubleSpriteFxParams  *)0)->  depth ))  == 0x12 ) ? 1 : -1] ;
+typedef char pe1_static_assert_room_double_sprite_alpha_offset [( ((u32)&((( RoomDoubleSpriteFxParams  *)0)->  alpha ))  == 0x14 ) ? 1 : -1] ;
+typedef char pe1_static_assert_room_double_sprite_global_depth_offset [( ((u32)&((( RoomDoubleSpriteGlobals  *)0)->  depth ))  == 6 ) ? 1 : -1] ;
+typedef struct RoomLayeredSpriteParams {
+    short x;
+    short y;
+    short z;
+    unsigned char pad6[10];
+    short scale;
+    unsigned short pad12;
+    unsigned short depth;
+} RoomLayeredSpriteParams;
+typedef char pe1_static_assert_room_layered_sprite_scale_offset [( ((u32)&((( RoomLayeredSpriteParams  *)0)->  scale ))  == 0x10 ) ? 1 : -1] ;
+typedef char pe1_static_assert_room_layered_sprite_depth_offset [( ((u32)&((( RoomLayeredSpriteParams  *)0)->  depth ))  == 0x14 ) ? 1 : -1] ;
+typedef struct RoomFxDriftParticle {
+    short x;
+    short y;
+    short z;
+    short pad6;
+    int radius;
+} RoomFxDriftParticle;
+typedef struct RoomFxTrajectoryParticle {
+    unsigned short x;
+    unsigned short y;
+    unsigned short z;
+    unsigned short pad6;
+} RoomFxTrajectoryParticle;
+typedef struct RoomFxGroundSpriteParams {
+    short x;
+    short pad02;
+    short z;
+    unsigned char pad06[0x7C];
+    unsigned short depth;
+} RoomFxGroundSpriteParams;
+typedef struct RoomFxTimedRenderState {
+    unsigned char pad00[8];
+    short disabled;
+    unsigned short frame;
+} RoomFxTimedRenderState;
+typedef struct RoomFallingParticleControl {
+    unsigned char pad00;
+    unsigned char state;
+} RoomFallingParticleControl;
+typedef struct RoomFallingParticleState {
+    unsigned char active;
+    unsigned char pad01;
+    unsigned char frame;
+    unsigned char pad03;
+    unsigned short phase;
+    short intensity;
+    unsigned short x;
+    unsigned short y;
+    unsigned short z;
+    unsigned char pad0E[0xA];
+    unsigned short velocityX;
+    unsigned short velocityY;
+    unsigned short velocityZ;
+} RoomFallingParticleState;
+typedef char pe1_static_assert_room_falling_particle_velocity_x_offset [( ((u32)&((( RoomFallingParticleState  *)0)->  velocityX ))  == 0x18 ) ? 1 : -1] ;
+typedef char pe1_static_assert_room_falling_particle_state_size [( sizeof(RoomFallingParticleState) == 0x1E ) ? 1 : -1] ;
+typedef struct RoomEightParticleVector {
+    unsigned short x;
+    unsigned short y;
+    unsigned short z;
+    unsigned short pad06;
+} RoomEightParticleVector;
+typedef struct RoomEightParticleState {
+    int activeCount;
+    RoomEightParticleVector position[8];
+    RoomFxSeed8 velocity[8];
+    unsigned short scale[8];
+    short fade[8];
+    unsigned short angle[8];
+    unsigned char active[8];
+} RoomEightParticleState;
+typedef struct RoomEightParticleControl {
+    unsigned char pad00;
+    unsigned char state;
+    short frame;
+} RoomEightParticleControl;
+typedef struct RoomEightParticleContext {
+    char *root;
+    unsigned char pad04[0x34];
+    int baseX;
+    int baseY;
+    int baseZ;
+} RoomEightParticleContext;
+typedef struct RoomFxTransform {
+    int pad00[5];
+    int x;
+    int y;
+    int z;
+} RoomFxTransform;
+typedef struct RoomFxTransformOwner {
+    unsigned char pad00[0x238];
+    RoomFxTransform *transforms;
+} RoomFxTransformOwner;
+typedef struct RoomFxControl {
+    unsigned char pad00[2];
+    short frame;
+} RoomFxControl;
+typedef struct RoomFxPairedSpriteState {
+    unsigned short x;
+    unsigned short y;
+    unsigned short z;
+    unsigned char pad06[2];
+    short velocityX;
+    short velocityY;
+    short velocityZ;
+    unsigned char pad0E[2];
+    short alpha;
+    unsigned short alphaStep;
+    unsigned short sparkleTimer;
+    unsigned char pad16[2];
+    unsigned short sparkleX;
+    unsigned short sparkleY;
+    unsigned short sparkleZ;
+    unsigned char pad1E[2];
+    unsigned short sparkleAlpha;
+    short sparkleLife;
+    short resourceSelector;
+    short active;
+    short height;
+    short width;
+    short phase;
+    short transformIndex;
+    unsigned int counter;
+    short minimumHeight;
+} RoomFxPairedSpriteState;
+typedef char pe1_static_assert_room_fx_transform_size [( sizeof(RoomFxTransform) == 0x20 ) ? 1 : -1] ;
+typedef char pe1_static_assert_room_fx_transform_owner_transforms_offset [( ((u32)&((( RoomFxTransformOwner  *)0)->  transforms ))  == 0x238 ) ? 1 : -1] ;
+typedef char pe1_static_assert_room_fx_paired_sprite_sparkle_x_offset [( ((u32)&((( RoomFxPairedSpriteState  *)0)->  sparkleX ))  == 0x18 ) ? 1 : -1] ;
+typedef char pe1_static_assert_room_fx_paired_sprite_resource_selector_offset [( ((u32)&((( RoomFxPairedSpriteState  *)0)->  resourceSelector ))  == 0x24 ) ? 1 : -1] ;
+typedef char pe1_static_assert_room_fx_paired_sprite_transform_index_offset [( ((u32)&((( RoomFxPairedSpriteState  *)0)->  transformIndex ))  == 0x2E ) ? 1 : -1] ;
+typedef char pe1_static_assert_room_fx_paired_sprite_minimum_height_offset [( ((u32)&((( RoomFxPairedSpriteState  *)0)->  minimumHeight ))  == 0x34 ) ? 1 : -1] ;
+typedef char pe1_static_assert_room_fx_paired_sprite_state_size [( sizeof(RoomFxPairedSpriteState) == 0x38 ) ? 1 : -1] ;
+typedef char pe1_static_assert_room_eight_particle_vector_size [( sizeof(RoomEightParticleVector) == 8 ) ? 1 : -1] ;
+typedef char pe1_static_assert_room_eight_particle_velocity_offset [( ((u32)&((( RoomEightParticleState  *)0)->  velocity ))  == 0x44 ) ? 1 : -1] ;
+typedef char pe1_static_assert_room_eight_particle_scale_offset [( ((u32)&((( RoomEightParticleState  *)0)->  scale ))  == 0x84 ) ? 1 : -1] ;
+typedef char pe1_static_assert_room_eight_particle_fade_offset [( ((u32)&((( RoomEightParticleState  *)0)->  fade ))  == 0x94 ) ? 1 : -1] ;
+typedef char pe1_static_assert_room_eight_particle_angle_offset [( ((u32)&((( RoomEightParticleState  *)0)->  angle ))  == 0xA4 ) ? 1 : -1] ;
+typedef char pe1_static_assert_room_eight_particle_active_offset [( ((u32)&((( RoomEightParticleState  *)0)->  active ))  == 0xB4 ) ? 1 : -1] ;
+typedef char pe1_static_assert_room_eight_particle_state_size [( sizeof(RoomEightParticleState) == 0xBC ) ? 1 : -1] ;
+typedef char pe1_static_assert_room_eight_particle_context_base_x_offset [( ((u32)&((( RoomEightParticleContext  *)0)->  baseX ))  == 0x38 ) ? 1 : -1] ;
+typedef char pe1_static_assert_room_fx_ground_sprite_depth_offset [( ((u32)&((( RoomFxGroundSpriteParams  *)0)->  depth ))  == 0x82 ) ? 1 : -1] ;
+typedef struct RoomFxDriftState {
+    unsigned short x;
+    short pad02;
+    unsigned short z;
+    short pad06;
+    short dx;
+    short pad0A;
+    short dz;
+    short pad0E;
+    unsigned short phase10;
+    short limit12;
+    short phase14;
+    unsigned short counter16;
+} RoomFxDriftState;
+typedef struct RoomFxEmitterParams {
+    void *source;
+    unsigned char color0[3];
+    unsigned char pad07;
+    unsigned char color1[3];
+    unsigned char pad0B;
+    short mode;
+    short extent0;
+    short extent1;
+    short offset;
+    short intensity;
+    short pad16;
+} RoomFxEmitterParams;
+typedef struct RoomFxPairedEmitterState {
+    unsigned char header[8];
+    unsigned char sourceData[0x100];
+    RoomFxEmitterParams primary;
+    RoomFxEmitterParams secondary;
+    short timer;
+    short intensity;
+    short phase;
+} RoomFxPairedEmitterState;
+typedef char pe1_static_assert_room_fx_emitter_params_size [( sizeof(RoomFxEmitterParams) == 0x18 ) ? 1 : -1] ;
+typedef char pe1_static_assert_room_fx_paired_primary_offset [( ((u32)&((( RoomFxPairedEmitterState  *)0)->  primary ))  == 0x108 ) ? 1 : -1] ;
+typedef char pe1_static_assert_room_fx_paired_secondary_offset [( ((u32)&((( RoomFxPairedEmitterState  *)0)->  secondary ))  == 0x120 ) ? 1 : -1] ;
+typedef char pe1_static_assert_room_fx_paired_state_size [( sizeof(RoomFxPairedEmitterState) == 0x140 ) ? 1 : -1] ;
+typedef struct RoomObj {
+    char pad0[0xC];
+    void (*callback)(void);
+} RoomObj;
+typedef struct RoomParticleState {
+    short x;                       
+    short y;                       
+    short z;                       
+    short size;                    
+    short vx;                      
+    short vy;                      
+    short vz;                      
+    short angle;                   
+    short state;                   
+    short timer;                   
+} RoomParticleState;
+typedef struct RoomParticleEmitter {
+    short x;                       
+    short y;                       
+    short z;                       
+    short soundId;                 
+    int radialMagnitude;           
+    int spawnPeriod;               
+    int endFrame;                  
+} RoomParticleEmitter;
+typedef struct RoomLibTick12Rec {
+    char pad00[0x20];
+    unsigned short frameStep;      
+    short timerLimit;              
+    char pad24[0x2];
+    unsigned short repeatCount;    
+    short phaseLimit;              
+    unsigned short phaseStep;      
+    signed char state[12];         
+    signed char timer[12];         
+    unsigned short phase[12];      
+    char pad5C[0x4];
+    unsigned short frame[12][4];   
+} RoomLibTick12Rec;
+extern void D_80193234();
+extern void func_80191D70(void);
+extern void func_80192888(void);
+extern void RoomLib_HandlerD_decl (void);
+extern void func_80191374();
+extern void RoomLib_HandlerF();
+extern int D_800DFF80(int *vec, int *ref);
+extern int D_800DFFB8(short cur, short target, short rate);
+extern char *RoomMain_ActorPtr;
+extern int RoomMain_RotTable[];
+extern unsigned int D_800C6CE0(void);
+extern void D_800C2AF0(int a, int b, int c, int d, int e, int f);
+extern void D_800C2414(void *o, void *table);
+extern int func_800C251C(void *o, void *table);
+extern int func_800C2758(void *o, void *tableA, void *tableB);
+extern void **func_800C22F8(void);
+extern int func_8003010C(void *o, int arg);
+extern void func_80030220(void *o, int arg, int value);
+extern void func_80192BFC(void);
+typedef struct RoomRenderNode {
+    int flags;                     
+    char pad04[0x14];
+    unsigned char *state;          
+} RoomRenderNode;
+typedef struct RoomLink {
+    RoomRenderNode *target;        
+    char pad04[0xA];
+    unsigned char variant;         
+    char pad0F[0x7];
+    unsigned short winLo;          
+    char pad18[0x2];
+    unsigned short winHi;          
+    char pad1C[0xA];
+    unsigned short h26;            
+    int pos[4];                    
+    char pad38[0x2];
+    unsigned short h3A;            
+    char pad3C[0x4];
+    int posMirror[4];              
+    char pad50[0x18];
+    int vel[3];                    
+    char pad74[0x4];
+    int move[3];                   
+    char pad84[0x4];
+    int accel[3];                  
+    char pad94[0x4];
+    void *node98;                  
+    char pad9C[0xF0];
+    struct RoomLink *link18C;      
+    char pad190[0x6C];
+    int w1FC;                      
+    int w200;
+    int w204;
+    char pad208[0x30];
+    void *p238;                    
+    char pad23C[0x14];
+    unsigned short h250;           
+} RoomLink;
+typedef RoomRenderNode RoomLinkByte;   
+typedef struct RoomEnt {
+    unsigned char state;           
+    char pad1[0x2];
+    unsigned char flag3;           
+    int w04;                       
+    RoomLink *link;                
+    struct RoomSub {
+        void (*cb)(void);          
+        int *signal;               
+    } sub;
+    short active;                  
+    signed char t16;               
+    signed char t17;               
+    signed char t18;
+    unsigned char t19;             
+    unsigned char t1A;
+    char pad1B[0x1];
+    short mat[9];                  
+    short rot[3];                  
+    short h34;                     
+    char pad36[0x4];
+    short heading;                 
+    int pos[2];                    
+    short h44;                     
+    short h46;                     
+    short h48;
+    char pad4A[0x12];
+    int w5C;                       
+    int w60;
+    int w64;
+    char pad68[0x14];
+    int w7C;                       
+    int w80;                       
+    char pad84[0x10];
+    int w94;                       
+    char pad98[0x4];
+    short h9C;                     
+    short h9E;
+    short hA0;                     
+    char padA2[0x12];
+    unsigned char bB4;             
+    char padB5[0x1];
+    unsigned char bB6;             
+    unsigned char bB7;
+    unsigned char bB8;
+    char padB9[0x3];
+    unsigned short hBC[4];         
+} RoomEnt;
+typedef struct RoomLibMotionState {
+    char pad00[0x40];
+    int position[3];               
+    union {
+        int word;
+        struct {
+            short pad4C;
+            short height;
+        } half;
+    } mode;                        
+    int anchor[3];                 
+    char pad5C[0x14];
+    int localStep[3];              
+    char pad7C[0x4];
+    RoomLink *target;              
+} RoomLibMotionState;
+typedef struct RoomLibMotionWork {
+    short input[3];                
+    short pad06;
+    int rotated[3];                
+    char pad14[0x14];
+    short matrix[9];               
+    short pad3A;
+} RoomLibMotionWork;
+typedef struct RoomLibHandlerEState {
+    void (*callback)(void);        
+    int *signal;                   
+    short active;                  
+    signed char variant;           
+    unsigned char optionB;         
+    unsigned char optionC;         
+    unsigned char flags;           
+    char pad0E[0x2];
+    int start[3];                  
+    char pad1C[0x4];
+    int target[3];                 
+    char pad2C[0x4];
+    int delta[3];                  
+    char pad3C[0x4];
+    int localOffset[3];            
+    char pad4C[0x4];
+    int secondary[3];              
+    char pad5C[0x4];
+    RoomLink *targetLink;          
+    RoomLink *secondaryLink;       
+    int speed;                     
+    short duration;                
+    short secondaryHeading;        
+    short eased;                   
+    short heading;                 
+    short mirrorPosition;          
+    short frameLimit;              
+    short frame;                   
+    short phase;                   
+    short phaseFrame[4];           
+    unsigned char lockY;           
+    unsigned char copyPosition;   
+} RoomLibHandlerEState;
+typedef struct RoomLibHandlerDState {
+    void (*callback)(void);        
+    int *signal;                   
+    short active;                  
+    signed char variant;           
+    unsigned char optionB;         
+    unsigned char optionC;         
+    unsigned char flags;           
+    char pad0E[0x32];
+    int target[4];                 
+    char pad50[0x10];
+    int positionX;                 
+    char pad64[0x4];
+    int positionZ;                 
+    char pad6C[0x4];
+    short rotation[3];             
+    char pad76[0xA];
+    RoomLink *targetLink;          
+    RoomLink *secondaryLink;       
+    int value88;                   
+    int value8C;                   
+    int value90;                   
+    char pad94[0x6];
+    short stateValue;              
+    short range[3];                
+    short heading;                 
+    short duration;                
+    short rate;                    
+    unsigned char mirrorPosition;  
+    unsigned char reverse;         
+    unsigned char lockY;           
+    unsigned char copyPosition;    
+    unsigned char copyRotation;    
+} RoomLibHandlerDState;
+typedef struct RoomLibHandlerBState {
+    void (*callback)(void);        
+    int *signal;                   
+    short active;                  
+    signed char variant;           
+    unsigned char optionB;         
+    unsigned char optionC;         
+    unsigned char flags;           
+    char pad0E[0x22];
+    int target[3];                 
+    char pad3C[0x4];
+    int localOffset[3];            
+    char pad4C[0x4];
+    int secondaryX;                
+    char pad54[0x4];
+    int secondaryZ;                
+    char pad5C[0x4];
+    RoomLink *targetLink;          
+    RoomLink *secondaryLink;       
+    int speed;                     
+    int acceleration;              
+    int duration;                  
+    int phaseValue;                
+    char pad78[0x8];
+    int mode;                      
+    char pad84[0x2];
+    short rate;                    
+    short heading;                 
+    short secondaryHeading;        
+} RoomLibHandlerBState;
+typedef struct RoomLibHandlerCState {
+    void (*callback)(void);        
+    int *signal;                   
+    short active;                  
+    signed char variant;           
+    unsigned char optionB;         
+    unsigned char optionC;         
+    unsigned char flags;           
+    char pad0E[0x22];
+    int target[3];                 
+    char pad3C[0x14];
+    int localOffset[3];            
+    char pad5C[0x4];
+    int secondaryX;                
+    char pad64[0x4];
+    int secondaryZ;                
+    char pad6C[0x4];
+    RoomLink *targetLink;          
+    RoomLink *secondaryLink;       
+    char pad78[0x4];
+    int phaseValue;                
+    char pad80[0x8];
+    int mode;                      
+    char pad8C[0x4];
+    short rate;                    
+    short heading;                 
+    short secondaryHeading;        
+} RoomLibHandlerCState;
+extern short D_800966EE[];
+extern short D_800966EC[][2];
+extern char *D_8009D254;
+struct FieldActorNode;
+extern struct FieldActorNode *D_8009D20C;
+extern void func_80191110(RoomEnt *obj);
+extern void func_80191D18(RoomEnt *obj);
+extern int func_801914B0(RoomEnt *obj);
+extern int func_80192510(RoomEnt *obj);
+extern void func_80190D0C(RoomEnt *obj);
+extern void func_80191824(RoomEnt *obj);
+extern void func_8018F598(RoomEnt *obj);
+extern void func_801902D8(RoomEnt *obj);
+extern void RoomLib_Notify2ArmB_801902C8(RoomEnt *obj);
+extern void func_801902D0(RoomEnt *obj);
+extern void func_801902D4(RoomEnt *obj);
+extern void func_801902DC(RoomEnt *obj);
+extern void func_801902E0(RoomEnt *obj);
+extern void func_801902E4(RoomEnt *obj);
+extern void func_801902E8(RoomEnt *obj);
+extern void func_801902EC(RoomEnt *obj);
+extern void func_801902FC(RoomEnt *obj);
+extern void func_8019031C(RoomEnt *obj);
+extern void func_80190314(RoomEnt *obj);
+extern void func_80190320(RoomEnt *obj);
+extern void func_80190328(RoomEnt *obj);
+extern void func_80190340(RoomEnt *obj);
+extern void func_8019035C(RoomEnt *obj);
+extern void func_80190F64(RoomEnt *obj);
+extern void func_801912CC(RoomEnt *obj);
+extern void func_801912D4(RoomEnt *obj);
+extern void func_801912E0(RoomEnt *obj);
+extern void func_80191368(RoomEnt *obj);
+extern void func_80191430(RoomEnt *obj);
+extern void func_801917E4(RoomEnt *obj);
+extern void RoomLib_Notify2ArmB_80191D00(RoomEnt *obj);
+extern void func_80191F18(RoomEnt *obj);
+extern void func_80192420(RoomEnt *obj);
+extern void func_80192428(RoomEnt *obj);
+extern void func_80194A5C(RoomEnt *obj);
+extern void func_8018F588(RoomEnt *obj);
+extern void func_8018F590(RoomEnt *obj);
+extern void func_8018F594(RoomEnt *obj);
+extern void func_8018F59C(RoomEnt *obj);
+extern void func_8018F5A0(RoomEnt *obj);
+extern void func_8018F5A4(RoomEnt *obj);
+extern void func_8018F5A8(RoomEnt *obj);
+extern void func_8018F5AC(RoomEnt *obj);
+extern void func_8018F5BC(RoomEnt *obj);
+extern void func_8018F5DC(RoomEnt *obj);
+extern void func_8018F5E0(RoomEnt *obj);
+extern void func_8018F5E8(RoomEnt *obj);
+extern void func_8018F600(RoomEnt *obj);
+extern void func_8018F61C(RoomEnt *obj);
+extern void func_80190224(RoomEnt *obj);
+extern void func_8019058C(RoomEnt *obj);
+extern void func_80190594(RoomEnt *obj);
+extern void func_801905A0(RoomEnt *obj);
+extern void func_80190628(RoomEnt *obj);
+extern void func_801906F0(RoomEnt *obj);
+extern void func_80190AA4(RoomEnt *obj);
+extern void func_80190FC0(RoomEnt *obj);
+extern void func_801911D8(RoomEnt *obj);
+extern void func_801916E0(RoomEnt *obj);
+extern void func_801916E8(RoomEnt *obj);
+extern void func_80193D1C(RoomEnt *obj);
+extern void func_80190CFC(RoomEnt *obj);
+extern void func_80190D04(RoomEnt *obj);
+extern void func_80190D08(RoomEnt *obj);
+extern void func_80190D10(RoomEnt *obj);
+extern void func_80190D14(RoomEnt *obj);
+extern void func_80190D18(RoomEnt *obj);
+extern void func_80190D1C(RoomEnt *obj);
+extern void func_80190D20(RoomEnt *obj);
+extern void func_80190D30(RoomEnt *obj);
+extern void func_80190D48(RoomEnt *obj);
+extern void func_80190D50(RoomEnt *obj);
+extern void func_80190D54(RoomEnt *obj);
+extern void func_80190D5C(RoomEnt *obj);
+extern void func_80190D74(RoomEnt *obj);
+extern void func_80190D90(RoomEnt *obj);
+extern void func_80191998(RoomEnt *obj);
+extern void func_80191D00(RoomEnt *obj);
+extern void RoomLib_ArmWindowA_80191D08(RoomEnt *obj);
+extern void RoomLib_ArmWindowA_80191D14(RoomEnt *obj);
+extern void RoomLib_ArmWindowA_80191D9C(RoomEnt *obj);
+extern void func_80191E64(RoomEnt *obj);
+extern void func_80192218(RoomEnt *obj);
+extern void func_80192734(RoomEnt *obj);
+extern void func_8019294C(RoomEnt *obj);
+extern void func_80192E54(RoomEnt *obj);
+extern void func_80192E5C(RoomEnt *obj);
+extern void func_80195490(RoomEnt *obj);
+extern void func_80191100(RoomEnt *obj);
+extern void func_80191108(RoomEnt *obj);
+extern void func_8019110C(RoomEnt *obj);
+extern void func_80191114(RoomEnt *obj);
+extern void func_80191118(RoomEnt *obj);
+extern void func_8019111C(RoomEnt *obj);
+extern void func_80191120(RoomEnt *obj);
+extern void func_80191124(RoomEnt *obj);
+extern void func_80191134(RoomEnt *obj);
+extern void func_80191154(RoomEnt *obj);
+extern void func_80191158(RoomEnt *obj);
+extern void func_80191160(RoomEnt *obj);
+extern void func_80191178(RoomEnt *obj);
+extern void func_80191194(RoomEnt *obj);
+extern void func_80191D9C(RoomEnt *obj);
+extern void func_80192104(void);
+extern void func_8019210C(RoomEnt *obj);
+extern void func_80192118(RoomEnt *obj);
+extern void func_801921A0(RoomEnt *obj);
+extern void func_80192268(RoomEnt *obj);
+extern void func_8019261C(RoomEnt *obj);
+extern void func_80192B38(RoomEnt *obj);
+extern void func_80192D50(RoomEnt *obj);
+extern void func_80193258(RoomEnt *obj);
+extern void func_80193260(RoomEnt *obj);
+extern void func_80195894(RoomEnt *obj);
+extern void RoomLib_ArmWindowB_80191814(RoomEnt *obj);
+extern void func_80191860(RoomEnt *obj);
+extern void func_801902C8(RoomEnt *obj);
+extern void func_80191814(RoomEnt *obj);
+extern void func_80191820(RoomEnt *obj);
+extern void func_8019181C(RoomEnt *obj);
+extern void RoomLib_ArmWindowB_80191820(RoomEnt *obj);
+extern void func_80191828(RoomEnt *obj);
+extern void func_8019182C(RoomEnt *obj);
+extern void func_80191830(RoomEnt *obj);
+extern void func_80191834(RoomEnt *obj);
+extern void func_80191838(RoomEnt *obj);
+extern void func_80191848(RoomEnt *obj);
+extern void func_80191868(RoomEnt *obj);
+extern void func_8019186C(RoomEnt *obj);
+extern void func_80191874(RoomEnt *obj);
+extern void func_8019188C(RoomEnt *obj);
+extern void func_801918A8(RoomEnt *obj);
+extern void func_801924B0(RoomEnt *obj);
+extern void func_80192818(RoomEnt *obj);
+extern void func_80192820(RoomEnt *obj);
+extern void func_8019282C(RoomEnt *obj);
+extern void func_801928B4(RoomEnt *obj);
+extern void func_8019297C(RoomEnt *obj);
+extern void func_80192D30(RoomEnt *obj);
+extern void func_8019324C(RoomEnt *obj);
+extern void func_80193464(RoomEnt *obj);
+extern void func_8019396C(RoomEnt *obj);
+extern void func_80193974(RoomEnt *obj);
+extern void func_80195FA8(RoomEnt *obj);
+extern void func_80191D08();
+extern void func_80191D10(void);
+extern void func_80191D54(void);
+extern void func_8019114C(RoomEnt *obj);
+extern void func_80191D14(void);
+extern void func_80191D1C(void);
+extern void func_80191D20(void);
+extern void func_80191D24(void);
+extern void func_80191D28(void);
+extern void func_80191D2C(void);
+extern void func_80191D3C(void);
+extern void func_80191D5C(RoomEnt *obj);
+extern void func_80191D60(void);
+extern void func_80191D68(RoomEnt *obj);
+extern void func_80191D80(void);
+extern void func_801929A4(RoomEnt *obj);
+extern void func_80192D0C(void);
+extern void func_80192D14(void);
+extern void func_80192D20(void);
+extern void func_80192DA8(void);
+extern void func_80192E70(void);
+extern void func_80193224(void);
+extern void func_80193740(void);
+extern void func_80193958(void);
+extern void func_80193E60(void);
+extern void func_80193E68(void);
+extern void func_8019649C(void);
+extern int func_801924D4(RoomEnt *o);
+typedef struct RoomLibFxMatrixWords {
+    int w0;
+    int w1;
+    int w2;
+    int w3;
+    int w4;
+    int w5;
+    int w6;
+    int w7;
+} RoomLibFxMatrixWords;
+typedef struct RoomLibFxMatrixState {
+    RoomLink *link;
+    RoomLibFxMatrixWords matrix;
+    void *asset;
+} RoomLibFxMatrixState;
+typedef struct RoomLibPacked8 {
+    int lo;
+    int hi;
+} __attribute__((packed)) RoomLibPacked8;
+extern void func_800C2B40(void *state);
+extern void *func_8006DC18(int type);
+extern void D_80190B7C(RoomLink *l, struct RoomSub *s, int scratch);
+extern void RoomLib_FxNotify2(RoomLink *l, struct RoomSub *s);
+extern void func_800DFE94(void *a0, void *a1, void *a2);
+extern int func_800DFC80(int *lhs, int *rhs);
+extern int func_80079FB4(int x, int z);
+extern void func_800DFB20(void *state);
+extern char RoomLib_TableA[];
+extern char RoomLib_TableB[];
+struct FieldActorNode;
+typedef struct M17Model {
+    unsigned char b00;
+    unsigned char b01;
+    short h02;
+    int w04;
+    unsigned char *obj;                     
+    struct FieldActorNode *actorNode;  
+    short h10;                     
+    short h12;                     
+    short h14;                     
+    short h16;                     
+    unsigned char bInit;                    
+    unsigned char bActive;                  
+} M17Model;
+typedef struct M17Ent {
+    unsigned char pad00[0x28];
+    short h28;                     
+    unsigned char pad2A[0x36];
+    int w60;                     
+    unsigned char pad64[0x38];
+    unsigned short h9C;                     
+    unsigned char pad9E[0x1E];
+    unsigned short hBC;                     
+    unsigned short hBE;                     
+    unsigned short hC0;                     
+    unsigned short hC2;                     
+} M17Ent;
+extern void RoomFx_ModelBind(unsigned char *geom, int actor, int a, int b, int c, int d);
+extern void RoomFx_ModelUpdate(unsigned char *geom);
+extern void RoomFx_ModelDraw(unsigned char *geom);
+extern void func_8003A088(unsigned char *geom);
+extern void func_8003AC90(unsigned char *geom, void *dst);
+extern void *D_800BCFA4;
+typedef struct FieldActorNode {
+    int w00;
+    struct FieldActorNode *next;   
+    int w08;
+    unsigned char b0C;             
+    unsigned char b0D;             
+    char pad0E[0x8A];
+    int w98;                       
+} FieldActorNode;
+extern FieldActorNode *g_FieldActorListHead asm("D_8009D20C");
+typedef struct RoomSlotRec {
+    short h0;
+    short h2;                      
+    short h4;
+    short pad6;
+    int w8;
+    int wC;
+} RoomSlotRec;
+extern unsigned short g_FrameCount16;
+typedef struct RoomBlob8 {
+    char b[8];
+} RoomBlob8;
+typedef struct RoomMsgSub {
+    short h0;
+    short h2;
+    short h4;
+} RoomMsgSub;
+typedef struct RoomMsg {
+    short h0;
+    short h2;
+    short h4;
+    short h6;
+    RoomMsgSub sub;                
+} RoomMsg;
+typedef struct RoomDlgAnimState {
+    short x;                      
+    short y;                      
+    short z;                      
+    short field_06;               
+    short velocityX;              
+    short velocityY;              
+    short velocityZ;              
+    short field_0E;               
+    short state;                  
+    short timer;                  
+} RoomDlgAnimState;
+typedef struct RoomDlgAnimParams {
+    char pad00[0x4];
+    int scale;                    
+} RoomDlgAnimParams;
+typedef int (*RoomDlgCallback)(int mode, RoomDlgAnimState *state,
+                               RoomDlgAnimParams *params);
+typedef struct RoomQRec {
+    short h0;
+    short h2;
+    short h4;
+    short h6;
+    char sub[8];                   
+    short h10;                     
+    short h12;                     
+} RoomQRec;
+typedef struct RoomNodeB {
+    char pad[0x18];
+    unsigned char *state;          
+} RoomNodeB;
+typedef struct RoomChanCtx {
+    int w0;
+    int w4;
+    RoomNodeB **w8;                
+} RoomChanCtx;
+typedef struct RoomDlgState {
+    char pad[0xD];
+    unsigned char bD;              
+    char padE[0x4];
+    short h12;                     
+} RoomDlgState;
+extern RoomChanCtx *D_800F32D0;
+extern RoomChanCtx *D_800F33E0;
+extern RoomDlgState *D_800E2368;
+extern int D_800E27EC;
+extern short D_800F3372;
+extern short D_800F3374;
+extern void *RoomMain_ActorPtr2;
+extern int func_800CE8F0();
+extern int func_800CE9D4();
+extern int func_800CE870();
+extern int func_800CFAA8();
+extern int func_800CE560();
+extern RoomQRec *func_800CE610();
+extern int func_800CFB7C();
+extern int func_800D3FD8();
+extern int func_800D3F64();
+extern int func_800DFB78();
+extern int func_8018FEF8(RoomEnt *o);
+extern void func_801909E0(RoomEnt *o);
+typedef struct RoomTimer {
+    char pad0[0x24];
+    unsigned short h24;            
+    short h26;                     
+    short h28;                     
+} RoomTimer;
+typedef struct RoomTimer0 {
+    char pad0[0x4];
+    unsigned short h4;             
+    short h6;                      
+    short h8;                      
+} RoomTimer0;
+typedef struct RoomTimer2 {
+    char pad0[0x28];
+    unsigned short h28;            
+    short h2A;                     
+    short h2C;                     
+} RoomTimer2;
+extern int func_800C6C18();
+extern int func_800C2B68();
+typedef struct RoomFxParams {
+    char pad0[0x8];
+    short h8;
+    short hA;
+    short hC;
+    char padE[0x2];
+    short h10;
+    short h12;
+    char pad14[0x1];
+    unsigned char b15;
+    unsigned char b16;
+} RoomFxParams;
+typedef struct RoomStatePair {
+    unsigned char b0;
+    unsigned char b1;              
+    short h2;                      
+} RoomStatePair;
+typedef struct RoomClock {
+    char pad0[0x8];
+    short h8;                      
+    short hA;                      
+    short hC;                      
+    char padE[0x2];
+    unsigned char renderOwner;    
+} RoomClock;
+extern RoomClock *func_800C2B50();
+extern int func_800C6B90(void *position, int radius);
+extern void func_800C2EAC(u8 owner);
+extern void func_800C2FF0(s32 width, s32 height);
+extern void func_800C3098(s32 depth);
+extern void func_800C3238(s32 mode);
+extern void func_800C42A4(void *packet, RoomSpriteMatrix *matrix, s32 mode);
+extern void func_80078CC4(RoomSpriteMatrix *matrix, RoomFxVec4 *scale);
+extern int func_80071A54(void);
+typedef struct RoomPartVec {
+    unsigned short x;
+    unsigned short y;
+    unsigned short z;
+    short pad6;
+} RoomPartVec;
+typedef struct RoomSpritePacket {
+    unsigned char header[0xA];
+    unsigned short depth;
+} RoomSpritePacket;
+extern short D_800942EC;
+typedef struct RoomParticleRenderState {
+    RoomSpriteMatrix matrix;       
+    RoomPartVec position[6];       
+    RoomPartVec velocity[6];       
+    char pad80[0xC];
+    unsigned short depth[6];       
+    short active[6];               
+    short liveCount;               
+} RoomParticleRenderState;
+typedef struct RoomPartSys {
+    char pad0[0x20];
+    RoomPartVec pos[6];            
+    RoomPartVec vel[6];            
+    char pad80[0x18];
+    short flag[6];                 
+    short hA4;                     
+} RoomPartSys;
+extern void func_80190C5C (void *state, void *scratch);
+extern int func_80190E9C (RoomEnt *o);
+extern void D_80190B7C (RoomLink *l, struct RoomSub *s, int scratch);
+extern void func_80079754 (void *rotation, void *matrix);
+void func_80190634 (RoomEnt *o) {
+    RoomEnt *ent = o;
+    char *state = (char *)o + 0xC;
+    short *scratch;
+    RoomLink *link = o->link;
+    char *left;
+    register char *right asm("$16");
+    int value;
+    int product;
+    int *rot;
+    int rot_y;
+    int rot_word;
+    register int rot_x asm("$4");
+    asm("" : : "r"(state) : "$18");
+    scratch = (short *)0x1F800000;
+    if (ent->t1A == 0) {
+        ent->t1A = 1;
+        ent->w04 = 0;
+        (*(int *)((char *)( link ) + (  0x98 )))  &= 0xFFF3FFFF;
+        if (ent->active != 0 && link->target != 0) {
+            link->target->flags |= 0x40000000;
+        }
+        (*(int *)((char *)( state ) + (  0x50 )))  = (*(int *)((char *)( link ) + (  0x28 ))) ;
+        (*(int *)((char *)( state ) + (  0x54 )))  = (*(int *)((char *)( link ) + (  0x2C ))) ;
+        (*(int *)((char *)( state ) + (  0x58 )))  = (*(int *)((char *)( link ) + (  0x30 ))) ;
+        func_80190C5C (state, (void *)scratch);
+        {
+            int initial_speed;
+            register char *left_arg asm("$4");
+            int initial_velocity;
+            left = state + 0x50;
+            left_arg = left;
+            right = state + 0x40;
+            initial_speed = func_800DFC80((int *)left_arg, (int *)right);
+            initial_speed += ((*(int *)((char *)( state ) + (  0x8C )))  * 0x70) >> 21;
+            if (initial_speed < 0x148) {
+                initial_speed = 0x148;
+            }
+            initial_velocity = (0x5160000 / initial_speed) << 8;
+            (*(int *)((char *)( state ) + (  0x94 )))  = initial_velocity;
+            (*(int *)((char *)( state ) + (  0x98 )))  = initial_velocity >> 3;
+            func_800DFE94(left, right, state + 0x78);
+            right = state + 0x78;
+            func_80079754 (right, state + 0x10);
+        }
+    }
+    {
+        int bias = 0x8000;
+        int *table = (int *)D_800966EC ;
+    scratch[0x34] = 0;
+    {
+        int angle;
+        angle = (((*(int *)((char *)( state ) + (  0x98 )))  + bias) >> 16) - 0x400;
+        scratch[0x35] = angle;
+        rot = (int *)((char *)table + ((angle & 0xFFF) << 2));
+    }
+    rot_y = *(short *)((char *)rot + 2);
+    scratch[0x15] = 0;
+    scratch[0x14] = rot_y;
+    asm volatile("" : : : "memory") ;
+    rot_word = *rot;
+    asm volatile("" : : "r"( rot_word )) ;
+    rot_x = (unsigned short)scratch[0x14];
+    scratch[0x17] = 0;
+    scratch[0x19] = 0;
+    scratch[0x1B] = 0;
+    scratch[0x00] = 0;
+    scratch[0x01] = 0;
+    asm volatile("" : : : "memory") ;
+    scratch[0x16] = rot_word;
+    {
+        register int negated asm("$3");
+        negated = *(volatile unsigned short *)&scratch[0x16];
+        scratch[0x18] = 0x1000;
+        scratch[0x1C] = rot_x;
+        asm("" : "=r"(negated) : "0"(negated) : "memory");
+        negated = -negated;
+        scratch[0x1A] = negated;
+    }
+    scratch[0x02] = (*(int *)((char *)( state ) + (  0x88 )))  >> 12;
+    asm volatile("lw $12,0(%0)\n\t" "lw $13,4(%0)\n\t" "ctc2 $12,$0\n\t" "ctc2 $13,$1\n\t" "lw $12,8(%0)\n\t" "lw $13,12(%0)\n\t" "lw $14,16(%0)\n\t" "ctc2 $12,$2\n\t" "ctc2 $13,$3\n\t" "ctc2 $14,$4" : : "r"( (void *)((int)scratch | 0x28) ) : "$12", "$13", "$14") ;
+    asm volatile("lwc2 $0,0(%0)"  "\n\t" "lwc2 $1,4(%0)"  : : "r"( (void *)scratch ) : "memory") ;
+    asm volatile("nop\n\t" "nop\n\t" ".word 0x4A486012") ;
+    asm("" : "=r"(scratch) : "0"(scratch));
+    asm volatile("swc2 $25,0(%0)\n\t" "swc2 $26,4(%0)\n\t" "swc2 $27,8(%0)" : : "r"( (char *)scratch + 8 ) : "memory") ;
+    (*(int *)((char *)( state ) + (  0x30 )))  += *(int *)((char *)scratch + 8) << 12;
+    (*(int *)((char *)( state ) + (  0x38 )))  += *(int *)((char *)scratch + 0x10) << 12;
+    if ((*(int *)((char *)( state ) + (  0x98 )))  > 0x08000000) {
+        ent->flag3 = 2;
+    }
+    {
+        register int work asm("$3");
+        if (*(int *)((char *)scratch + 0x10) >= 0) {
+            int position;
+            position = (*(int *)((char *)( state ) + (  0x88 ))) ;
+            position += (*(int *)((char *)( state ) + (  0x8C ))) ;
+            work = (position + bias) >> 16;
+            product = work * ((*(int *)((char *)( state ) + (  0x94 )))  >> 12);
+            asm volatile("" : : : "memory") ;
+            (*(int *)((char *)( state ) + (  0x88 )))  = position;
+            asm volatile("" : : : "memory") ;
+            work = (*(int *)((char *)( state ) + (  0x98 ))) ;
+        } else {
+            int updated;
+            work = (*(int *)((char *)( state ) + (  0x88 ))) ;
+            work = (work + bias) >> 16;
+            product = work * ((*(int *)((char *)( state ) + (  0x94 )))  >> 12);
+            asm volatile("" : : : "memory") ;
+            updated = (*(int *)((char *)( state ) + (  0x88 ))) ;
+            updated -= (*(int *)((char *)( state ) + (  0x8C ))) ;
+            asm volatile("" : : "r"( updated )) ;
+            work = (*(int *)((char *)( state ) + (  0x98 ))) ;
+            (*(int *)((char *)( state ) + (  0x88 )))  = updated;
+        }
+        (*(int *)((char *)( state ) + (  0x98 )))  = work + ((product >> 8) << 12);
+    }
+    }
+    {
+        int bias = 0x8000;
+        if ((*(short *)((char *)( state ) + (  0x9A )))  >= 0xC01 && (*(int *)((char *)( state ) + (  0x30 )))  <= 0) {
+            *(int *)((char *)scratch + 0x18) = 0;
+            *(int *)((char *)scratch + 0x1C) = 0;
+            *(int *)((char *)scratch + 0x20) = 0;
+            func_80190E9C (ent);
+        } else {
+            scratch[0] = (((((*(int *)((char *)( state ) + (  0x30 )))  + bias) >> 16) *
+                           (*(int *)((char *)( state ) + (  0x90 ))) ) >> 12);
+            scratch[1] = 0;
+            scratch[2] = ((*(int *)((char *)( state ) + (  0x38 )))  + bias) >> 16;
+            asm volatile("lw $12,0(%0)\n\t" "lw $13,4(%0)\n\t" "ctc2 $12,$0\n\t" "ctc2 $13,$1\n\t" "lw $12,8(%0)\n\t" "lw $13,12(%0)\n\t" "lw $14,16(%0)\n\t" "ctc2 $12,$2\n\t" "ctc2 $13,$3\n\t" "ctc2 $14,$4" : : "r"( state + 0x10 ) : "$12", "$13", "$14") ;
+            asm volatile("lwc2 $0,0(%0)"  "\n\t" "lwc2 $1,4(%0)"  : : "r"( (void *)scratch ) : "memory") ;
+            asm volatile("nop\n\t" "nop\n\t" ".word 0x4A486012") ;
+            asm volatile("swc2 $25,0(%0)\n\t" "swc2 $26,4(%0)\n\t" "swc2 $27,8(%0)" : : "r"( (char *)scratch + 0x18 ) : "memory") ;
+        }
+    }
+    if ((*(short *)((char *)( state ) + (  0xA6 )))  != 0 && (*(short *)((char *)( state ) + (  0xA6 )))  < (*(short *)((char *)( state ) + (  0x9A ))) ) {
+        func_80190E9C (ent);
+    }
+    (*(int *)((char *)( link ) + (  0x28 )))  = (*(int *)((char *)( state ) + (  0x50 )))  +
+                       (*(int *)((char *)scratch + 0x18) << 16);
+    (*(int *)((char *)( link ) + (  0x30 )))  = (*(int *)((char *)( state ) + (  0x58 )))  +
+                       (*(int *)((char *)scratch + 0x20) << 16);
+    {
+        (*(int *)((char *)( link ) + (  0x1FC )))  = ((*(int *)((char *)( link ) + (  0x28 )))  + 0x8000) >> 16;
+        (*(int *)((char *)( link ) + (  0x204 )))  = ((*(int *)((char *)( link ) + (  0x30 )))  + 0x8000) >> 16;
+        if ((*(unsigned char *)((char *)( state ) + (  0xAB )))  == 0) {
+            value = (*(int *)((char *)( state ) + (  0x54 )))  +
+                    (*(int *)((char *)scratch + 0x1C) << 16);
+            (*(int *)((char *)( link ) + (  0x2C )))  = value;
+            (*(int *)((char *)( link ) + (  0x200 )))  = (value + 0x8000) >> 16;
+        }
+    }
+    if ((*(short *)((char *)( state ) + (  0x9C )))  != 0 &&
+        *(int *)((char *)scratch + 0x10) >= 0) {
+        if (ent->w04 >= (unsigned int)(*(short *)((char *)( state ) + (  0x9E )))  &&
+            ((*(short *)((char *)( state ) + (  0xA0 )))  == 0 ||
+             ent->w04 <= (unsigned int)(*(short *)((char *)( state ) + (  0xA0 ))) )) {
+            func_80190C5C (state, (void *)scratch);
+            scratch[1] = (*(short *)((char *)( state ) + (  0x7A ))) ;
+            func_800DFE94(state + 0x50, state + 0x40, state + 0x78);
+            right = state + 0x78;
+            (*(short *)((char *)( state ) + (  0x7A )))  = D_800DFFB8(
+                (short)*(volatile unsigned short *)&scratch[1],
+                (*(short *)((char *)( state ) + (  0x7A ))) , (*(short *)((char *)( state ) + (  0x9C ))) ) & 0xFFF;
+            func_80079754 (right, state + 0x10);
+        }
+    }
+    if ((*(unsigned char *)((char *)( state ) + (  0xAA )))  == 0) {
+        D_80190B7C (link, (struct RoomSub *)state, (int)scratch);
+    }
+    func_800DFB20(ent);
+}

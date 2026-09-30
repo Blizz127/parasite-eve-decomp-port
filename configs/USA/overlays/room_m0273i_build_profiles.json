@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "_comment": "Build profiles for the room_m0273i room target. Profile DEFINITIONS are inherited from the EXE manifest via profiles_from; only the ASSIGNMENTS are owned here.",
+  "profiles_from": "configs/USA/disc1_build_profiles.json",
+  "default_profile": "era_o2_g0",
+  "assignments": {
+    "room_m0273i_dispatch_8018EFF4": [
+      "func_8018F290"
+    ],
+    "room_m0273i_dispatch_8018F074": [
+      "func_8018FFDC"
+    ],
+    "room_m0273i_dispatch_8018F0FC": [
+      "func_80190AA0"
+    ],
+    "room_m0273i_dispatch_8018F164": [
+      "func_801915B8"
+    ],
+    "era_o2_g0_no_schedule_insns": [
+      "func_8019A5D4",
+      "func_8019A398"
+    ],
+    "era_o2_g0_narrow_shifted_reg_load": [
+      "func_8019A290",
+      "func_80194B5C"
+    ],
+    "room_m0273i_dispatch_8018F1CC": [
+      "func_80192E64"
+    ],
+    "era_o2_g0_narrow_shifted_word_load": [
+      "func_80198060",
+      "func_80194128",
+      "func_80199F84",
+      "func_80195984"
+    ],
+    "era_o2_g0_expand_div": [
+      "func_80192F5C",
+      "func_8018F64C",
+      "func_8019038C",
+      "func_80190D88",
+      "func_8019111C",
+      "func_801918A0",
+      "func_80191D24"
+    ]
+  },
+  "local_profiles": {
+    "room_m0273i_dispatch_8018EFF4": {
+      "toolchain": "era",
+      "flags": [
+        "-O2",
+        "-G0"
+      ],
+      "environment": {
+        "MASPSX_THREE_WORD_SYMBOL_STORE": "1",
+        "MASPSX_DISPATCH_FOLD": "jtbl_8018EFF4"
+      }
+    },
+    "room_m0273i_dispatch_8018F074": {
+      "toolchain": "era",
+      "flags": [
+        "-O2",
+        "-G0"
+      ],
+      "environment": {
+        "MASPSX_THREE_WORD_SYMBOL_STORE": "1",
+        "MASPSX_DISPATCH_FOLD": "jtbl_8018F074"
+      }
+    },
+    "room_m0273i_dispatch_8018F0FC": {
+      "toolchain": "era",
+      "flags": [
+        "-O2",
+        "-G0"
+      ],
+      "environment": {
+        "MASPSX_THREE_WORD_SYMBOL_STORE": "1",
+        "MASPSX_DISPATCH_FOLD": "jtbl_8018F0FC"
+      }
+    },
+    "room_m0273i_dispatch_8018F164": {
+      "toolchain": "era",
+      "flags": [
+        "-O2",
+        "-G0"
+      ],
+      "environment": {
+        "MASPSX_THREE_WORD_SYMBOL_STORE": "1",
+        "MASPSX_DISPATCH_FOLD": "jtbl_8018F164"
+      }
+    },
+    "era_o2_g0_narrow_shifted_reg_load": {
+      "toolchain": "era",
+      "flags": [
+        "-O2",
+        "-G0"
+      ],
+      "environment": {
+        "MASPSX_NARROW_SHIFTED_REG_LOAD": "1"
+      }
+    },
+    "room_m0273i_dispatch_8018F1CC": {
+      "toolchain": "era",
+      "flags": [
+        "-O2",
+        "-G0"
+      ],
+      "environment": {
+        "MASPSX_THREE_WORD_SYMBOL_STORE": "1",
+        "MASPSX_DISPATCH_FOLD": "jtbl_8018F1CC"
+      }
+    },
+    "era_o2_g0_narrow_shifted_word_load": {
+      "toolchain": "era",
+      "flags": [
+        "-O2",
+        "-G0"
+      ],
+      "environment": {
+        "MASPSX_NARROW_SHIFTED_WORD_LOAD": "1"
+      }
+    }
+  }
+}

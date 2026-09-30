@@ -1,0 +1,63 @@
+# Splat config — Parasite Eve (USA) Disc 1, PE.IMG room package m0049i, chunk 2.
+#
+# Blob: `python3 tools/extract/peimg.py room m0049i` ->
+# build/extracted/disc1/peimg/room_m0049i_c2.bin (git-ignored, NEVER committed).
+# Split `scripts/split_overlay.sh room_m0049i`; gate `scripts/exact_rebuild_overlay.sh room_m0049i`.
+#
+# Facts (peimg.py room m0049i, 2026-09-23): slot 48, PE.IMG sectors
+# [0x51A0,0x5255), size 0x5A800, vram 0x8018EFE8, SHA-1 320861e23df3605a60e159b7db5fc081aa421607.
+# Geometry (room_census text-window rule, build/fanout/overlays2/roomscan.py):
+#   0x0-0x54  header + switch jump tables (bin); 0x54-0x3B74 .text;
+#   0x3B74-0x5A800 behaviour tables + room data (bin).
+name: Parasite Eve (USA) Disc 1 PE.IMG room m0049i chunk 2
+sha1: 320861e23df3605a60e159b7db5fc081aa421607
+options:
+  platform: psx
+  compiler: GCC
+  basename: room_m0049i
+  base_path: ../../..
+  target_path: build/extracted/disc1/peimg/room_m0049i_c2.bin
+  asm_path: asm/overlays/room_m0049i
+  src_path: src/overlays/room_m0049i
+  asset_path: assets/overlays/room_m0049i
+  ld_script_path: linkers/overlays/room_m0049i.ld
+  cache_path: asm/overlays/room_m0049i/.splache
+  undefined_funcs_auto_path: asm/overlays/room_m0049i/undefined_funcs_auto.txt
+  undefined_syms_auto_path: asm/overlays/room_m0049i/undefined_syms_auto.txt
+  find_file_boundaries: no
+segments:
+  - name: main
+    type: code
+    start: 0x0
+    vram: 0x8018EFE8
+    subsegments:
+      - [0x0, bin]
+      - [0x54, c, func_8018F03C]
+      - [0x80, c, func_8018F068]
+      - [0xAC, c, func_8018F094]
+      - [0xD4, c, func_8018F0BC]
+      - [0x144, c, func_8018F12C]
+      - [0x14C, c, func_8018F134]
+      - [0x154, c, func_8018F13C]
+      - [0x384, c, func_8018F36C]
+      - [0x38C, c, func_8018F374]
+      - [0x13C0, c, func_801903A8]
+      - [0x1440, c, func_80190428]
+      - [0x1880, c, func_80190868]
+      - [0x1C10, c, func_80190BF8]
+      - [0x1CC8, c, func_80190CB0]
+      - [0x2158, c, func_80191140]
+      - [0x2508, c, func_801914F0]
+      - [0x25C0, c, func_801915A8]
+      - [0x2970, c, func_80191958]
+      - [0x2CAC, c, func_80191C94]
+      - [0x2D5C, c, func_80191D44]
+      - [0x3190, c, func_80192178]
+      - [0x34AC, c, func_80192494]
+      - [0x34B4, c, func_8019249C]
+      - [0x3698, c, func_80192680]
+      - [0x36A0, c, func_80192688]
+      - [0x37AC, c, func_80192794]
+      - [0x39C8, c, func_801929B0]
+      - [0x3B74, bin]
+  - [0x5A800]

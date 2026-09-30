@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "production_root": "func_8001220C",
+  "candidate_pool": "docs/evidence/volume-campaign-20260831/TIER2_CLASSES.md",
+  "active_frontier": {
+    "label": null,
+    "owner": "func_80030894",
+    "first_excluded_pc": "0x800314E4",
+    "remaining_direct_callees": [],
+    "evidence": "docs/evidence/pe-b54kb6-30894-l9/REPORT.md"
+  }
+}

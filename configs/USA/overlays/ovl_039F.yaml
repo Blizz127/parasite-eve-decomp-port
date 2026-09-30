@@ -1,0 +1,73 @@
+# Splat config — Parasite Eve (USA) Disc 1, PE.IMG overlay ovl_039F
+# (MDEC / libpress movie module, image-load range [0x39F,0x3C5)).
+#
+# The target blob is extracted locally by `scripts/extract_overlays.sh` into
+# build/extracted/disc1/peimg/ovl_039F.bin (git-ignored) and is NEVER
+# committed. Split via `scripts/split_overlay.sh ovl_039F`; the exact
+# reassembly proof is `scripts/exact_rebuild_overlay.sh ovl_039F`.
+#
+# Verified facts (configs/USA/overlays/manifest.yaml, tools/extract/peimg.py):
+#   size   0x13000
+#   SHA-1  e7331867b4d1464da4d5f386d9137eaa1c98422b
+#   vram   0x8010BCF8
+#   no PS-X header, no relocations: one fixed-address `code` segment.
+#
+# Geometry (2026-09-22 boundary audit of the extracted blob):
+#   0x0000-0x0054  container header: u32 count (7) then the libpress/MDEC
+#                  message strings ("MDEC_rest:bad option(%d)\n",
+#                  "MDEC_in_sync", "MDEC_out_sync", "%s timeout:\n") and one
+#                  zero pad word. Raw `bin`.
+#   0x0054-0x0F04  .text: first instruction at 0x54 (a frameless leaf), last
+#                  `jr $ra` at 0x0EFC plus its delay slot (14 framed prologues,
+#                  26 `jr $ra`). From 0x7FC on the bodies are hand-scheduled
+#                  (`addi`, explicit `$at`) -- Psy-Q libpress (DecDCTvlc family).
+#   0x0F04-0x13000 data: the VLC decode tables (0x01000207 ...; the raw scan's
+#                  "last jr $ra" at 0x127F0 is a table word) to the end. Raw `bin`.
+#
+# Every function in this overlay is named func_<VRAM> and lives, once carved,
+# under src/overlays/ovl_039F/ (the directory is the namespace).
+name: Parasite Eve (USA) Disc 1 PE.IMG overlay ovl_039F
+sha1: e7331867b4d1464da4d5f386d9137eaa1c98422b
+options:
+  platform: psx
+  compiler: GCC
+  basename: ovl_039F
+  base_path: ../../..
+  target_path: build/extracted/disc1/peimg/ovl_039F.bin
+  asm_path: asm/overlays/ovl_039F
+  src_path: src/overlays/ovl_039F
+  asset_path: assets/overlays/ovl_039F
+  ld_script_path: linkers/overlays/ovl_039F.ld
+  cache_path: asm/overlays/ovl_039F/.splache
+  undefined_funcs_auto_path: asm/overlays/ovl_039F/undefined_funcs_auto.txt
+  undefined_syms_auto_path: asm/overlays/ovl_039F/undefined_syms_auto.txt
+  find_file_boundaries: no
+segments:
+  - name: main
+    type: code
+    start: 0x0
+    vram: 0x8010BCF8
+    subsegments:
+      - [0x0, bin]
+      - [0x54, c, func_8010BD4C]
+      - [0x138, asm]
+      - [0x144, c, func_8010BE3C]
+      - [0x178, c, func_8010BE70]
+      - [0x204, c, func_8010BEFC]
+      - [0x29C, c, func_8010BF94]
+      - [0x2A8, c, func_8010BFA0]
+      - [0x324, c, func_8010C01C]
+      - [0x344, c, func_8010C03C]
+      - [0x380, c, func_8010C078]
+      - [0x3BC, c, func_8010C0B4]
+      - [0x3E0, c, func_8010C0D8]
+      - [0x404, c, func_8010C0FC]
+      - [0x4F4, c, func_8010C1EC]
+      - [0x584, c, func_8010C27C]
+      - [0x610, c, func_8010C308]
+      - [0x6A4, c, func_8010C39C]
+      - [0x738, c, func_8010C430]
+      - [0x750, c, func_8010C448]
+      - [0x7CC, asm]
+      - [0xF04, bin]
+  - [0x13000]

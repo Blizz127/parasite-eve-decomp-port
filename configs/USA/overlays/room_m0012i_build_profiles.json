@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "_comment": "Build profiles for the room_m0012i room target. Profile DEFINITIONS are inherited from the EXE manifest via profiles_from; only the ASSIGNMENTS are owned here.",
+  "profiles_from": "configs/USA/disc1_build_profiles.json",
+  "default_profile": "era_o2_g0",
+  "assignments": {}
+}

@@ -1,0 +1,29 @@
+* Build r5. Fixes the problems reported on r4b. Every fix below is checked
+  against the retail game (matched code, the emulator oracle or the retail
+  video).
+* New since r4b — please check:
+  - Movies now play at full speed, fullscreen too (they were slow on the
+    Legion Go). This build is also optimised; earlier builds were not.
+  - Saving over an existing save works (Yes replaces it, No keeps it); in
+    r4b the game closed at that prompt.
+  - Cheat warp menu: a warp picked on the title screen or during a movie is
+    refused or waits instead of freezing the game. Use warps while walking
+    around in the field.
+  - If the game is closed from Steam or crashes, the log now says so.
+  - The alligator boss's fire-breath beam and embers now draw (second
+    phase), as in the real game.
+  - More of the game runs the exact decompiled code.
+* Known issues to ignore (being fixed):
+  - Using some equipment/tool items from the field menu may still stop the
+    game (a fix is being verified). Healing items are fine.
+  - Loading screens are shorter than on a real PlayStation (being modelled).
+  - Aya's gun model may be missing when she readies it.
+  - The date doesn't walk to the door with Aya in the plaza.
+  - Full list: docs/port/KNOWN_DIVERGENCES.md (21 open).
+* Saves: memory-card saves persist (card file:
+  ~/.local/share/parasite-eve-port/memcard1.mcd).
+* Cheats (off unless pressed): F1 help, F2 god mode, F3 ammo/PE, F4 win
+  battle, F5 key items, F6 fast-forward, F7 FF speed, F8 warp. "CHEATS" shows
+  on screen when any is on.
+* Bug reports: the time and room, a screenshot, and the newest log file in
+  ~/.local/state/parasite-eve-port/logs/ (written automatically).

@@ -1,0 +1,77 @@
+# Splat config — Parasite Eve (USA) Disc 1, PE.IMG overlay ovl_03D2
+# (title / boot overlay, image-load range [0x3D2,0x457)).
+#
+# The target blob is extracted locally by `scripts/extract_overlays.sh` into
+# build/extracted/disc1/peimg/ovl_03D2.bin (git-ignored) and is NEVER
+# committed. Split via `scripts/split_overlay.sh ovl_03D2`; the exact
+# reassembly proof is `scripts/exact_rebuild_overlay.sh ovl_03D2`.
+#
+# Verified facts (configs/USA/overlays/manifest.yaml, tools/extract/peimg.py):
+#   size   0x42800
+#   SHA-1  a0b604ead810592dd9a8d74f7c74fe94151f4d32
+#   vram   0x8018EFF0
+#   no PS-X header, no relocations: one fixed-address `code` segment.
+#
+# Geometry (2026-09-22 boundary audit of the extracted blob):
+#   0x0000-0x0304  container header: u32 count (12), the FMV filename table
+#                  ("\FMV035.STR;1" ...) and one trailing word (0x32). Raw `bin`.
+#   0x0304-0x4264  .text: first framed prologue at 0x304, last `jr $ra` at
+#                  0x425C plus its delay slot (21 prologues, 28 `jr $ra`).
+#   0x4264-0x42800 data (0x9, 0x28, file-offset tables 0x2FD3C ...) and bulk
+#                  title assets to the end. Raw `bin`.
+#
+# Every function in this overlay is named func_<VRAM> and lives, once carved,
+# under src/overlays/ovl_03D2/ (the directory is the namespace).
+name: Parasite Eve (USA) Disc 1 PE.IMG overlay ovl_03D2
+sha1: a0b604ead810592dd9a8d74f7c74fe94151f4d32
+options:
+  platform: psx
+  compiler: GCC
+  basename: ovl_03D2
+  base_path: ../../..
+  target_path: build/extracted/disc1/peimg/ovl_03D2.bin
+  asm_path: asm/overlays/ovl_03D2
+  src_path: src/overlays/ovl_03D2
+  asset_path: assets/overlays/ovl_03D2
+  ld_script_path: linkers/overlays/ovl_03D2.ld
+  cache_path: asm/overlays/ovl_03D2/.splache
+  undefined_funcs_auto_path: asm/overlays/ovl_03D2/undefined_funcs_auto.txt
+  undefined_syms_auto_path: asm/overlays/ovl_03D2/undefined_syms_auto.txt
+  find_file_boundaries: no
+segments:
+  - name: main
+    type: code
+    start: 0x0
+    vram: 0x8018EFF0
+    subsegments:
+      - [0x0, bin]
+      - [0x304, c, func_8018F2F4]
+      - [0x478, c, func_8018F468]
+      - [0x800, c, func_8018F7F0]
+      - [0x968, asm]
+      - [0xBD0, c, func_8018FBC0]
+      - [0xD14, c, func_8018FD04]
+      - [0xE2C, c, func_8018FE1C]
+      - [0x1074, c, func_80190064]
+      - [0x1670, c, func_80190660]
+      - [0x19C4, asm]
+      - [0x2908, c, func_801918F8]
+      - [0x2B74, c, func_80191B64]
+      - [0x2DD8, c, func_80191DC8]
+      - [0x2FC8, c, func_80191FB8]
+      - [0x3304, c, func_801922F4]
+      - [0x3508, c, func_801924F8]
+      - [0x3944, c, func_80192934]
+      - [0x3C58, c, func_80192C48]
+      - [0x3CAC, c, func_80192C9C]
+      - [0x3CF8, c, func_80192CE8]
+      - [0x3FA8, c, func_80192F98]
+      - [0x3FF8, c, func_80192FE8]
+      - [0x4094, c, func_80193084]
+      - [0x40E8, c, func_801930D8]
+      - [0x417C, c, func_8019316C]
+      - [0x41AC, c, func_8019319C]
+      - [0x41CC, c, func_801931BC]
+      - [0x4210, c, func_80193200]
+      - [0x4264, bin]
+  - [0x42800]

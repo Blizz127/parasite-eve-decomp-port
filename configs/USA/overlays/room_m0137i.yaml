@@ -1,0 +1,61 @@
+# Splat config — Parasite Eve (USA) Disc 1, PE.IMG room package m0137i, chunk 2.
+#
+# Blob: `python3 tools/extract/peimg.py room m0137i` ->
+# build/extracted/disc1/peimg/room_m0137i_c2.bin (git-ignored, NEVER committed).
+# Split `scripts/split_overlay.sh room_m0137i`; gate `scripts/exact_rebuild_overlay.sh room_m0137i`.
+#
+# Facts (peimg.py room m0137i, 2026-09-23): slot 136, PE.IMG sectors
+# [0x9C9D,0x9D06), size 0x34800, vram 0x8018EFE8, SHA-1 6e146c37de2790b03bcb104954571437abb82c1a.
+# Geometry (room_census text-window rule, build/fanout/overlays2/roomscan.py):
+#   0x0-0x80  header + switch jump tables (bin); 0x80-0x1E48 .text;
+#   0x1E48-0x34800 behaviour tables + room data (bin).
+name: Parasite Eve (USA) Disc 1 PE.IMG room m0137i chunk 2
+sha1: 6e146c37de2790b03bcb104954571437abb82c1a
+options:
+  platform: psx
+  compiler: GCC
+  basename: room_m0137i
+  base_path: ../../..
+  target_path: build/extracted/disc1/peimg/room_m0137i_c2.bin
+  asm_path: asm/overlays/room_m0137i
+  src_path: src/overlays/room_m0137i
+  asset_path: assets/overlays/room_m0137i
+  ld_script_path: linkers/overlays/room_m0137i.ld
+  cache_path: asm/overlays/room_m0137i/.splache
+  undefined_funcs_auto_path: asm/overlays/room_m0137i/undefined_funcs_auto.txt
+  undefined_syms_auto_path: asm/overlays/room_m0137i/undefined_syms_auto.txt
+  find_file_boundaries: no
+segments:
+  - name: main
+    type: code
+    start: 0x0
+    vram: 0x8018EFE8
+    subsegments:
+      - [0x0, bin]
+      - [0x88, c, func_8018F070]
+      - [0x90, c, func_8018F078]
+      - [0xBC, c, func_8018F0A4]
+      - [0xE8, c, func_8018F0D0]
+      - [0x130, c, func_8018F118]
+      - [0x1BC, c, func_8018F1A4]
+      - [0x240, c, func_8018F228]
+      - [0x248, c, func_8018F230]
+      - [0x438, c, func_8018F420]
+      - [0x440, c, func_8018F428]
+      - [0x4C0, c, func_8018F4A8]
+      - [0x680, c, func_8018F668]
+      - [0x850, c, func_8018F838]
+      - [0xA2C, c, func_8018FA14]
+      - [0xA44, c, func_8018FA2C]
+      - [0xB70, c, func_8018FB58]
+      - [0xBF4, c, func_8018FBDC]
+      - [0xC08, c, func_8018FBF0]
+      - [0xD2C, c, func_8018FD14]
+      - [0xE30, c, func_8018FE18]
+      - [0xFB8, c, func_8018FFA0]
+      - [0x10C8, c, func_801900B0]
+      - [0x11A4, asm]
+      - [0x1B64, c, func_80190B4C]
+      - [0x1E2C, c, func_80190E14]
+      - [0x1E48, bin]
+  - [0x34800]

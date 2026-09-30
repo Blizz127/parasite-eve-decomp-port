@@ -1,0 +1,38 @@
+# Splat config — Parasite Eve (USA) Disc 1, PE.IMG room package m0023i, chunk 2.
+#
+# Blob: `python3 tools/extract/peimg.py room m0023i` ->
+# build/extracted/disc1/peimg/room_m0023i_c2.bin (git-ignored, NEVER committed).
+# Split `scripts/split_overlay.sh room_m0023i`; gate `scripts/exact_rebuild_overlay.sh room_m0023i`.
+#
+# Facts (peimg.py room m0023i, 2026-09-23): slot 22, PE.IMG sectors
+# [0x325B,0x3307), size 0x56000, vram 0x8018EFE8, SHA-1 3dfb340a8c3f044dc834ba113c5192413b9c3f81.
+# Geometry (room_census text-window rule, tools/analysis/room_lane/roomscan.py):
+#   0x0-0x1C  header + switch jump tables (bin); 0x1C-0x1688 .text;
+#   0x1688-0x56000 behaviour tables + room data (bin).
+name: Parasite Eve (USA) Disc 1 PE.IMG room m0023i chunk 2
+sha1: 3dfb340a8c3f044dc834ba113c5192413b9c3f81
+options:
+  platform: psx
+  compiler: GCC
+  basename: room_m0023i
+  base_path: ../../..
+  target_path: build/extracted/disc1/peimg/room_m0023i_c2.bin
+  asm_path: asm/overlays/room_m0023i
+  src_path: src/overlays/room_m0023i
+  asset_path: assets/overlays/room_m0023i
+  ld_script_path: linkers/overlays/room_m0023i.ld
+  cache_path: asm/overlays/room_m0023i/.splache
+  undefined_funcs_auto_path: asm/overlays/room_m0023i/undefined_funcs_auto.txt
+  undefined_syms_auto_path: asm/overlays/room_m0023i/undefined_syms_auto.txt
+  find_file_boundaries: no
+segments:
+  - name: main
+    type: code
+    start: 0x0
+    vram: 0x8018EFE8
+    subsegments:
+      - [0x0, bin]
+      - [0x1C, asm]
+      - [0x165C, c, func_80190644]
+      - [0x1688, bin]
+  - [0x56000]

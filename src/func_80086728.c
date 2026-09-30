@@ -1,0 +1,3 @@
+extern int D_800BCD80;
+extern void func_8008CBA8(void);
+void func_80086728(int a0) { int v; switch (a0) { case 1: v=0x81; break; case 2: v=0x82; break; default: v=0x80; break; } D_800BCD80=v; func_8008CBA8(); }

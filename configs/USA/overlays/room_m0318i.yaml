@@ -1,0 +1,109 @@
+# Splat config — Parasite Eve (USA) Disc 1, PE.IMG room package m0318i, chunk 2.
+#
+# Blob: `python3 tools/extract/peimg.py room m0318i` ->
+# build/extracted/disc1/peimg/room_m0318i_c2.bin (git-ignored, NEVER committed).
+# Split `scripts/split_overlay.sh room_m0318i`; gate `scripts/exact_rebuild_overlay.sh room_m0318i`.
+#
+# Facts (peimg.py room m0318i, 2026-09-23): slot 317, PE.IMG sectors
+# [0x12D7A,0x12E33), size 0x5C800, vram 0x8018EFE8, SHA-1 3deebe65a4bb7eb5d1a9ececd8296a47ea7b9e4b.
+# Geometry (room_census text-window rule, build/fanout/overlays2/roomscan.py):
+#   0x0-0x1E4  header + switch jump tables (bin); 0x1E4-0xA3B4 .text;
+#   0xA3B4-0x5C800 behaviour tables + room data (bin).
+name: Parasite Eve (USA) Disc 1 PE.IMG room m0318i chunk 2
+sha1: 3deebe65a4bb7eb5d1a9ececd8296a47ea7b9e4b
+options:
+  platform: psx
+  compiler: GCC
+  basename: room_m0318i
+  base_path: ../../..
+  target_path: build/extracted/disc1/peimg/room_m0318i_c2.bin
+  asm_path: asm/overlays/room_m0318i
+  src_path: src/overlays/room_m0318i
+  asset_path: assets/overlays/room_m0318i
+  ld_script_path: linkers/overlays/room_m0318i.ld
+  cache_path: asm/overlays/room_m0318i/.splache
+  undefined_funcs_auto_path: asm/overlays/room_m0318i/undefined_funcs_auto.txt
+  undefined_syms_auto_path: asm/overlays/room_m0318i/undefined_syms_auto.txt
+  find_file_boundaries: no
+segments:
+  - name: main
+    type: code
+    start: 0x0
+    vram: 0x8018EFE8
+    subsegments:
+      - [0x0, bin]
+      # header switch jump tables: MASPSX_DISPATCH_FOLD pool
+      - [0xC, rodata]
+      - [0x264, c, func_8018F24C]
+      - [0x304, c, func_8018F2EC]
+      - [0x588, c, func_8018F570]
+      - [0x590, c, func_8018F578]
+      - [0x618, c, func_8018F600]
+      - [0x6C0, c, func_8018F6A8]
+      - [0xC08, c, func_8018FBF0]
+      - [0xCE8, c, func_8018FCD0]
+      - [0xF28, c, func_8018FF10]
+      - [0xFC4, c, func_8018FFAC]
+      - [0xFCC, c, func_8018FFB4]
+      - [0xFD4, c, func_8018FFBC]
+      - [0x1050, c, func_80190038]
+      - [0x12C8, c, func_801902B0]
+      - [0x12D0, c, func_801902B8]
+      - [0x1358, c, func_80190340]
+      - [0x1400, c, func_801903E8]
+      - [0x198C, c, func_80190974]
+      - [0x1A10, c, func_801909F8]
+      - [0x1A68, c, func_80190A50]
+      - [0x1A70, c, func_80190A58]
+      - [0x1A78, c, func_80190A60]
+      - [0x1B14, c, func_80190AFC]
+      - [0x1D5C, c, func_80190D44]
+      - [0x1D64, c, func_80190D4C]
+      - [0x1D8C, c, func_80190D74]
+      - [0x1DFC, c, func_80190DE4]
+      - [0x2188, c, func_80191170]
+      - [0x2190, c, func_80191178]
+      - [0x2530, c, func_80191518]
+      - [0x258C, c, func_80191574]
+      - [0x2594, c, func_8019157C]
+      - [0x259C, c, func_80191584]
+      - [0x262C, c, func_80191614]
+      - [0x2874, c, func_8019185C]
+      - [0x287C, c, func_80191864]
+      - [0x28A4, c, func_8019188C]
+      - [0x2914, c, func_801918FC]
+      - [0x2D90, c, func_80191D78]
+      - [0x2D98, c, func_80191D80]
+      - [0x3120, c, func_80192108]
+      - [0x317C, c, func_80192164]
+      - [0x3184, c, func_8019216C]
+      - [0x318C, c, func_80192174]
+      - [0x31C8, c, func_801921B0]
+      - [0x3260, c, func_80192248]
+      - [0x3268, c, func_80192250]
+      - [0x3290, c, func_80192278]
+      - [0x32C0, c, func_801922A8]
+      - [0x33D4, c, func_801923BC]
+      - [0x3554, c, func_8019253C]
+      - [0x3570, c, func_80192558]
+      - [0x3578, c, func_80192560]
+      - [0x3638, c, func_80192620]
+      - [0x3730, asm]
+      - [0x3DB8, c, func_80192DA0]
+      - [0x3EEC, asm]
+      - [0x49C4, c, func_801939AC]
+      - [0x4B78, c, func_80193B60]
+      - [0x4DA0, c, func_80193D88]
+      - [0x4FDC, c, func_80193FC4]
+      - [0x517C, asm]
+      - [0x7C60, c, func_80196C48]
+      - [0x7E64, asm]
+      - [0xA230, c, func_80199218]
+      - [0xA24C, c, func_80199234]
+      - [0xA268, c, func_80199250]
+      - [0xA2AC, c, func_80199294]
+      - [0xA2BC, c, func_801992A4]
+      - [0xA394, c, func_8019937C]
+      - [0xA3A4, c, func_8019938C]
+      - [0xA3B4, bin]
+  - [0x5C800]
