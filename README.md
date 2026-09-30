@@ -10,6 +10,10 @@ decompiled game code.
 >
 > **Just want to play?** Jump to [How to play](#how-to-play).
 
+## About this project
+
+This is a passion project. I'm working hard on it, but it's made for fun and for everyone's enjoyment — free, non-commercial, and made by a fan. If you enjoy it, that's the whole point.
+
 ## How to play
 
 This is a native Linux build of Parasite Eve, not an emulator. You need your
