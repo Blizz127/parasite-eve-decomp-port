@@ -72,6 +72,11 @@ uint8_t *PE_SpuRam_Data(void);
 uint16_t PE_SpuRegister_LoadU16(uint32_t offset);
 void PE_SpuRegister_StoreU16(uint32_t offset, uint16_t value);
 
+/* libspu SpuClearReverbWorkArea (retail 0x8008D610) host backend:
+ * DMA4 zero-fill of the reverb work area for mode 0..9 (pe_stream.c).
+ * Returns 0, or -1 for a bad / allocated mode or a failed transfer. */
+int PE_SpuReverb_ClearWorkArea(int mode);
+
 #ifdef __cplusplus
 }
 #endif

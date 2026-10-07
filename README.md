@@ -9,6 +9,15 @@ decompiled game code.
 > Parasite Eve. See [NOTICE.md](NOTICE.md).
 >
 > **Just want to play?** Jump to [How to play](#how-to-play).
+>
+> **New (2026-10-07): native-only build, UNTESTED.** Release
+> [`native-only-2918a7f0`](https://github.com/Blizz127/parasite-eve-decomp-port/releases/tag/native-only-2918a7f0)
+> runs only native C: no MIPS interpreter and no CPU emulation in the game.
+> A function that isn't ported yet stops the game with a
+> `CPU_BOUNDARY/REFUSED` message instead of being emulated. It has not been
+> run on a real disc yet. What works and what doesn't:
+> [docs/port/NATIVE_ONLY_STATUS.md](docs/port/NATIVE_ONLY_STATUS.md). The
+> tested Day 1 build is still [r5](https://github.com/Blizz127/parasite-eve-decomp-port/releases/tag/day1-r5).
 
 ## About this project
 
@@ -22,7 +31,7 @@ own copy of the game; nothing from the game is included. No BIOS is needed.
 
 ### 1. Download
 
-From the [Releases page](https://github.com/Blizz127/parasite-eve-decomp-port/releases/latest),
+From the [r5 release](https://github.com/Blizz127/parasite-eve-decomp-port/releases/tag/day1-r5),
 download **`parasite-eve-day1-day1-r5-16a267b1-linux-x64.tar.gz`**. You can
 also download `SHA256SUMS` if you want to check the file.
 
@@ -241,8 +250,12 @@ is the way to play until then.
 
 ## Status
 
-Day 1 is playable from start to finish on the port, and movies play in real
-time. Every known difference from the PlayStation original is logged in
+Day 1 is playable from start to finish on the port (r5), and movies play in
+real time. Since 2026-10-07 the port is **native only**: the game binary has
+no MIPS interpreter or CPU emulation, and the sound driver runs as native C.
+The native-only build is not yet tested on a disc. The calls that still stop
+it are listed in
+[docs/port/NATIVE_ONLY_STATUS.md](docs/port/NATIVE_ONLY_STATUS.md). Every known difference from the PlayStation original is logged in
 [docs/port/KNOWN_DIVERGENCES.md](docs/port/KNOWN_DIVERGENCES.md).
 
 ## Credits and license

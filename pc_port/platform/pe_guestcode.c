@@ -3,8 +3,9 @@
 #include <stdio.h>
 #include <string.h>
 
-int PE_Decomp_Boundary(const char *symbol, unsigned vma, unsigned arity,
-                       uintptr_t a0, uintptr_t a1, uintptr_t a2, uintptr_t a3);
+int PE_Decomp_BoundaryFrom(const char *caller, const char *symbol, unsigned vma,
+                           unsigned arity, uintptr_t a0, uintptr_t a1,
+                           uintptr_t a2, uintptr_t a3);
 
 static const PeGuestCodeTable *const *pe_gc_tables;
 static unsigned pe_gc_table_count;
@@ -169,5 +170,7 @@ int PE_GuestCall(const char *site, pe_addr_t fn, unsigned arity,
     const PeGuestCodeEntry *e = fn ? PE_GuestCode_Resolve(fn) : NULL;
     if (e && e->thunk)
         return e->thunk(a0, a1, a2, a3);
-    return PE_Decomp_Boundary(site, fn, arity, a0, a1, a2, a3);
+    /* No native thunk for this guest code pointer: a boundary (STOP in the
+     * native-only port binary), never interpreted. */
+    return PE_Decomp_BoundaryFrom(site, site, fn, arity, a0, a1, a2, a3);
 }

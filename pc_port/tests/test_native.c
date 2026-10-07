@@ -18937,6 +18937,67 @@ static void test_no_emulator_process(void) {
     PASS();
 }
 
+/* Native only (owner, 2026-10-07): a call into retail code with no native C
+ * is a CPU_BOUNDARY/REFUSED STOP under the port binary's policy, never
+ * emulated; the record policy (library default for tests) only counts it. */
+extern void PE_Decomp_SetBoundaryStop(int stop);
+extern int  PE_Decomp_BoundaryStopEnabled(void);
+extern void PE_Decomp_ResetBoundaries(void);
+extern unsigned PE_Decomp_BoundaryCount(void);
+static void test_native_only_boundary_stop(void) {
+    TEST("NATIVE_only_boundary_stop");
+    ResetTestState();
+    PE_Port_RunControlReset();
+    PE_Decomp_ResetBoundaries();
+    ASSERT(!PE_Decomp_BoundaryStopEnabled(), "library default is the record policy");
+    (void)PE_GuestCall("@test:record", 0x80DEAD00u, 1u, 7u, 0, 0, 0);
+    ASSERT(PE_Port_GetStopReason() == PE_PORT_STOP_NONE, "record policy does not stop");
+    ASSERT(PE_Decomp_BoundaryCount() == 1u, "record policy counts the boundary");
+    PE_Decomp_SetBoundaryStop(1);
+    (void)PE_GuestCall("@test:stop", 0x80DEAD04u, 2u, 1u, 2u, 0, 0);
+    PE_Decomp_SetBoundaryStop(0);
+    ASSERT(PE_Port_GetStopReason() == PE_PORT_STOP_UNRESOLVED_BOUNDARY,
+           "stop policy ends the run on the missing callee");
+    PE_Port_RunControlReset();
+    PE_Decomp_ResetBoundaries();
+    PASS();
+}
+
+/* Native only: the 240 Hz AKAO tick is the native func_8008DB7C; the port
+ * library contains no MIPS interpreter (the retail-code oracle is linked into
+ * this test executable only and must not be reached by the driver clock). */
+#include "pe_audio_driver.h"
+extern int PE_Event_Open(uint32_t cls, uint32_t spec, uint32_t mode, pe_addr_t handler);
+extern int PE_Event_Enable(int handle);
+extern int PE_Event_Close(int handle);
+static void test_native_only_akao_tick(void) {
+    TEST("NATIVE_only_akao_tick");
+    ResetTestState();
+    PE_Port_RunControlReset();
+    PE_Decomp_ResetBoundaries();
+    PeAudioDriverStats a, b;
+    PE_AudioDriver_Enable(1);
+    PE_AudioDriver_GetStats(&a);
+    PE_AudioDriver_VBlank();               /* event not registered: skipped */
+    PE_AudioDriver_GetStats(&b);
+    ASSERT(b.ticks == a.ticks && b.skipped_ticks == a.skipped_ticks + 4u,
+           "unarmed RCNT2 event skips all 4 ticks");
+    int h = PE_Event_Open(0xF2000002u, 2u, 0x1000u, 0x8008E23Cu);
+    PE_Event_Enable(h);
+    PE_AudioDriver_GetStats(&a);
+    PE_AudioDriver_VBlank();
+    PE_AudioDriver_GetStats(&b);
+    PE_Event_Close(h);
+    PE_AudioDriver_Enable(0);
+    ASSERT(b.ticks == a.ticks + 4u, "armed RCNT2 event: 4 native ticks per VBlank");
+    ASSERT(b.instructions == a.instructions && b.faults == a.faults,
+           "no guest instructions executed by the driver clock");
+    ASSERT(PE_Port_GetStopReason() == PE_PORT_STOP_NONE, "idle native tick stops nothing");
+    PE_Port_RunControlReset();
+    PE_Decomp_ResetBoundaries();
+    PASS();
+}
+
 static void test_translated_functions_not_in_bootstrap(void) {
     TEST("no_bootstrap_stubs_for_translated");
     ResetTestState();
@@ -40920,6 +40981,8 @@ int main(void)
 
     /* Guard tests (4 tests) */
     test_no_emulator_process();
+    test_native_only_boundary_stop();
+    test_native_only_akao_tick();
     test_translated_functions_not_in_bootstrap();
     test_first_clear_path_reached();
     test_direct_clear_not_default();

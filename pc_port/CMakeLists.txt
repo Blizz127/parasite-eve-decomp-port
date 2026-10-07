@@ -532,7 +532,26 @@ if(BUILD_TESTS)
     add_test(NAME window-scale-math COMMAND pe-window-scale-tests)
     set_tests_properties(window-scale-math PROPERTIES TIMEOUT 30)
 
-    add_executable(pe-native-tests tests/test_native.c ${PE_GUESTCODE_REGISTRY})
+    # tests/pe_akao_interp_oracle.c: TEST-ONLY retail-code oracle (R3000A
+    # interpreter).  Never add it to pe_field_runtime or parasite-eve-port:
+    # the port binary is native only (no MIPS execution, 2026-10-07).
+    add_executable(pe-native-tests tests/test_native.c tests/pe_akao_interp_oracle.c ${PE_GUESTCODE_REGISTRY})
+    # Differential check of hand adapters vs the matched C compiled for the
+    # PSX (pc_port/tools/build_leaf_oracle.py writes build/leaf-oracle/,
+    # git-ignored).  Test-only; exit 77 = image missing (skip).
+    add_executable(pe-leaf-oracle-tests tests/test_leaf_oracle.c tests/pe_akao_interp_oracle.c ${PE_GUESTCODE_REGISTRY})
+    target_link_libraries(pe-leaf-oracle-tests PRIVATE pe_field_runtime)
+    add_test(NAME leaf-oracle COMMAND pe-leaf-oracle-tests
+             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/..)
+    set_tests_properties(leaf-oracle PROPERTIES SKIP_RETURN_CODE 77)
+    # Whole-tick AKAO differential (func_8008DB7C graph); image from
+    # build_leaf_oracle.py --out build/leaf-oracle-akao --range 0x80085000
+    # 0x80092000 func_8008DB7C.  Test-only; exit 77 = image missing.
+    add_executable(pe-akao-tick-oracle-tests tests/test_akao_tick_oracle.c tests/pe_akao_interp_oracle.c ${PE_GUESTCODE_REGISTRY})
+    target_link_libraries(pe-akao-tick-oracle-tests PRIVATE pe_field_runtime)
+    add_test(NAME akao-tick-oracle COMMAND pe-akao-tick-oracle-tests
+             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/..)
+    set_tests_properties(akao-tick-oracle PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 600)
     target_link_libraries(pe-native-tests PRIVATE pe_field_runtime)
 
     # Small external-consumer contract: this source is intentionally not part

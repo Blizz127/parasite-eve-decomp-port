@@ -367,8 +367,11 @@ static void test_PA_handhi_seq_flow(void)
            PE_LoadU16(a + 0x6Au) == 0x8001u && PE_LoadU32(a + 0x38u) == 8u,
            "800909C0: target past operand, +0x6A = +0x46");
 
-    /* src/func_80090C88.c: offsets 4 and 0 (NULL); note block; boundary
-     * func_8008A92C(D_800B89D0, r1, r2); cursor += 4. */
+    /* src/func_80090C88.c: offsets 4 and 0 (NULL); note block; then
+     * func_8008A92C(D_800B89D0, r1, r2) -- a direct native call since
+     * 2026-10-07 (was a boundary).  The callee's effect on the record is
+     * checked against the matched C by pe-leaf-oracle-tests
+     * (func_8008A92C / func_80090C88); here: no boundary is recorded. */
     { const unsigned char b[] = {0x04, 0x00, 0x00, 0x00}; a = pah_seq(b, 4); }
     PE_StoreU16(a + 0x76u, 0xAB00u);
     PE_StoreU32(a + 0x44u, 0xFF800000u);
@@ -380,12 +383,8 @@ static void test_PA_handhi_seq_flow(void)
     ASSERT(PE_LoadU32(0x800B89D4u) == 0u && PE_LoadU32(0x800B89D8u) == 0u &&
            PE_LoadU32(0x800B89DCu) == 0xABu && PE_LoadU32(0x800B89E0u) == 0xFFFFFFFFu &&
            PE_LoadU32(a) == PAH_DATA + 4u, "80090C88: note block, arithmetic >> 23");
-    ASSERT(PE_Decomp_BoundaryCount() == 1 &&
-           strcmp(PE_Decomp_BoundaryName(0), "func_8008A92C") == 0 &&
-           g_bootstrap_arg4_call_count == 1 &&
-           g_bootstrap_arg4_calls[0].arg0 == 0x800B89D0u &&
-           g_bootstrap_arg4_calls[0].arg1 == PAH_DATA + 4u + 2u &&
-           g_bootstrap_arg4_calls[0].arg2 == 0u, "80090C88: r1 = p + o + 2, r2 NULL");
+    ASSERT(PE_Decomp_BoundaryCount() == 0 && g_bootstrap_arg4_call_count == 0,
+           "80090C88: func_8008A92C runs natively (no boundary)");
     PASS();
 }
 

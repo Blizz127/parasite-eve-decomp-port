@@ -6,6 +6,9 @@
  * src/func_XXXXXXXX.c with the record and cursor as guest addresses.
  */
 #include "pe_guest_decomp.h"
+/* Generated TU pc_port/game/decomp/func_8008A92C_port.c (src/func_8008A92C.c);
+ * native since its func_8008A750 callee became a hand adapter (2026-10-07). */
+void func_8008A92C(pe_addr_t pe_a0, int a1, int a2);
 #include "hand_hi_protos.h"
 
 /* Read the next stream byte and post-increment the cursor (the shared
@@ -628,8 +631,8 @@ void func_80090E20(pe_addr_t a0, int a1)
 /* src/func_80090C88.c: two u16 little-endian offsets at the cursor (0 ->
  * NULL, else relative to the byte after each) name the zone and sample
  * tables; the D_800B89D0 note block gets +4/+8 = 0, +0xC = +0x76 >> 8,
- * +0x10 = +0x44 >> 23 (arithmetic); func_8008A92C(D_800B89D0, r1, r2) has
- * no pc_port implementation (boundary); cursor += 4. */
+ * +0x10 = +0x44 >> 23 (arithmetic); func_8008A92C(D_800B89D0, r1, r2)
+ * (generated TU, native since 2026-10-07); cursor += 4. */
 void func_80090C88(pe_addr_t a0)
 {
     pe_addr_t p = PE_LoadU32(a0);
@@ -644,7 +647,7 @@ void func_80090C88(pe_addr_t a0)
     PE_StoreU32(0x800B89D8u, 0u);
     PE_StoreU32(0x800B89DCu, PE_LoadU16(a0 + 0x76u) >> 8);
     PE_StoreU32(0x800B89E0u, (uint32_t)((int32_t)PE_LoadU32(a0 + 0x44u) >> 23));
-    PE_D_COMP_BOUNDARY3("func_8008A92C", 0x8008A92Cu, 0x800B89D0u, r1, r2);
+    func_8008A92C((pe_addr_t)(0x800B89D0u), (int)(r1), (int)(r2));
     PE_StoreU32(a0, PE_LoadU32(a0) + 4u);
 }
 

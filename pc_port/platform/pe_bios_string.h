@@ -40,5 +40,14 @@ pe_addr_t func_80071A44(pe_addr_t dst, int32_t fillbyte, int32_t len);
 int32_t PE_Bios_Sprintf(pe_addr_t dst, pe_addr_t fmt, const uint32_t *args, int nargs);
 /* Same, into a host buffer of `cap` bytes (always NUL-terminated). */
 int32_t PE_Bios_SprintfHost(char *dst, uint32_t cap, pe_addr_t fmt, const uint32_t *args, int nargs);
+/* BIOS printf (A0:0x3F, the EXE's stub 0x80071A74): formats like
+ * PE_Bios_Sprintf and writes the text to the host TTY (stderr, prefixed
+ * "[TTY] ").  Retail prints to the debug TTY and continues, so this is not
+ * a boundary.  Returns the length. */
+int32_t PE_Bios_Printf(pe_addr_t fmt, const uint32_t *args, int nargs);
+/* Test hook: calls since the last reset, and the last call's format
+ * address and first four argument words. */
+unsigned PE_Bios_PrintfLog(pe_addr_t *last_fmt, uint32_t last_args[4]);
+void PE_Bios_PrintfLogReset(void);
 
 #endif

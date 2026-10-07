@@ -1096,6 +1096,18 @@ int main(int argc, char **argv) {
     PE_Port_SetSkipMovie(g_opts.skip_movie);
     PE_Port_SetSkipOpeningMenu(g_opts.skip_opening_menu);
     if (g_strict_stubs) Bootstrap_EnableStrict();
+    /* Native only (owner, 2026-10-07): a call into retail code the port has
+     * no C for is a CPU_BOUNDARY/REFUSED STOP, never emulated and never
+     * silently answered with 0.  PE_BOUNDARY_POLICY=record restores the old
+     * log-and-continue behaviour for diagnosis only. */
+    {
+        extern void PE_Decomp_SetBoundaryStop(int stop);
+        const char *bp = getenv("PE_BOUNDARY_POLICY");
+        int stop = !(bp && strcmp(bp, "record") == 0);
+        PE_Decomp_SetBoundaryStop(stop);
+        fprintf(stderr, "[NATIVE] boundary policy=%s (no MIPS interpreter, "
+                "no CPU emulation in this binary)\n", stop ? "stop" : "record");
+    }
 
     /* Phase 6E-A: real Disc 1 image, read-only (never copied or staged). */
     PE_Disc *disc = NULL;

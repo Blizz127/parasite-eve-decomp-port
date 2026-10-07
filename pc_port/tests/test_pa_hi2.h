@@ -289,10 +289,11 @@ static void test_PA_hi2_reverb(void)
     ASSERT(PE_LoadU16(regs + 0x184u) == 0u && PE_LoadU16(regs + 0x186u) == 0u,
            "8CF70 depth registers zeroed");
     ASSERT(PE_LoadU16(regs + 0xD1u * 2u) == 0x1234u, "8CF70 func_8007DAE0(0xD1, start, 0)");
-    ASSERT(PE_LoadU16(regs + 0x1AAu) == 0x81u, "8CF70 SPUCNT bit 7 restored");
-    ASSERT(PE_Decomp_BoundaryCount() == 1 &&
-           strcmp(PE_Decomp_BoundaryName(0), "func_8008D610") == 0 &&
-           g_bootstrap_arg4_calls[0].arg0 == 7u, "8CF70 clear -> func_8008D610(a0)");
+    /* func_8008D610 now runs natively (pe_stream.c): like retail
+     * func_8007D778(1) it leaves SPUCNT in DMA-write mode (bits 4-5 = 2)
+     * before bit 7 is restored. */
+    ASSERT(PE_LoadU16(regs + 0x1AAu) == 0xA1u, "8CF70 SPUCNT bit 7 restored, DMA-write mode");
+    ASSERT(PE_Decomp_BoundaryCount() == 0, "8CF70 clear -> native func_8008D610 (no boundary)");
 
     /* preset 8 without clear and with bit 7 off. */
     PE_Decomp_ResetBoundaries();

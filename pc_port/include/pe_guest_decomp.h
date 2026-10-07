@@ -18,8 +18,9 @@
  *
  *   * Any callee of the leaf that pc_port has not implemented becomes a
  *     *loud boundary*: PE_Decomp_NoteBoundary() records the symbol (so tests
- *     and the CLI can enumerate unresolved edges) and the call returns 0.
- *     Nothing is invented; the boundary is explicit and countable.
+ *     and the CLI can enumerate unresolved edges).  In the port binary
+ *     (native-only STOP policy) it prints CPU_BOUNDARY/REFUSED and stops the
+ *     run; in the record policy (tests) the call returns 0.  Never emulated.
  *
  * The matching `src/` tree is NEVER modified by this mechanism.
  */
@@ -109,6 +110,15 @@ const char *PE_Decomp_BoundaryName(unsigned index);
  * Bootstrap_ReturnInt4Indirect log (unknown slots stay zero). */
 int PE_Decomp_Boundary(const char *symbol, unsigned vma, unsigned arity,
                        uintptr_t a0, uintptr_t a1, uintptr_t a2, uintptr_t a3);
+/* Same, naming the native caller (the generated boundary macros pass
+ * __func__).  Under the native-only STOP policy (PE_Decomp_SetBoundaryStop(1),
+ * the port binary's default) the first boundary prints
+ * "CPU_BOUNDARY/REFUSED pc=<vma> ra=<caller> ..." and stops the run. */
+int PE_Decomp_BoundaryFrom(const char *caller, const char *symbol, unsigned vma,
+                           unsigned arity, uintptr_t a0, uintptr_t a1,
+                           uintptr_t a2, uintptr_t a3);
+void PE_Decomp_SetBoundaryStop(int stop);
+int  PE_Decomp_BoundaryStopEnabled(void);
 
 /* Argument pickers: the generated `#define callee(...) PE_D_COMP_BOUNDARYn(
  * ..., __VA_ARGS__)` selects the guest argument expressions the call site
@@ -119,21 +129,21 @@ int PE_Decomp_Boundary(const char *symbol, unsigned vma, unsigned arity,
 #define PE_D_COMP_ARG4(_1, _2, _3, _4, ...) (uintptr_t)(_4)
 
 #define PE_D_COMP_BOUNDARY0(sym, vma) \
-    PE_Decomp_Boundary(sym, vma, 0u, 0u, 0u, 0u, 0u)
+    PE_Decomp_BoundaryFrom(__func__, sym, vma, 0u, 0u, 0u, 0u, 0u)
 #define PE_D_COMP_BOUNDARY1(sym, vma, ...) \
-    PE_Decomp_Boundary(sym, vma, 1u, \
+    PE_Decomp_BoundaryFrom(__func__, sym, vma, 1u, \
         PE_D_COMP_ARG1(__VA_ARGS__, 0, 0, 0, 0), 0u, 0u, 0u)
 #define PE_D_COMP_BOUNDARY2(sym, vma, ...) \
-    PE_Decomp_Boundary(sym, vma, 2u, \
+    PE_Decomp_BoundaryFrom(__func__, sym, vma, 2u, \
         PE_D_COMP_ARG1(__VA_ARGS__, 0, 0, 0, 0), \
         PE_D_COMP_ARG2(__VA_ARGS__, 0, 0, 0, 0), 0u, 0u)
 #define PE_D_COMP_BOUNDARY3(sym, vma, ...) \
-    PE_Decomp_Boundary(sym, vma, 3u, \
+    PE_Decomp_BoundaryFrom(__func__, sym, vma, 3u, \
         PE_D_COMP_ARG1(__VA_ARGS__, 0, 0, 0, 0), \
         PE_D_COMP_ARG2(__VA_ARGS__, 0, 0, 0, 0), \
         PE_D_COMP_ARG3(__VA_ARGS__, 0, 0, 0, 0), 0u)
 #define PE_D_COMP_BOUNDARY4(sym, vma, ...) \
-    PE_Decomp_Boundary(sym, vma, 4u, \
+    PE_Decomp_BoundaryFrom(__func__, sym, vma, 4u, \
         PE_D_COMP_ARG1(__VA_ARGS__, 0, 0, 0, 0), \
         PE_D_COMP_ARG2(__VA_ARGS__, 0, 0, 0, 0), \
         PE_D_COMP_ARG3(__VA_ARGS__, 0, 0, 0, 0), \

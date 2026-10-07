@@ -1,3 +1,4 @@
+#include "pe_bios_string.h"
 /*
  * port_absent lane (2026-09-23) — tests for the sdk group
  * (pc_port/game/decomp_hand/absent_sdk_port.c).  Expectations are computed
@@ -23,6 +24,7 @@ static void PS_Reset(void)
 {
     ResetTestState();
     PE_Decomp_ResetBoundaries();
+    PE_Bios_PrintfLogReset();
 }
 
 static void test_PA_sdk_80038954(void)
@@ -31,19 +33,19 @@ static void test_PA_sdk_80038954(void)
     PS_Reset();
     PE_StoreU32(0x80091A2Cu + 4u, 0x80010F00u);    /* D_80091A2C[1] */
     func_80038954(PS_S, PS_S + 0x10u, PS_S + 0x20u, 0x101); /* (u8)a3 == 1 */
-    ASSERT(g_bootstrap_arg4_call_count == 2, "two printf calls");
-    ASSERT(g_bootstrap_arg4_calls[0].target == 0x80071A74u &&
-           g_bootstrap_arg4_calls[0].arg0 == 0x80010EB0u &&
-           g_bootstrap_arg4_calls[0].arg1 == 0x80010F00u &&
-           g_bootstrap_arg4_calls[0].arg2 == PS_S, "first print args");
-    ASSERT(g_bootstrap_arg4_calls[1].arg0 == 0x80010EC8u &&
-           g_bootstrap_arg4_calls[1].arg1 == PS_S + 0x10u &&
-           g_bootstrap_arg4_calls[1].arg2 == PS_S + 0x20u, "second print args");
+    /* printf (0x80071A74) is the host TTY backend PE_Bios_Printf, not a
+     * boundary (native only, 2026-10-07). */
+    {
+        pe_addr_t f; uint32_t a[4];
+        ASSERT(PE_Bios_PrintfLog(&f, a) == 2 && g_bootstrap_arg4_call_count == 0, "two printf calls");
+        ASSERT(f == 0x80010EC8u && a[0] == PS_S + 0x10u && a[1] == PS_S + 0x20u,
+               "second print args");
+    }
     ASSERT(PE_Port_ShouldStop(), "low byte 1 is the retail halt");
 
     PS_Reset();
     func_80038954(PS_S, 0, 0, 2);
-    ASSERT(!PE_Port_ShouldStop() && g_bootstrap_arg4_call_count == 2,
+    ASSERT(!PE_Port_ShouldStop() && PE_Bios_PrintfLog(0, 0) == 2,
            "other codes return after both prints");
     PASS();
 }
@@ -246,18 +248,22 @@ static void test_PA_sdk_80073F00(void)
     func_80073F00();
     ASSERT(PE_LoadU32(0x8009567Cu) == 0u && PE_IRQ_ReadStatus() == 0u,
            "0x801 -> print, clear watchdog and I_STAT");
-    ASSERT(g_bootstrap_arg4_call_count == 1 &&
-           g_bootstrap_arg4_calls[0].arg0 == 0x8001175Cu &&
-           g_bootstrap_arg4_calls[0].arg1 == 4u &&
-           g_bootstrap_arg4_calls[0].arg2 == 4u, "watchdog print(I_STAT, I_MASK)");
+    {
+        pe_addr_t f; uint32_t a[4];
+        ASSERT(PE_Bios_PrintfLog(&f, a) == 1 && f == 0x8001175Cu && a[0] == 4u && a[1] == 4u,
+               "watchdog print(I_STAT, I_MASK)");
+    }
 
     /* Unset guard: diagnostic print of I_STAT. */
     PS_Reset();
     PS_SeedIrqPointers();
     PE_IRQ_AssertSources(0x0002u);
     func_80073F00();
-    ASSERT(g_bootstrap_arg4_calls[0].arg0 == 0x80011740u &&
-           g_bootstrap_arg4_calls[0].arg1 == 2u, "unexpected-interrupt print");
+    {
+        pe_addr_t f; uint32_t a[4];
+        ASSERT(PE_Bios_PrintfLog(&f, a) == 1 && f == 0x80011740u && a[0] == 2u,
+               "unexpected-interrupt print");
+    }
     PASS();
 }
 

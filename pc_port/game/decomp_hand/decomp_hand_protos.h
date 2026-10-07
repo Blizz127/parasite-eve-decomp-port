@@ -54,6 +54,9 @@
 #if __has_include("hand_akao_protos.h")
 #include "hand_akao_protos.h"         /* AKAO driver tick (2026-09-28) */
 #endif
+#if __has_include("hand_akao_seq_protos.h")
+#include "hand_akao_seq_protos.h"     /* AKAO seq start / bank restore (2026-10-07) */
+#endif
 #endif
 
 #endif /* PE_DECOMP_HAND_PROTOS_H */
