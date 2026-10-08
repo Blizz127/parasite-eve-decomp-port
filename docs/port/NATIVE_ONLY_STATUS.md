@@ -1,13 +1,14 @@
 # Native-only build: status
 
-Current release: [`native-only-328511c8`](https://github.com/Blizz127/parasite-eve-decomp-port/releases/tag/native-only-328511c8)
-(2026-10-07, Linux x86-64). It was tested on a real disc image on the build
-machine (Day 1 plays through to the opening of Day 2), but **not yet on real
-hardware** such as a handheld or a gaming PC.
+Current release: [`native-only-ab6de50b`](https://github.com/Blizz127/parasite-eve-decomp-port/releases/tag/native-only-ab6de50b)
+(2026-10-08, Linux x86-64). It was tested on a real disc image on the build
+machine (Day 1 plays through to the opening of Day 2), but it is **untested
+by hand past Day 1** and **not yet tested on real hardware** such as a
+handheld or a gaming PC.
 
-The previous native-only release, [`native-only-2918a7f0`](https://github.com/Blizz127/parasite-eve-decomp-port/releases/tag/native-only-2918a7f0),
-**stops about 12 minutes into Day 1** (before the first Eve fight) and is
-superseded. See "Fixed in native-only-328511c8" below.
+It supersedes [`native-only-328511c8`](https://github.com/Blizz127/parasite-eve-decomp-port/releases/tag/native-only-328511c8), which is still
+available. The earlier [`native-only-2918a7f0`](https://github.com/Blizz127/parasite-eve-decomp-port/releases/tag/native-only-2918a7f0) **stops about
+12 minutes into Day 1** (before the first Eve fight); don't use it.
 
 ## What "native-only" means
 
@@ -42,7 +43,18 @@ superseded. See "Fixed in native-only-328511c8" below.
   fight and the sewer alligator boss) passes to the end of Day 1. The Day 2
   movie check plays the Day 1 ending movies and reaches the opening of Day 2
   (story flag 0x90, the police chief's office). The full test suite passes
-  1634 of 1634 with the disc present.
+  1636 of 1636 with the disc present.
+- **Room code (new in native-only-ab6de50b).** Room scripts that read pointers
+  out of room data, call through code pointers or use inline GTE (3D maths)
+  instructions now run as native C generated from the matched
+  decompilation. A warp sweep of every Day 2 room at story flag 0x90 gives
+  **377 of 402 room slots clean**. 4 rooms still stop (m0159i, m0256i,
+  m0349i, m0432i) on room effect functions with no matched C yet, 1 returns
+  to the title on purpose (m0050i) and 20 slots are unused. Probes of the
+  Day 3 rooms (m0092i–m0098i, m0191i, m0360i) also ran clean. The probes
+  only set the story flag and press X; they don't play the rooms.
+- **Missing room code stops loudly.** A room that reaches unported code
+  now stops with `CPU_BOUNDARY/REFUSED` instead of silently skipping it.
 - **Fixed in native-only-328511c8.** With the sound tick native, the
   game's sound command queue reached a command (0x9B, `func_8008C720`) that
   the hand-written queue code didn't handle. It quietly stopped the game

@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-10-08 — native-only room code (release `native-only-ab6de50b`)
+
+- Room functions that read pointers from room data, call through code
+  pointers or use inline GTE asm are now generated as native C from the
+  matched decompilation (guest-memory lowering plus GTE asm lowering onto the
+  native GTE model). Byte-identical room twins resolve through a closure
+  fingerprint.
+- Warp sweep at story 0x90: 377 of 402 room slots run clean, 4 rooms still
+  stop (m0159i, m0256i, m0349i, m0432i), 1 scripted return to title (m0050i),
+  20 unused. Day 3 probes (m0092i–m0098i, m0191i, m0360i) ran clean (story
+  flag only, not played).
+- Rooms that reach unported code now stop with `CPU_BOUNDARY/REFUSED`
+  instead of silently skipping it.
+- Tested headless on a real disc image: Day 1 route PASS, Day 2 movie check
+  PASS, test suite 1636/1636 with the disc. Untested by hand past Day 1 and
+  not yet on real hardware.
+
 ## 2026-10-07 — native-only fix (release `native-only-328511c8`)
 
 - Fixes the stop about 12 minutes into Day 1 in `native-only-2918a7f0`.

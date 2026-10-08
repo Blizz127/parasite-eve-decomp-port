@@ -10,14 +10,17 @@ decompiled game code.
 >
 > **Just want to play?** Jump to [How to play](#how-to-play).
 >
-> **New (2026-10-07): native-only build.** Release
-> [`native-only-328511c8`](https://github.com/Blizz127/parasite-eve-decomp-port/releases/tag/native-only-328511c8)
+> **New (2026-10-08): native-only build.** Release
+> [`native-only-ab6de50b`](https://github.com/Blizz127/parasite-eve-decomp-port/releases/tag/native-only-ab6de50b)
 > runs only native C: no MIPS interpreter and no CPU emulation in the game.
 > A function that isn't ported yet stops the game with a
-> `CPU_BOUNDARY/REFUSED` message instead of being emulated. On a real disc
-> image it plays Day 1 through to the opening of Day 2. It has not been
-> played on real hardware yet, and Day 2 onward is unverified. What works and
-> what doesn't: [docs/port/NATIVE_ONLY_STATUS.md](docs/port/NATIVE_ONLY_STATUS.md).
+> `CPU_BOUNDARY/REFUSED` message instead of being emulated (rooms included:
+> they no longer skip missing code silently). On a real disc image it plays
+> Day 1 through to the opening of Day 2, and 377 of 402 Day 2 room slots ran
+> clean in a warp sweep. It is untested by hand past Day 1 and has not been
+> played on real hardware yet. What works and what doesn't:
+> [docs/port/NATIVE_ONLY_STATUS.md](docs/port/NATIVE_ONLY_STATUS.md).
+> It supersedes `native-only-328511c8`.
 > The earlier `native-only-2918a7f0` stops about 12 minutes into Day 1;
 > don't use it. The hardware-tested Day 1 build is still
 > [r5](https://github.com/Blizz127/parasite-eve-decomp-port/releases/tag/day1-r5).
