@@ -13,6 +13,7 @@
 #include "psx_compat.h"
 #include "pe_sdk.h"
 #include "game_port.h"
+#include "pe_guestcode.h"
 
 static void audio_or(pe_addr_t address, uint32_t bits)
 {
@@ -537,13 +538,17 @@ static int audio_command(pe_addr_t callback, pe_addr_t entry)
     }
     case 0x8008C70Cu:
         PE_StoreU16(state + 0x56u, (uint16_t)PE_LoadU32(entry + 4u)); break;
-    default:
-        fprintf(stderr, "[STUB:BOOTSTRAP_RET] func_8008CA84_command callback=0x%08X cmd=0x%02X\n",
-                (unsigned)callback, (unsigned)PE_LoadU8(entry));
-        (void)Bootstrap_ReturnInt4Indirect("func_8008CA84_command", "func_8008CA84",
-            0, callback, entry, PE_LoadU8(entry), 0u, 0u, NULL, 0u);
-        PE_Port_RequestStop(PE_PORT_STOP_UNRESOLVED_BOUNDARY);
-        return 0;
+    default: {
+        /* Retail func_8008CA84 calls D_8009C0C0[*p](p).  Commands without a
+         * case above run their matched C through the guest-code registry
+         * (every D_8009C0C0 target has a generated thunk; e.g. 0x9B ->
+         * func_8008C720, first hit by the native tick at Day 1 frame ~42000).
+         * A target with no native C is a CPU_BOUNDARY/REFUSED STOP. */
+        unsigned epoch = PE_Port_StopEpoch();
+        (void)PE_GuestCall("@8008CA84:D_8009C0C0", callback, 1u,
+                           (uintptr_t)entry, 0u, 0u, 0u);
+        return PE_Port_StopEpoch() == epoch;
+    }
     }
     return 1;
 }

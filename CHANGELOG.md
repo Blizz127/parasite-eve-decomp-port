@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-10-07 — native-only fix (release `native-only-328511c8`)
+
+- Fixes the stop about 12 minutes into Day 1 in `native-only-2918a7f0`.
+  The native sound tick reached sound command 0x9B (`func_8008C720`), which
+  the hand-written queue code didn't handle. Commands without a hand case now
+  run their matched C (`pc_port/platform/pe_stream_commands.c`).
+- A stop for missing code now prints `[STOP] … requested by: +0x…`. Most of
+  the disc, graphics and boot code that can stop the game printed nothing
+  before.
+- Tested headless on a real disc image: the Day 1 route passes to the end of
+  Day 1, and the Day 2 movie check reaches the opening of Day 2. The test
+  suite passes 1634/1634 with the disc present. Not yet played on real
+  hardware; Day 2 and later are unverified.
+
 ## 2026-10-07 — native-only port (release `native-only-2918a7f0`, UNTESTED)
 
 - The game binary runs only native C. The sound driver's tick no longer runs

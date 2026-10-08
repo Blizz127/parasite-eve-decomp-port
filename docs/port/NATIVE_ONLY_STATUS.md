@@ -1,7 +1,13 @@
 # Native-only build: status
 
-Release: [`native-only-2918a7f0`](https://github.com/Blizz127/parasite-eve-decomp-port/releases/tag/native-only-2918a7f0)
-(2026-10-07, Linux x86-64). **UNTESTED on a real disc.**
+Current release: [`native-only-328511c8`](https://github.com/Blizz127/parasite-eve-decomp-port/releases/tag/native-only-328511c8)
+(2026-10-07, Linux x86-64). It was tested on a real disc image on the build
+machine (Day 1 plays through to the opening of Day 2), but **not yet on real
+hardware** such as a handheld or a gaming PC.
+
+The previous native-only release, [`native-only-2918a7f0`](https://github.com/Blizz127/parasite-eve-decomp-port/releases/tag/native-only-2918a7f0),
+**stops about 12 minutes into Day 1** (before the first Eve fight) and is
+superseded. See "Fixed in native-only-328511c8" below.
 
 ## What "native-only" means
 
@@ -31,9 +37,21 @@ Release: [`native-only-2918a7f0`](https://github.com/Blizz127/parasite-eve-decom
   (one tick each) and compares all of RAM and the SPU registers: 0
   mismatches. The check is sensitive: deliberately changing a single line of
   the native code makes it fail.
-- **The development line this build comes from.** It passes the full Day 1
-  route natively. The Day 2 movie check reaches story flag 0x90.
-- **Other native C added in this build:**
+- **Day 1, natively, on a real disc image.** The automated Day 1 route
+  (New Game through every Day 1 room and battle, including the first Eve
+  fight and the sewer alligator boss) passes to the end of Day 1. The Day 2
+  movie check plays the Day 1 ending movies and reaches the opening of Day 2
+  (story flag 0x90, the police chief's office). The full test suite passes
+  1634 of 1634 with the disc present.
+- **Fixed in native-only-328511c8.** With the sound tick native, the
+  game's sound command queue reached a command (0x9B, `func_8008C720`) that
+  the hand-written queue code didn't handle. It quietly stopped the game
+  about 12 minutes into Day 1. Commands without a hand-written case now run
+  their matched decompiled C; every command in the table has one. When the
+  game stops for missing code, it now also prints
+  `[STOP] reason=unresolved-boundary requested by: +0x...` naming where the
+  stop came from.
+- **Other native C added in the native-only builds:**
   - the sequence start and bank restore routines (`func_8008A750`,
     `func_8008AC40`);
   - five opcode handlers that now call `func_8008A92C` directly;
@@ -65,15 +83,13 @@ its function.
 
 ## Not tested
 
-- This exact build has **not been run on a real disc**. Earlier builds of the
-  same line passed the Day 1 route on a disc. This build has not been through
-  those checks yet.
-- **Why it hasn't been through them.** It was built on a machine without the
-  disc. The overlay fingerprints (hashes the port uses to recognise loaded
-  overlays) were copied from the registry of the previous disc-built
-  checkpoint (`93fe826a`). The two entry sets are identical, apart from two
-  new EXE entries that don't use a fingerprint.
-- If you want the tested Day 1 build, use [r5](https://github.com/Blizz127/parasite-eve-decomp-port/releases/tag/day1-r5).
+- **Real hardware.** This build has been run on a real disc image on the
+  build machine only, headless, with the automated route. It has not been
+  played on a handheld or a desktop yet.
+- **Day 2 and later.** The automated route ends at the opening of Day 2.
+  Nothing after that has been checked on the native-only build; expect
+  stops there.
+- The hardware-tested Day 1 build is still [r5](https://github.com/Blizz127/parasite-eve-decomp-port/releases/tag/day1-r5).
 
 ## You need your own disc
 

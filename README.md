@@ -10,14 +10,17 @@ decompiled game code.
 >
 > **Just want to play?** Jump to [How to play](#how-to-play).
 >
-> **New (2026-10-07): native-only build, UNTESTED.** Release
-> [`native-only-2918a7f0`](https://github.com/Blizz127/parasite-eve-decomp-port/releases/tag/native-only-2918a7f0)
+> **New (2026-10-07): native-only build.** Release
+> [`native-only-328511c8`](https://github.com/Blizz127/parasite-eve-decomp-port/releases/tag/native-only-328511c8)
 > runs only native C: no MIPS interpreter and no CPU emulation in the game.
 > A function that isn't ported yet stops the game with a
-> `CPU_BOUNDARY/REFUSED` message instead of being emulated. It has not been
-> run on a real disc yet. What works and what doesn't:
-> [docs/port/NATIVE_ONLY_STATUS.md](docs/port/NATIVE_ONLY_STATUS.md). The
-> tested Day 1 build is still [r5](https://github.com/Blizz127/parasite-eve-decomp-port/releases/tag/day1-r5).
+> `CPU_BOUNDARY/REFUSED` message instead of being emulated. On a real disc
+> image it plays Day 1 through to the opening of Day 2. It has not been
+> played on real hardware yet, and Day 2 onward is unverified. What works and
+> what doesn't: [docs/port/NATIVE_ONLY_STATUS.md](docs/port/NATIVE_ONLY_STATUS.md).
+> The earlier `native-only-2918a7f0` stops about 12 minutes into Day 1;
+> don't use it. The hardware-tested Day 1 build is still
+> [r5](https://github.com/Blizz127/parasite-eve-decomp-port/releases/tag/day1-r5).
 
 ## About this project
 
@@ -253,7 +256,8 @@ is the way to play until then.
 Day 1 is playable from start to finish on the port (r5), and movies play in
 real time. Since 2026-10-07 the port is **native only**: the game binary has
 no MIPS interpreter or CPU emulation, and the sound driver runs as native C.
-The native-only build is not yet tested on a disc. The calls that still stop
+The native-only build plays Day 1 to the opening of Day 2 on a real disc
+image; it has not been played on real hardware yet. The calls that still stop
 it are listed in
 [docs/port/NATIVE_ONLY_STATUS.md](docs/port/NATIVE_ONLY_STATUS.md). Every known difference from the PlayStation original is logged in
 [docs/port/KNOWN_DIVERGENCES.md](docs/port/KNOWN_DIVERGENCES.md).
