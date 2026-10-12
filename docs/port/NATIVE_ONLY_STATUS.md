@@ -118,3 +118,46 @@ guard passes against its allowlist with no new findings. The retail-data
 guard finds no retail byte runs in the package. As in r5, the PlayStation
 SPU's 40-byte interpolation table (transcribed from psx-spx) is the only
 table taken from the console.
+
+## Status update (2026-10-12): no new public build
+
+A newer Linux x86-64 test build exists (development commit `db9ca12b`), but it
+is **not published here**. Its binary download stays held while the
+redistribution evidence for some of its components is unresolved. Existing
+releases are unchanged.
+
+### What was checked
+
+- The native test suite passed 1657 of 1657 checks, and 5 separate
+  controller and developer-menu tests passed.
+- 31 scripted, headless checks passed in an isolated sandbox: the automated
+  Day 1 route to its end checkpoint, the movies into Day 2, and 14 room-entry
+  probes that start preset rooms. These used scripted input only. They are
+  not a full story playthrough and did not use physical controllers.
+
+### Controller changes in that build
+
+- A lone Start or Select reaches the game while the developer menu is
+  enabled.
+- The developer menu opens on a Start+Select chord, tracked separately for
+  each controller.
+- SDL game controllers and Linux joystick devices are read together.
+
+### Still unverified for that build
+
+- Physical controllers: handheld built-in controls and Xbox controllers.
+- Steam Game Mode, display borders and automatic on-screen keyboard
+  behaviour.
+- Saving to a memory card and continuing after a cold start.
+- Story play through Day 2 and later days, and Disc 2. Developer warps start
+  rooms from preset values; they are not story coverage.
+
+### Defaults and data
+
+- The developer menu is on by default; `PE_DEV_MENU=0` turns it off.
+- A normal run may use your existing memory card 1. Back up your memory cards
+  and settings first, or point the game at an isolated card, config and cache
+  (`PE_MEMCARD1`, `PE_ENH_CONFIG`, `PE_DISC_CACHE_DIR`, with `PE_MEMCARD2`
+  unset).
+- You provide your own supported Parasite Eve (USA) Disc 1 image as a raw
+  2352-byte-sector BIN/CUE.
