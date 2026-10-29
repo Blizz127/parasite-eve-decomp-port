@@ -24,6 +24,9 @@
       "func_8019114C",
       "func_801918D0",
       "func_80191D54"
+    ],
+    "room_m0152i_dispatch_8018F1DC_8018F1F4_div": [
+      "func_80192D24"
     ]
   },
   "local_profiles": {
@@ -69,6 +72,18 @@
       "environment": {
         "MASPSX_THREE_WORD_SYMBOL_STORE": "1",
         "MASPSX_DISPATCH_FOLD": "jtbl_8018F164"
+      }
+    },
+    "room_m0152i_dispatch_8018F1DC_8018F1F4_div": {
+      "toolchain": "era",
+      "flags": [
+        "-O2",
+        "-G0"
+      ],
+      "environment": {
+        "MASPSX_THREE_WORD_SYMBOL_STORE": "1",
+        "MASPSX_DISPATCH_FOLD": "jtbl_8018F1DC,jtbl_8018F1F4",
+        "MASPSX_EXPAND_DIV": "1"
       }
     }
   }

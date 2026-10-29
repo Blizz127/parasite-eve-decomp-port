@@ -11,8 +11,8 @@
  *
  * func_80039B74 — 108w 0x80039B74..0x80039D24, SHA-256
  * 8c66e398…84e7. a1==0 returns immediately (live +0x1B0=0).
- * INIT1 adds nonzero clips via 39D24/39ED4/79754; scratchpad
- * overrides outside the decoded joint count remain a named boundary.
+ * Matched native decoders preserve scratchpad rows for joint overrides,
+ * including rows retained from earlier clips.
  *
  * func_800362B8 — 79w 0x800362B8..0x800363F4, SHA-256
  * c1d94293…b78d. Zero jal. Size-class bank allocator.
@@ -27,6 +27,7 @@
 #include "psx_compat.h"
 #include "pe_port_compat.h"
 #include "pe_sdk.h"
+#include "game_port.h"
 #include <string.h>
 
 #define GA_D_8009D2F0 0x8009D2F0u
@@ -86,87 +87,8 @@ pe_addr_t func_800362B8(unsigned int size)
     return 0u;
 }
 
-/* 39B74 and its 39D24/39ED4 decoders. Scratchpad angle rows are
- * host temporaries consumed in this call; retained matrices stay in RAM. */
-void func_80039B74(pe_addr_t dest, pe_addr_t clip, int a2, int a3)
-{
-    int16_t angles[256][3];
-    pe_addr_t cursor, matrices;
-    uint32_t frames, trans_stride, rot_stride, count;
-    uint32_t row, axis;
-    int16_t frame = (int16_t)a2;
-    int wide;
-    (void)a3;
-    if (!clip) return;
-    PE_StoreU16(dest + 0x7Cu, PE_LoadU16(clip + 0xAu));
-    PE_StoreU16(dest + 0x74u, PE_LoadU16(clip + 4u));
-    PE_StoreU16(dest + 0x76u, PE_LoadU16(clip + 6u));
-    PE_StoreU16(dest + 0x78u, PE_LoadU16(clip + 8u));
-    wide = (PE_LoadU8(clip) & 3u) == 2u;
-    matrices = PE_LoadU32(dest + 0x84u);
-    PE_StoreU32(dest + 0x58u, matrices);
-    cursor = clip + 12u;
-    frames = PE_LoadU8(clip + 2u);
-    trans_stride = ((frames >> 1) + 1u) * 4u;
-    for (axis = 0; axis < 3u; axis++) {
-        int16_t value;
-        if (PE_LoadU16(cursor)) {
-            value = (int16_t)PE_LoadU16(cursor + 2u);
-            cursor += 4u;
-        } else {
-            value = (int16_t)PE_LoadU16(cursor + 2u + (uint32_t)((int32_t)frame * 2));
-            cursor += trans_stride;
-        }
-        PE_StoreU32(matrices + 20u + axis * 4u, (uint32_t)(int32_t)value);
-    }
-    count = (uint32_t)PE_LoadU8(clip + 1u) + 1u;
-    rot_stride = wide ? trans_stride : ((frames >> 2) + 1u) * 4u;
-    for (row = 0; row < count; row++) {
-        for (axis = 0; axis < 3u; axis++) {
-            uint16_t value;
-            if (wide) {
-                if (PE_LoadU16(cursor)) {
-                    value = PE_LoadU16(cursor + 2u);
-                    cursor += 4u;
-                } else {
-                    value = PE_LoadU16(cursor + 2u + (uint32_t)((int32_t)frame * 2));
-                    cursor += rot_stride;
-                }
-            } else {
-                if (PE_LoadU8(cursor)) {
-                    value = PE_LoadU8(cursor + 1u);
-                    cursor += 4u;
-                } else {
-                    value = PE_LoadU8(cursor + 1u + (uint32_t)(int32_t)frame);
-                    cursor += rot_stride;
-                }
-                value = (uint16_t)(value << 4);
-            }
-            angles[row][axis] = (int16_t)value;
-        }
-        PE_RotMatrix79754(angles[row], matrices + row * 32u);
-    }
-    for (row = 0; row < 2u; row++) {
-        pe_addr_t slot = dest + row * 8u;
-        unsigned int index = PE_LoadU8(slot + 0xA6u);
-        if (!index) continue;
-        /* Indices beyond decoded rows refer to old scratchpad contents;
-         * that unobserved state is not manufactured by this host view. */
-        if (index >= count) {
-            Bootstrap_ReturnVoid("func_80039B74_scratch_index", "func_80039B74");
-            return;
-        }
-        for (axis = 0; axis < 3u; axis++) {
-            uint8_t flags = PE_LoadU8(slot + 0xA7u);
-            uint16_t value = PE_LoadU16(slot + 0xA0u + axis * 2u);
-            if (flags & (8u << axis))
-                angles[index][axis] = (int16_t)value;
-            else if (flags & (1u << axis))
-                angles[index][axis] = (int16_t)((uint16_t)angles[index][axis] + value);
-        }
-        PE_RotMatrix79754(angles[index], PE_LoadU32(dest + 0x58u) + index * 32u);
-    }
-}
+/* Matched native 39B74/39D24/39ED4 now live in
+ * decomp_hand/animation_decode_port.c, using persistent guest scratchpad. */
 
 static pe_addr_t pe_15240_kseg0(pe_addr_t addr)
 {
@@ -350,9 +272,11 @@ int func_80015240(pe_addr_t args)
     dest = actor + 0x1B4u;
     func_8006698C(dest);
     func_80039B74(dest, PE_LoadU32(actor + 0x1B0u), 0, 1);
+    if (PE_Port_ShouldStop()) return 0;
     func_8003A088_mode0_walk_cut(dest);
+    if (PE_Port_ShouldStop()) return 0;
     func_8003A6A8(dest, GA_B89F8);
-    func_8003B97C_lighting_cut(dest, GA_BEA40);
+    func_8003B97C(dest, GA_BEA40);
     func_8003BCE0(dest, 1, (int)(int16_t)PE_LoadU16(GA_D_8009CDDC));
 
     flags = PE_LoadU32(actor + 0x98u);
@@ -360,7 +284,7 @@ int func_80015240(pe_addr_t args)
         uint32_t cddc = PE_LoadU32(GA_D_8009CDDC) ^ 1u;
 
         PE_StoreU32(GA_D_8009CDDC, cddc);
-        func_8003B97C_lighting_cut(dest, GA_BEA40);
+        func_8003B97C(dest, GA_BEA40);
         func_8003BCE0(dest, 1, (int)(int16_t)PE_LoadU16(GA_D_8009CDDC));
         PE_StoreU32(GA_D_8009CDDC, PE_LoadU32(GA_D_8009CDDC) ^ 1u);
         return 1;

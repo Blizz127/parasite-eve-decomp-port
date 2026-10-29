@@ -43,6 +43,27 @@ void HostAudio_SetFastForward(int on);
  * -1 when no device is open. */
 int  HostAudio_QueueFrames(void);
 
+/* MASTER VOLUME (enhancement registry) is applied to the device feed only;
+ * the WAV dump stays retail.  At 100 the samples pass through untouched. */
+static inline int16_t HostAudio_GainSample(int16_t sample, int percent)
+{
+    return (int16_t)((int32_t)sample * percent / 100);
+}
+/* Frames [first, first+n) of a submit of `frames` stereo frames, scaled by a
+ * level that ramps linearly from `from` (frame 0) toward `to` (frame
+ * `frames`), so a volume change does not click.  from == to is a constant
+ * HostAudio_GainSample. */
+static inline void HostAudio_GainRamp(int16_t *dst, const int16_t *src, int first, int n,
+                                      int frames, int from, int to)
+{
+    for (int i = 0; i < n; i++) {
+        int64_t f = first + i;
+        int64_t level = (int64_t)from * (frames - f) + (int64_t)to * f;   /* percent x frames */
+        for (int c = 0; c < 2; c++)
+            dst[2 * i + c] = (int16_t)((int64_t)src[2 * (first + i) + c] * level / (100 * (int64_t)frames));
+    }
+}
+
 #ifdef __cplusplus
 }
 #endif

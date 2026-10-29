@@ -171,6 +171,7 @@ extern void func_80029388(void);
 extern void func_8002F658(void);
 extern void func_80020EFC(void);
 extern void func_80071A64(uint32_t seed);
+extern uint32_t PE_BiosRandSeed(void);   /* current A(2Fh) rand seed (tests) */
 extern void func_8005BCA8(void);
 extern int func_80068D28(void);
 extern void func_800124F8(void);
@@ -214,6 +215,8 @@ extern int  func_80017764(pe_addr_t args);
 extern void func_80065400(void);
 extern int func_80068E24(void);
 extern void func_8003F3C4(void);
+extern int PE_Field_PassContinues; /* host one-pass field tick still inside retail loop */
+uint32_t PE_Field_LoadedDestForTest(void); /* func_8003F3C4 host load gate (tests) */
 extern pe_addr_t func_80012700(pe_addr_t entry, unsigned int a1);
 void func_80012774(void);
 void func_80035F54(pe_addr_t actor);
@@ -234,6 +237,12 @@ extern void func_8002FAA4(pe_addr_t actor, unsigned int index,
                           unsigned int a2, unsigned int a3,
                           unsigned int b3, unsigned int half_c);
 extern void func_8002FAD8(pe_addr_t actor, unsigned int index, uint32_t first, uint32_t last);
+/* Matched font-page initializer, used by cold dialogue paths. */
+unsigned char func_80038D74(void);
+/* Field-VM opcodes 0x83 and 0xB6: generated from the matched C
+ * (src/func_800133E8.c, src/func_80019810.c) by gen_decomp_ports.py --e21. */
+int func_800133E8(void);
+int func_80019810(pe_addr_t args);
 extern int func_800198C4(pe_addr_t args);
 extern void func_8002FF78(unsigned int tag, unsigned int value);
 extern int  func_8002FE78(unsigned int tag);
@@ -342,7 +351,6 @@ extern void func_8002B29C(void);
 extern void func_8002B0E8(void);
 void func_8002B94C(void);
 void func_8002F0B0(void);
-extern void func_8002F300_mode2_cut(void);
 extern void func_800292EC_victory_ready_cut(void);
 extern void func_80027D14(pe_addr_t actor);
 extern void func_80028E94(pe_addr_t actor);
@@ -368,7 +376,7 @@ void func_80045A98(pe_addr_t window);
 unsigned int func_800631C0(pe_addr_t pe_arg0);
 int func_80045D0C(pe_addr_t window,uint32_t event);
 int func_8004620C(pe_addr_t window,uint32_t event);
-int func_800466C0(pe_addr_t window,uint32_t event);
+int func_800466C0(pe_addr_t window,int32_t event);   /* src: int key */
 void func_80046574(pe_addr_t window,uint32_t confirmed);
 void func_80059534(int32_t selected);
 int32_t func_8005968C(int32_t selected);
@@ -456,6 +464,9 @@ extern int func_8006F9F0(unsigned int index);
 extern int func_8006DC18(uint32_t code);
 extern int PE_EffectCallback(pe_addr_t fn, int32_t mode, pe_addr_t data, pe_addr_t extra);
 extern void PE_EffectCallback_SetExtra1(uint32_t extra1);
+/* Next PE_EffectCallback is a per-slot draw/update dispatch: the generic
+ * guest call passes the retail a0 = slot, a1 = `a1` (func_800D413C_port.c). */
+extern void PE_EffectCallback_SlotAbi(uint32_t a1);
 extern int PE_MirrorOverlay(void);
 extern int PE_MirrorInit(pe_addr_t slot);
 extern int PE_MirrorCommand(pe_addr_t slot, uint32_t mode, uint32_t command, uint32_t x, uint32_t z);
@@ -959,6 +970,8 @@ extern int func_8001784C(pe_addr_t pe_a0);
 extern int func_800130B4(pe_addr_t args);
 extern int func_80015240(pe_addr_t args);
 extern void func_80039B74(pe_addr_t dest, pe_addr_t clip, int a2, int a3);
+void func_80039D24(pe_addr_t dest, pe_addr_t clip, short frame);
+void func_80039ED4(pe_addr_t dest, pe_addr_t clip, short frame);
 extern pe_addr_t func_800362B8(unsigned int size);
 extern void func_8003A6A8(pe_addr_t dest, pe_addr_t unused);
 extern void func_8003E188(pe_addr_t dest);
@@ -999,8 +1012,9 @@ extern void func_800794C4(pe_addr_t angles, pe_addr_t out);
 extern void func_8003A088_mode0_empty_cut(pe_addr_t dest);
 extern void func_8003AC90(pe_addr_t dest, pe_addr_t view);
 extern void func_8003A088_mode0_walk_cut(pe_addr_t dest);
-extern void func_8003B97C_empty_cut(pe_addr_t dest, pe_addr_t bea40);
-extern void func_8003B97C_lighting_cut(pe_addr_t dest, pe_addr_t bea40);
+/* The whole func_8003A088 (every +0x28 mode, then the bone walk). */
+extern void func_8003A088(pe_addr_t dest);
+extern void func_8003B97C(pe_addr_t dest, pe_addr_t bea40);
 extern void func_8003BCE0(pe_addr_t dest, int a1, int a2);
 extern void func_80070D10(void);
 extern unsigned int func_80070D6C(void);
@@ -1026,6 +1040,7 @@ extern void func_8006A8D4(void);
 extern void func_80077B64(pe_addr_t pe_arg0);
 extern void func_80077BA4(pe_addr_t pe_arg0);
 extern void func_80077BC4(pe_addr_t pe_arg0);
+extern void func_80077B84(pe_addr_t pe_arg0); /* setPolyG3 header (len 6, code 0x30) */
 extern void func_80077BE4(pe_addr_t pe_arg0);
 extern void func_80077C44(pe_addr_t pe_arg0);
 extern void func_80077C64(pe_addr_t pe_arg0);
@@ -1072,7 +1087,40 @@ extern int func_800870E0(void);
 /* Host view of transient animation scratch angles (79754). */
 void PE_RotMatrix79754(const int16_t angles[3], pe_addr_t out);
 void PE_RotMatrix79754_values(const int16_t angles[3], int16_t out[9]);
+/* host-replacement: func_80079754 (Psy-Q libgte RotMatrixYXZ; guest SVECTOR *r,
+ * MATRIX *m -> m).  Lowered room code calls this host function by name
+ * (gen_overlay_ports host_replacements); no func_80079754 is defined. */
+pe_addr_t PE_RotMatrixYXZ_Guest(pe_addr_t r, pe_addr_t m);
+/* host-replacement: func_800785D4 (Psy-Q libgte MulMatrix0; guest MATRIX *m0,
+ * *m1, *out -> out = m0*m1 rotation, translation untouched).  Lowered room
+ * code calls this host function by name; no func_800785D4 is defined. */
+pe_addr_t PE_MulMatrix0_Guest(pe_addr_t left, pe_addr_t right, pe_addr_t out);
+/* host-replacement: func_80078BE4 (Psy-Q libgte ApplyMatrix; guest MATRIX *m,
+ * SVECTOR *v, VECTOR *out -> out = m.rotation*v >>12, as 32-bit MAC1-3).  Loads
+ * the rotation into the GTE like retail (translation untouched).  Lowered room
+ * code calls this host function by name; no func_80078BE4 is defined. */
+pe_addr_t PE_ApplyMatrix_Guest(pe_addr_t m, pe_addr_t v, pe_addr_t out);
 void PE_RotMatrix794C4_values(const int16_t angles[3], int16_t out[9]);
+/* host-replacement: func_80071A74 (Psy-Q libapi printf, the BIOS A(3Fh)
+ * vector stub; guest format plus up to seven word arguments -> the host TTY
+ * through PE_Bios_Printf, as the console's debug TTY receives it).  A call
+ * site with fewer arguments passes 0 for the rest (guest_lower
+ * DEAD_TRAILING_PARAMS); printf reads only what its format names.
+ * platform/pe_bios_string.c. */
+int32_t PE_Printf_Guest(pe_addr_t fmt, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uint32_t a5, uint32_t a6, uint32_t a7);
+/* host-replacement: func_8010BF94 (Psy-Q libpress DecDCTBufSize in ovl_039F;
+ * guest bitstream -> its first halfword).  The credits overlay (ovl_0457)
+ * calls it; implemented in platform/pe_libpress.c, no func_8010BF94 is
+ * defined. */
+uint32_t PE_DecDCTBufSize_Guest(pe_addr_t bs);
+/* host-replacement: func_8010C86C (Psy-Q libpress DecDCTvlcSize, handwritten
+ * asm in ovl_039F: the VLC output bound [0x8011EB8C] becomes size << 1, or
+ * 0xFFFFFF for size <= 1; returns the previous bound).  platform/pe_libpress.c. */
+int32_t PE_DecDCTvlcSize_Guest(uint32_t size);
+/* host-replacement: func_8010C078 (Psy-Q libpress DecDCToutSync in ovl_039F;
+ * mode != 0: MDEC1 status bit 24; mode 0: wait for DMA1, -1 on timeout).
+ * platform/pe_libpress.c. */
+int32_t PE_DecDCToutSync_Guest(int32_t mode);
 
 void func_800783E4(pe_addr_t a, pe_addr_t b, int32_t wa, int32_t wb, pe_addr_t out);
 void func_80078554(pe_addr_t a, pe_addr_t b, int32_t wa, int32_t wb, pe_addr_t out);
@@ -1085,17 +1133,67 @@ void PE_EffectSpriteCEE20(pe_addr_t position, const int16_t angles[4], int32_t s
     const uint8_t color[3]);
 void func_800CEE20(pe_addr_t position, pe_addr_t angles, int32_t sx, int32_t sy,
     int32_t texture, uint32_t clut, int32_t abr, int32_t brightness, pe_addr_t color);
+/* Ring/ribbon glow renderer (hand port in func_800C9C20_port.c). */
+void func_800C4FC4(pe_addr_t r, pe_addr_t matrix, unsigned billboard);
+/* Glow point sprite (hand port in func_800D2104_port.c). */
+void func_800D2104(pe_addr_t pos, pe_addr_t color, int32_t scale, int32_t abr);
+/* Textured ribbon strip (hand port in func_800D3114_port.c). */
+void func_800D3114(pe_addr_t pts, int32_t n, int32_t width, int32_t u0, int32_t v0,
+                   int32_t du, int32_t dv, int32_t tpage, int32_t clut, int32_t scale,
+                   pe_addr_t col0, pe_addr_t col1, int32_t abr);
+/* Shaded blade, one POLY_G3 (native port in func_800D0E88_port.c). */
+void func_800D0E88(pe_addr_t pos, pe_addr_t ang, int32_t len, int32_t width, pe_addr_t c0,
+    pe_addr_t c1, pe_addr_t c2, int16_t bright, int32_t abr);
+/* Gradient trail ribbon (hand port in func_800D1384_port.c). */
+void func_800D1384(pe_addr_t head0, pe_addr_t head1, uint32_t n, pe_addr_t col0,
+    pe_addr_t col1, int32_t scale, pe_addr_t trail, int32_t abr);
+/* Streak: LINE_G2 + oriented POLY_GT4 glow quad (native port in
+ * func_800D2B58_port.c). */
+void func_800D2B58(pe_addr_t p0, pe_addr_t p1, pe_addr_t c0, pe_addr_t c1,
+    int32_t b0, int32_t b1, int32_t abr);
+/* Camera-facing textured sprite, one POLY_FT4 (native port in
+ * func_800D3BC8_port.c). */
+void func_800D3BC8(pe_addr_t pos, int32_t sx, int32_t sy, int32_t cell, int32_t clut,
+    int32_t abr, int32_t bright, pe_addr_t color, int32_t lerp);
+/* Orbit point: centre + R(ang)*(Z(yaw)*D_800C2270*(r2,0,0) + (0,0,r)) (native port in
+ * func_800CF844_port.c). */
+void func_800CF844(pe_addr_t center, pe_addr_t out, int32_t r, pe_addr_t ang, int32_t r2,
+    int32_t yaw);
 int PE_M0023I_Main(int32_t mode, pe_addr_t data);
 int PE_M0023I_Particle(int32_t mode, pe_addr_t data);
 int PE_M0023I_Beam(int32_t mode, pe_addr_t data);
 int PE_M0023I_Flash(int32_t mode, pe_addr_t data, int16_t retained_position[3]);
+/* Mode-2 F710 draw at the tracked 69594 depth: borrowed holds the six bytes,
+ * known their X(1)/Y(2)/Z(4) validity; on return borrowed is F710's write. */
+int PE_M0023I_FlashTracked(pe_addr_t data, int16_t borrowed[3], unsigned known);
 extern int g_pe_strict_effect_stack;   /* m0023i_effect_port.c: 1 = unresolved F710 stack read stops the port */
+int PE_Decomp_BoundaryStopEnabled(void); /* pe_guest_decomp.c: native-only stop policy (port binary default) */
 void PE_EffectStackBegin(void);
 void PE_EffectStackEnd(void);
 void PE_EffectStackInvalidate(void);
+/* Why the m0023i flash's borrowed stack bytes are unknown (diagnostics only):
+ * the effect-stack model's state and the callback, or marker, that last
+ * cleared them (func_800D413C_port.c). */
+typedef struct { unsigned active, context, known; pe_addr_t reset_fn; unsigned reset_context; } PeEffectStackCause;
+#define PE_EFFECT_STACK_RESET_INVALIDATE    0xFFFFFFFFu  /* PE_EffectStackInvalidate */
+#define PE_EFFECT_STACK_RESET_RAM           0xFFFFFFFEu  /* guest RAM generation changed */
+#define PE_EFFECT_STACK_RESET_WEAPON_UPDATE 0xFFFFFFFDu  /* unbound call at the weapon-update depth */
+#define PE_EFFECT_STACK_RESET_BEGIN         0xFFFFFFFCu  /* new draw depth; X/Y not re-established */
+void PE_EffectStackCause(PeEffectStackCause *out);
+void PE_EffectStackDescribe(const PeEffectStackCause *cause, char *out, unsigned size);
+/* Day-1 flash shim hits: total, and the effect-stack cause of the latest one
+ * (m0023i_effect_port.c; diagnostics only). */
+unsigned PE_M0023I_FlashShimLast(PeEffectStackCause *cause);
 int PE_EffectStackWeaponDraw(pe_addr_t fn,pe_addr_t slot);
 int PE_EffectStackWeaponUpdate(pe_addr_t fn,pe_addr_t slot);
 void PE_EffectStackWeaponUpdateCall(void);
+/* PE_WeaponCallback, before dispatching record callback `fn` (a1 = rec,
+ * a2 = data); bound frameless leaves keep the borrowed bytes. */
+void PE_EffectStackWeaponUpdateCallback(pe_addr_t fn,pe_addr_t rec,pe_addr_t data);
+/* Native C2758, right after its C2B90 call (retail jal at 800C2850). */
+void PE_EffectStackWeaponSpawnReturn(void);
+/* The modeled six bytes (diagnostics and tests only). */
+void PE_EffectStackPosition(int16_t out[3]);
 int func_800CE084(pe_addr_t slot);
 int func_800CE144(int slot);
 int func_800CE16C(int a0);
@@ -1332,6 +1430,13 @@ int func_80190254(pe_addr_t point,uint32_t radius);
 int func_801904B0(pe_addr_t point,uint32_t radius);
 void PE_TransitionUpdate(const uint16_t *menu_tail,const uint16_t *subtitle_tail);
 int PE_TransitionSubtitle(uint32_t id,uint32_t action,const uint16_t *tail);
+void PE_TransitionMenuTailReset(void);
+void PE_TransitionMenuTailConstructed(pe_addr_t record_cursor);
+void PE_TransitionMenuTailDrawn(pe_addr_t env,pe_addr_t ot);
+void PE_TransitionMenuTailActuator(void);
+void PE_MessageOpenPartial(int id,unsigned int mode,pe_addr_t list,unsigned int unknown);
+int PE_MessageDigitsKnown(pe_addr_t rec,unsigned int group);
+extern uint32_t PE_ControllerAlignCalls;
 void func_80038940(int a0, int a1, int a2, int a3);
 void func_801938E8(uint32_t id);
 void func_801939B0(uint32_t id);
@@ -1350,6 +1455,7 @@ void func_8018F344(pe_addr_t matrix, pe_addr_t eye, pe_addr_t target, pe_addr_t 
 void PE_EffectDirectionCFAA8(const int16_t from[3],const int16_t to[3],pe_addr_t out);
 void func_800CFAA8(pe_addr_t pe_a0, pe_addr_t pe_a1, pe_addr_t pe_a2);
 void func_800CE9D4(pe_addr_t actor,uint32_t joint,pe_addr_t out);
+void func_800CEAE8(pe_addr_t matrix,pe_addr_t input,pe_addr_t output);
 void PE_ActorJointDirectionCE9D4(pe_addr_t actor,uint32_t joint,int16_t out[3]);
 int32_t func_800D3F64(uint32_t id,uint32_t group);
 int func_800C6B90(pe_addr_t pe_a0, int a1);
@@ -1376,6 +1482,10 @@ int32_t func_80079274(pe_addr_t v0, pe_addr_t v1, pe_addr_t v2, pe_addr_t sxy0,
                       pe_addr_t sxy1, pe_addr_t sxy2, pe_addr_t ir0, pe_addr_t flags);
 void func_80079E14(int32_t angle,pe_addr_t dest);
 pe_addr_t func_80078C34(pe_addr_t matrix,pe_addr_t vector,pe_addr_t out);
+/* func_800C5538: chain/tail segment update, NON_MATCHING host port (game/boot/func_800C5538_port.c). */
+void func_800C5538(pe_addr_t a0);
+/* func_800C5A40: chain/tail segment renderer, NON_MATCHING host port (game/boot/func_800C5A40_port.c). */
+void func_800C5A40(pe_addr_t a0);
 void func_800C3B04(pe_addr_t style);
 void func_800CDD0C(int a0, int a1, pe_addr_t pe_a2);
 void func_800CDE90(int a0, int a1, pe_addr_t pe_a2);

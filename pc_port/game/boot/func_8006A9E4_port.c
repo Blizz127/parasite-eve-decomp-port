@@ -87,6 +87,7 @@
 #include "psx_compat.h"
 #include "pe_sdk.h"
 #include "pe_bootstrap.h"
+#include "game_port.h"
 
 /* ── Guest addresses ───────────────────────────────────────────────── */
 #define GA_D_800930DC  0x800930DCu   /* halfword LBA off/end table   */
@@ -125,6 +126,7 @@ static void PE_6A9E4_Issue(uint32_t s2_lba, pe_addr_t table,
 {
     int r;
     do {
+        if (PE_Port_ShouldStop()) return;
         pe_addr_t dest = use_stream_dest ? PE_LoadU32(GA_D_800B0E6C)
                                          : GA_D_800A8028;
         uint32_t off   = PE_LoadU16(table);
@@ -139,6 +141,7 @@ static int PE_6A9E4_PollRestartable(void)
 {
     int st = 1;
     for (;;) {
+        if (PE_Port_ShouldStop()) return 0;
         if (st == -1)
             return 1;
         st = func_8006E7E8();
@@ -156,9 +159,11 @@ static int PE_6A9E4_PollRestartable_B(int *s1)
 {
     int st = 1;
     for (;;) {
+        if (PE_Port_ShouldStop()) return 0;
         if (!*s1) {
             func_800527C8();
             *s1 = 1;
+            if (PE_Port_ShouldStop()) return 0;
         }
         if (st == -1)
             return 1;
@@ -174,7 +179,7 @@ static int PE_6A9E4_PollRestartable_B(int *s1)
 static void PE_6A9E4_PollClamped(void)
 {
     int st = 1;
-    while (st != 0)
+    while (st != 0 && !PE_Port_ShouldStop())
         st = (func_8006E7E8() != 0);
 }
 
@@ -184,6 +189,8 @@ void func_8006A9E4(void)
     uint32_t s2_lba;
     pe_addr_t r1, r2;
 
+    if (PE_Port_ShouldStop()) return;
+
     /* 1. ClearImage({0, 0, 0x3FF, 0x1FF}, 0, 0, 1) — REAL host SDK. */
     rect.x = 0;
     rect.y = 0;
@@ -191,15 +198,20 @@ void func_8006A9E4(void)
     rect.h = 0x1FF;
     func_80074F44(&rect, 0, 0, 1);
 
+    if (PE_Port_ShouldStop()) return;
+
     /* 2. Register-cached for the whole body (retail $s2/$s3). */
     s2_lba = PE_LoadU32(GA_D_800B0DD8);
 
     /* 3A. Read cycle A: table D_800930DC, dest D_800A8028. */
     for (;;) {
         PE_6A9E4_Issue(s2_lba, GA_D_800930DC, 0);
+        if (PE_Port_ShouldStop()) return;
         if (!PE_6A9E4_PollRestartable())
             break;
     }
+
+    if (PE_Port_ShouldStop()) return;
 
     /* 3B. Read cycle B: table D_800930DE, dest stream buffer;
      *     func_800527C8 at most once per execution (retail $s1 scope
@@ -208,10 +220,13 @@ void func_8006A9E4(void)
         int s1 = 0;
         for (;;) {
             PE_6A9E4_Issue(s2_lba, GA_D_800930DC + 2, 1);
+            if (PE_Port_ShouldStop()) return;
             if (!PE_6A9E4_PollRestartable_B(&s1))
                 break;
         }
     }
+
+    if (PE_Port_ShouldStop()) return;
 
     /* 4. Copy #1: stream buffer → D_800E2858, 0x10A50 bytes. */
     PE_6A9E4_Copy(GA_D_800E2858, PE_LoadU32(GA_D_800B0E6C),
@@ -226,16 +241,21 @@ void func_8006A9E4(void)
 
     /* 3C. Read cycle C: table D_800930E4, dest stream buffer. */
     PE_6A9E4_Issue(s2_lba, GA_D_800930DC + 8, 1);
+    if (PE_Port_ShouldStop()) return;
     PE_6A9E4_PollClamped();
+    if (PE_Port_ShouldStop()) return;
 
     /* 6. func_80087090(lw(D_800B0E6C), 1) — SPU upload retry wrapper;
      *    func_80087090 is translated; its inner callee func_800851A8
      *    (SPU DMA upload) remains unresolved. */
     func_80087090(PE_LoadU32(GA_D_800B0E6C), 1);
+    if (PE_Port_ShouldStop()) return;
 
     /* 3D. Read cycle D: table D_800930E6, dest stream buffer. */
     PE_6A9E4_Issue(s2_lba, GA_D_800930DC + 10, 1);
+    if (PE_Port_ShouldStop()) return;
     PE_6A9E4_PollClamped();
+    if (PE_Port_ShouldStop()) return;
 
     /* 7. Copy #2: stream buffer → lw(D_800B0E08), 0x1400 bytes. */
     PE_6A9E4_Copy(PE_LoadU32(GA_D_800B0E08), PE_LoadU32(GA_D_800B0E6C),

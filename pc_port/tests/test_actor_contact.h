@@ -1,5 +1,40 @@
 #include "retail_actor_contact_cases.h"
 
+static void actor_contact_stop_seed(void)
+{
+    const pe_addr_t a=0x80150000u,b=0x80150400u,sa=0x80150800u,sb=0x80150900u;
+    const pe_addr_t ia=0x80151000u,ib=0x80151400u;
+    ResetTestState();
+    PE_StoreU32(0x8009D20Cu,a); PE_StoreU32(a+4u,b);
+    PE_StoreU8(b+12u,1u);
+    PE_StoreU32(a+0x1ACu,1u); PE_StoreU32(b+0x1ACu,1u);
+    PE_StoreU32(a+0x1B4u,ia); PE_StoreU32(b+0x1B4u,ib);
+    PE_StoreU8(ia+3u,1u); PE_StoreU8(ib+3u,1u);
+    PE_StoreU32(a+0x234u,sa); PE_StoreU32(b+0x234u,sb);
+    PE_StoreU16(a+38u,4096u); PE_StoreU16(b+38u,4096u);
+    PE_StoreU32(a+0x194u,0x81234567u); PE_StoreU32(b+0x194u,0x80085F44u);
+    PE_StoreU32(0x8009B434u,0xA5A5A5A5u);
+}
+
+static void test_actor_contact_callback_stop(void)
+{
+    const pe_addr_t b=0x80150400u,task=0x80152000u;
+    TEST("actor_contact_callback_stop");
+    actor_contact_stop_seed();
+    func_80036448();
+    ASSERT(PE_Port_GetStopReason()==PE_PORT_STOP_UNRESOLVED_BOUNDARY &&
+           PE_LoadU32(0x8009B434u)==0xA5A5A5A5u,
+           "contact continued to the second callback after a stop");
+    actor_contact_stop_seed();
+    PE_StoreU32(0x800B0CD8u,0x200u); /* enter the final cleanup path */
+    PE_StoreU32(b+0xA8u,task); PE_StoreU16(task+8u,0x10u);
+    func_80035558_walk_cut();
+    ASSERT(PE_Port_GetStopReason()==PE_PORT_STOP_UNRESOLVED_BOUNDARY &&
+           PE_LoadU32(b+0xA8u)==task,
+           "35558 reclaimed a task after contact stopped");
+    PASS();
+}
+
 static void test_SEW18_actor_contact(void)
 {
     TEST("SEW18_actor_contact");

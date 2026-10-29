@@ -4697,7 +4697,9 @@ segments:
       - [0xC2B70, c, func_800D2370]
       # glow point on a rotated offset: TILE_1 core + 3x3 TILE halo (inline GTE)
       - [0xC2FFC, c, func_800D27FC]
-      - [0xC3358, asm]
+      # streak: LINE_G2 + oriented POLY_GT4 glow quad (inline GTE)
+      - [0xC3358, c, func_800D2B58]
+      - [0xC3914, asm]
       # default O2 G0
       - [0xC42FC, c, func_800D3AFC]
       - [0xC43C8, asm]

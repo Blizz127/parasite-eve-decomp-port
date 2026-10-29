@@ -47,6 +47,7 @@
  */
 #include "psx_compat.h"
 #include "pe_port_compat.h"
+#include "game_port.h"
 
 #define GA_CHARSET    0x800930B4u
 #define GA_OVERLAY    0x800B0CD8u
@@ -154,20 +155,25 @@ static int pe_6b4f8_issue_poll(int lba, pe_addr_t dest, int sectors)
 {
     int status;
 
-    do {
-        status = func_8006E6A8(lba, dest, sectors);
-    } while (status == -1);
+    /* Retail restart/read2/read3 re-issue the read after a poll error.
+     * A new poll alone cannot recover the failed request. */
     for (;;) {
-        status = func_8006E7E8();
+        do {
+            if (PE_Port_ShouldStop())
+                return 0;
+            status = func_8006E6A8(lba, dest, sectors);
+        } while (status == -1);
+        if (PE_Port_ShouldStop())
+            return 0;
+        do {
+            if (PE_Port_ShouldStop())
+                return 0;
+            status = func_8006E7E8();
+        } while (status != 0 && status != -1);
+        if (PE_Port_ShouldStop())
+            return 0;
         if (status == 0)
             return 1;
-        if (status != -1) {
-            do {
-                status = func_8006E7E8();
-            } while (status != 0 && status != -1);
-            if (status == 0)
-                return 1;
-        }
     }
 }
 
@@ -188,12 +194,49 @@ static void pe_6b4f8_e1c0_loop(pe_addr_t base)
         return;
     for (;;) {
         func_8006E1C0(entry, base);
+        if (PE_Port_ShouldStop())
+            return;
         header = PE_LoadU32(metadata + 0x28u);
         issued += 1u;
         count = header >> 22;
         entry += 0x14u;
         if (issued >= count)
             break;
+    }
+}
+
+/* Retail read2/read3 issue the next chunk before walking the previous one.
+ * The walk is outside the retry label's lifetime: a poll error reissues the
+ * read but never uploads that previous chunk twice. */
+static int pe_6b4f8_issue_poll_after_chunk(int lba, pe_addr_t dest, int sectors,
+                                         pe_addr_t previous)
+{
+    int status;
+    int uploaded = 0;
+
+    for (;;) {
+        do {
+            if (PE_Port_ShouldStop())
+                return 0;
+            status = func_8006E6A8(lba, dest, sectors);
+        } while (status == -1);
+        if (PE_Port_ShouldStop())
+            return 0;
+        if (!uploaded) {
+            pe_6b4f8_e1c0_loop(previous);
+            if (PE_Port_ShouldStop())
+                return 0;
+            uploaded = 1;
+        }
+        do {
+            if (PE_Port_ShouldStop())
+                return 0;
+            status = func_8006E7E8();
+        } while (status != 0 && status != -1);
+        if (PE_Port_ShouldStop())
+            return 0;
+        if (status == 0)
+            return 1;
     }
 }
 
@@ -232,6 +275,7 @@ static void pe_6b4f8_sound_tail(void)
     static FILE *lg;
     static int lg_init;
 
+    if (PE_Port_ShouldStop()) return;
     if (!lg_init) {
         const char *e = getenv("PE_AUDIO_ROOMSND_LOG");
         lg_init = 1;
@@ -319,10 +363,12 @@ static void pe_6b4f8_sound_tail(void)
         (void)func_8006CDA4(2, PE_LoadU8(st + 0xEAu), 0, PE_LoadU32(st + 0x194u), 0x21, 1);
     else if (!(flags & 0x10u))
         PE_StoreU8(st + 0xEAu, 0u);
+    if (PE_Port_ShouldStop()) return;
     if ((flags & 2u) && PE_LoadU8(st + 0xEBu) != 0u)
         (void)func_8006CDA4(2, PE_LoadU8(st + 0xEBu), 1, PE_LoadU32(st + 0x194u), 0x21, 1);
     else if (!(flags & 0x20u))
         PE_StoreU8(st + 0xEBu, 0u);
+    if (PE_Port_ShouldStop()) return;
     if ((flags & 4u) && (int16_t)PE_LoadU16(st + 0xE8u) != -1)
         (void)func_8006CDA4(1, (int16_t)PE_LoadU16(st + 0xE8u), 0,
                             PE_LoadU32(st + 0x194u), 0x21, 1);
@@ -330,82 +376,10 @@ static void pe_6b4f8_sound_tail(void)
         PE_StoreU16(st + 0xE8u, 0xFFFFu);
 }
 
-int func_8006B4F8_dest_load_cut(uint32_t token)
-{
-    int idx;
-    uint32_t rel;
-    uint32_t packed;
-    uint32_t sec0;
-    uint32_t sec1;
-    uint32_t sec2;
-    int lba;
-    pe_addr_t dest0;
-    pe_addr_t dest1;
-    pe_addr_t dest2;
-
-    dest0 = PE_LoadU32(GA_OVERLAY + 0x194u);
-    dest1 = PE_LoadU32(GA_OVERLAY + 0x168u);
-    dest2 = PE_LoadU32(GA_OVERLAY + 0x18Cu);
-    if (dest0 < 0x80000000u || dest1 < 0x80000000u || dest2 < 0x80000000u)
-        return 0;
-    func_8006E2D0(GA_NAME, token);
-    idx = func_8006E454(GA_NAME) - 1;
-    if (idx < 0)
-        return 0;
-    rel = PE_LoadU32(GA_TABLE + (uint32_t)idx * 8u);
-    packed = PE_LoadU32(GA_TABLE + (uint32_t)idx * 8u + 4u);
-    sec0 = packed & 0xFFu;
-    sec1 = (packed >> 8) & 0xFFFu;
-    sec2 = packed >> 20;
-    lba = (int)(PE_LoadU32(GA_D_800B0DD8) + rel);
-    if (!pe_6b4f8_issue_poll(lba, dest0, (int)sec0))
-        return 0;
-    /* Retail overlaps each next CD request with the preceding chunk's
-     * texture walk (6B61C / 6B700), before polling completion. The host
-     * 6E6D4 copies all sectors during issue, so consume the old chunk
-     * before that synchronous copy can overwrite a shared staging arena. */
-    pe_6b4f8_e1c0_loop(dest0);
-    func_80074DC0(0); /* drain guest-backed GPU sources before CD reuse */
-    if (!pe_6b4f8_issue_poll(lba + (int)sec0, dest1, (int)sec1))
-        return 0;
-    pe_6b4f8_e1c0_loop(dest1);
-    func_80074DC0(0);
-    if (!pe_6b4f8_issue_poll(lba + (int)sec0 + (int)sec1, dest2, (int)sec2))
-        return 0;
-    func_80072714();
-    func_800726C4();
-    func_80072724();
-    func_8006B4F8_12574_publish_cut();
-    pe_6b4f8_sound_tail();
-    return 1;
-}
-
-extern pe_addr_t func_8006E498(pe_addr_t base, uint32_t key);
-extern int func_8006C5BC(void);
-extern int func_8006C4C4(int a0);
-extern void func_800125E0(void);
-extern void func_80034FC4(void);
-extern void func_8001266C(void);
-extern void func_8001A918(void);
-extern int func_8006BECC(void);
-
-/*
- * PE-BTL90 — func_8006B35C dest-enter clear (103 words,
- * 0x8006B35C..0x8006B4F8, SHA-256 1106cb2a…). 3F074 first jal.
- *
- * Proven stores: B0E70[0..9] countdown from overlay+0x1BC,
- * ten B0E98 rows of 48 words stride 192, then one-word zeros
- * at +0x940/+0x944/+0x948/+0x94C, +0x954 then +0x950, +0x958.
- * Suffix is the retail 6E498 lookup plus the documented overlay
- * byte/bit stores.  +0x14C==0 skips the lookup (host guard;
- * ROM would deref).
- */
-/* func_8006B35C: ported from the matching decomp -- generated TU pc_port/game/decomp/func_8006B35C_port.c (src/func_8006B35C.c); hand port retired (port3 switch-over F). */
-
 /*
  * 6B4F8 after 72724: hdr+1 → CE2, hdr+3 → overlay+8, then
- * hdr+0x0C B0E70[idB] (0x8006B7B0..0x8006B820). dest_load_cut
- * deliberately stops before this window.
+ * hdr+0x0C B0E70[idB] (0x8006B7B0..0x8006B820), before Writer A,
+ * script publication and sound setup. Keep this in the loader itself.
  */
 static void pe_6b4f8_ce2_hdr0c(void)
 {
@@ -441,45 +415,168 @@ static void pe_6b4f8_ce2_hdr0c(void)
     }
 }
 
+int func_8006B4F8_dest_load_cut(uint32_t token)
+{
+    int idx;
+    uint32_t rel;
+    uint32_t packed;
+    uint32_t sec0;
+    uint32_t sec1;
+    uint32_t sec2;
+    int lba;
+    pe_addr_t dest0;
+    pe_addr_t dest1;
+    pe_addr_t dest2;
+
+    if (PE_Port_ShouldStop())
+        return 0;
+    dest0 = PE_LoadU32(GA_OVERLAY + 0x194u);
+    dest1 = PE_LoadU32(GA_OVERLAY + 0x168u);
+    dest2 = PE_LoadU32(GA_OVERLAY + 0x18Cu);
+    if (dest0 < 0x80000000u || dest1 < 0x80000000u || dest2 < 0x80000000u)
+        return 0;
+    func_8006E2D0(GA_NAME, token);
+    idx = func_8006E454(GA_NAME) - 1;
+    if (idx < 0)
+        return 0;
+    rel = PE_LoadU32(GA_TABLE + (uint32_t)idx * 8u);
+    packed = PE_LoadU32(GA_TABLE + (uint32_t)idx * 8u + 4u);
+    sec0 = packed & 0xFFu;
+    sec1 = (packed >> 8) & 0xFFFu;
+    sec2 = packed >> 20;
+    lba = (int)(PE_LoadU32(GA_D_800B0DD8) + rel);
+    if (!pe_6b4f8_issue_poll(lba, dest0, (int)sec0))
+        return 0;
+    /* A host pre-walk drain retains protection against earlier GPU work
+     * while copy-on-issue CD only services 16 completions per read. Fixed
+     * production chunk arenas and all their texture sources are disjoint;
+     * chunk0 has at most four uploads, drained by the chunk2 read before a
+     * later sound read reuses dest0. */
+    func_80074DC0(0);
+    if (!pe_6b4f8_issue_poll_after_chunk(lba + (int)sec0, dest1, (int)sec1, dest0))
+        return 0;
+    if (!pe_6b4f8_issue_poll_after_chunk(lba + (int)sec0 + (int)sec1,
+                                       dest2, (int)sec2, dest1))
+        return 0;
+    /* The host can still have queued chunk1 uploads when its synchronous
+     * CD read completes. Finish them before callers can reuse that arena. */
+    func_80074DC0(0);
+    if (PE_Port_ShouldStop())
+        return 0;
+    func_80072714();
+    func_800726C4();
+    func_80072724();
+    pe_6b4f8_ce2_hdr0c();
+    func_8006B4F8_12574_publish_cut();
+    if (PE_Port_ShouldStop()) return 0;
+    pe_6b4f8_sound_tail();
+    return PE_Port_ShouldStop() ? 0 : 1;
+}
+
+extern pe_addr_t func_8006E498(pe_addr_t base, uint32_t key);
+extern int func_8006C5BC(void);
+extern int func_8006C4C4(int a0);
+extern void func_800125E0(void);
+extern void func_80034FC4(void);
+extern void func_8001266C(void);
+extern void func_8001A918(void);
+extern int func_8006BECC(void);
+extern int func_8006BD68(void);
+extern void func_8003F758(pe_addr_t dst, int r, int g, int b);
+extern void func_8003F798(pe_addr_t state, int index, int r, int g, int b);
+
+/*
+ * PE-BTL90 — func_8006B35C dest-enter clear (103 words,
+ * 0x8006B35C..0x8006B4F8, SHA-256 1106cb2a…). 3F074 first jal.
+ *
+ * Proven stores: B0E70[0..9] countdown from overlay+0x1BC,
+ * ten B0E98 rows of 48 words stride 192, then one-word zeros
+ * at +0x940/+0x944/+0x948/+0x94C, +0x954 then +0x950, +0x958.
+ * Suffix is the retail 6E498 lookup plus the documented overlay
+ * byte/bit stores.  +0x14C==0 skips the lookup (host guard;
+ * ROM would deref).
+ */
+/* func_8006B35C: ported from the matching decomp -- generated TU pc_port/game/decomp/func_8006B35C_port.c (src/func_8006B35C.c); hand port retired (port3 switch-over F). */
+
 /*
  * PE-BTL90 named dest-ready cut, PE-BTL128 retail 3F074 order:
  * 6B35C + 6B4F8 (CE2 / hdr+0x0C / Writer A) then the 3F09C..3F27C
- * tail: D224/D308 serials, 34FC4, 1266C, 6BE4C, 6BECC until 0,
+ * tail: bank upload, D224/D308 serials, 34FC4, 1266C, default lighting,
+ * 6BE4C, 6BECC until 0,
  * 6C4C4(CE4), 6C5BC until 0, 1A918, 125E0.
  * 6BE4C selects 6BECC's texture/model reload through the retail flag;
  * bypassing its texture states leaves Aya transparent. 68B94 is the
  * 677FC tile-publish cut (65B70/655D4/RTPS suffix deferred).
- * 6BD68 / 3F758 stay deferred. The existing after-poll graph handles
+ * The bank upload uses the existing native 6BD68 read/TIM walker. Default
+ * lighting follows 3F0C0..3F1D4, including the signed direction clamp.
+ * 68B94, 79024 and CFEE |= 0x40 follow it in retail order. The two polls
+ * retain their host caps (32 / 16), but stop before continuing a cancelled
+ * load. The existing after-poll graph handles
  * E0060, room counters, display synchronization and entry flags. Does not plant
  * mode 7/9/10.
  */
 int func_8003F074_dest_ready_cut(uint32_t token)
 {
-    int guard;
+    int guard, poll;
 
+    if (PE_Port_ShouldStop())
+        return 0;
     func_8006B35C();
     if (!func_8006B4F8_dest_load_cut(token))
         return 0;
-    if (PE_LoadU32(GA_OVERLAY + 0x18Cu) >= 0x80000000u)
-        pe_6b4f8_ce2_hdr0c();
+    (void)func_8006BD68();
+    if (PE_Port_ShouldStop()) return 0;
     PE_StoreU32(0x8009D224u, 1u);
     PE_StoreU16(0x8009D308u, 1u);
     func_80034FC4();
     func_8001266C();
+    /* Retail 3F0C0..3F1D4: initialize the shared field lighting state. */
+    func_8003F758(0x800BEA40u, 0x28, 0x28, 0x28);
+    PE_StoreU16(0x800BEA40u, 0x7FFFu);
+    PE_StoreU16(0x800BEA42u, 0u);
+    PE_StoreU16(0x800BEA44u, 0u);
+    func_8003F798(0x800BEA40u, 0, 0xFF, 0xFF, 0xFF);
+    PE_StoreU16(0x800BEA46u, 0u);
+    PE_StoreU16(0x800BEA48u, 0x7FFFu);
+    PE_StoreU16(0x800BEA4Au, 0u);
+    func_8003F798(0x800BEA40u, 1, 0x80, 0x80, 0x80);
+    PE_StoreU16(0x800BEA4Cu, 0u);
+    PE_StoreU16(0x800BEA4Eu, 0u);
+    PE_StoreU16(0x800BEA50u, 0x7FFFu);
+    func_8003F798(0x800BEA40u, 2, 0x60, 0x60, 0x60);
     /* 3F1D8 jal 68B94 — publishes rec+0x30/+0x34 SPRT lists. */
     (void)func_80068B94();
+    /* 3F1E0..3F208: SetGeomScreen(D_800B8A18), then D_800BCFEE |= 0x40
+     * (the sb sits in 6BE4C's delay slot), arming 3F3C4's first-frame
+     * fade. */
+    func_80079024((int)PE_LoadU32(0x800B8A18u));
+    PE_StoreU8(0x800BCFEEu, (uint8_t)(PE_LoadU8(0x800BCFEEu) | 0x40u));
     (void)func_8006BE4C();
     guard = 0;
-    while (func_8006BECC() == 1 && guard < 32)
-        guard++;
+    do {
+        if (PE_Port_ShouldStop()) return 0;
+        poll = func_8006BECC();
+    } while (poll == 1 && guard++ < 32);
+    if (PE_Port_ShouldStop()) return 0;
+    if (poll == 1) {
+        PE_Port_RequestStop(PE_PORT_STOP_UNRESOLVED_BOUNDARY);
+        return 0;
+    }
     (void)func_8006C4C4((int)(int8_t)PE_LoadU8(GA_OVERLAY + 0x0Cu));
     guard = 0;
-    while (func_8006C5BC() == 1 && guard < 16)
-        guard++;
+    do {
+        if (PE_Port_ShouldStop()) return 0;
+        poll = func_8006C5BC();
+    } while (poll == 1 && guard++ < 16);
+    if (PE_Port_ShouldStop()) return 0;
+    if (poll == 1) {
+        PE_Port_RequestStop(PE_PORT_STOP_UNRESOLVED_BOUNDARY);
+        return 0;
+    }
     /* 3F23C..3F2F8: use the complete existing retail continuation,
      * including the post-spawn cleanup and room-entry flag resets. */
     func_8003F074_after_poll_cut();
-    return 1;
+    return PE_Port_ShouldStop() ? 0 : 1;
 }
 
 /* func_8006BE4C: ported from the matching decomp -- generated TU pc_port/game/decomp/func_8006BE4C_port.c (src/func_8006BE4C.c); hand port retired after differential verification (docs/evidence/portverify/REPORT.md). */

@@ -91,6 +91,7 @@ int func_8006BECC(void)
     int status;
     int lba;
 
+    if (PE_Port_ShouldStop()) return 1;
     state = PE_LoadU8(GA_OVERLAY + 0xECu);
     ce2 = PE_LoadU8(GA_OVERLAY + 0x0Au);
     dest = PE_LoadU32(GA_OVERLAY + 0x154u);
@@ -117,6 +118,7 @@ int func_8006BECC(void)
         end = PE_LoadU16(GA_D_800930D8 + (uint32_t)(ce2 + 4u) * 2u);
         lba = (int)(PE_LoadU32(GA_D_800B0DD8) + start);
         status = func_8006E6A8(lba, texture, (int)end - (int)start);
+        if (PE_Port_ShouldStop()) return 1;
         if (status != -1)
             PE_StoreU8(GA_OVERLAY + 0xECu, 2u);
         return 1;
@@ -125,6 +127,7 @@ int func_8006BECC(void)
     if (state == 2u) {
         uint32_t flags;
         status = func_8006E7E8();
+        if (PE_Port_ShouldStop()) return 1;
         if (status == -1) {
             PE_StoreU8(GA_OVERLAY + 0xECu, 1u);
             return 1;
@@ -150,12 +153,14 @@ int func_8006BECC(void)
         entry = texture + (packed & MASK_22_BECC);
         while (issued < (PE_LoadU32(metadata + 0x28u) >> 22)) {
             func_8006E1C0(entry, texture);
+            if (PE_Port_ShouldStop()) return 1;
             entry += 0x14u;
             issued++;
         }
         /* The host CD adapter copies on issue. Finish these guest-backed
          * uploads before later loaders can reuse the staging package. */
         func_80074DC0(0);
+        if (PE_Port_ShouldStop()) return 1;
         state = 4u;
         PE_StoreU8(GA_OVERLAY + 0xECu, state);
     }
@@ -167,6 +172,7 @@ int func_8006BECC(void)
         end = PE_LoadU16(GA_D_800930D8 + (uint32_t)(ce2 + 9u) * 2u);
         lba = (int)(PE_LoadU32(GA_D_800B0DD8) + start);
         status = func_8006E6A8(lba, dest, (int)end - (int)start);
+        if (PE_Port_ShouldStop()) return 1;
         if (status == -1)
             return 1;
         PE_StoreU8(GA_OVERLAY + 0xECu, 5u);
@@ -175,6 +181,7 @@ int func_8006BECC(void)
 
     if (state == 5u) {
         status = func_8006E7E8();
+        if (PE_Port_ShouldStop()) return 1;
         if (status == -1) {
             PE_StoreU8(GA_OVERLAY + 0xECu, 4u);
             return 1;
@@ -1059,6 +1066,12 @@ static void func_8006914C_module_init(pe_addr_t table, unsigned int code)
     if (PE_RangeIsRam(fn, 8u) && PE_LoadU32(fn) == 0x03E00008u &&
         PE_LoadU32(fn + 4u) == 0x00001021u)
         return;
+    if (PE_Decomp_BoundaryStopEnabled()) {
+        /* Native-only: an unported module init is a CPU_BOUNDARY/REFUSED STOP
+         * under the port binary's stop policy; the skip below is record-only. */
+        (void)PE_GuestCall("@8006914C:module-init", fn, 0u, 0, 0, 0, 0);
+        return;
+    }
     {
         static pe_addr_t seen[16]; static unsigned n;
         unsigned k;
@@ -1469,6 +1482,7 @@ int func_800871AC(pe_addr_t buffer, uint32_t bytes)
         PE_StoreU32(0x8009CDE8u,bank_flags);
         func_80085EB4(destination);
         func_800850F4(descriptors+count*64u,size);
+        if (PE_Port_ShouldStop()) return 1;
         PE_StoreU32(0x8009D2BCu,destination+size);
         PE_StoreU32(0x8009D2E4u,total-size);
         /* 8A02C relocates two sample addresses per 64-byte instrument. */
@@ -1488,6 +1502,7 @@ int func_800871AC(pe_addr_t buffer, uint32_t bytes)
         if (size>bytes) size=bytes;
         func_80085EB4(destination);
         func_800850F4(buffer,size);
+        if (PE_Port_ShouldStop()) return 1;
         PE_StoreU32(0x8009D2BCu,destination+size);
         PE_StoreU32(0x8009D2E4u,PE_LoadU32(0x8009D2E4u)-size);
     }
@@ -1524,6 +1539,7 @@ int func_80087428(unsigned bank, pe_addr_t buffer, uint32_t bytes)
         destination=0x4F000u+bank*0xA000u;
         func_80085EB4(destination);
         func_800850F4(descriptors+count*64u,size);
+        if (PE_Port_ShouldStop()) return 1;
         PE_StoreU32(0x8009D1ECu,destination+size);
         PE_StoreU32(0x8009D204u,total-size);
         pe_audio_bank_descriptors(descriptors,destination,count,0x800B4D00u+bank*1024u);
@@ -1534,6 +1550,7 @@ int func_80087428(unsigned bank, pe_addr_t buffer, uint32_t bytes)
         if (size>bytes) size=bytes;
         func_80085EB4(destination);
         func_800850F4(buffer,size);
+        if (PE_Port_ShouldStop()) return 1;
         PE_StoreU32(0x8009D1ECu,destination+size);
         PE_StoreU32(0x8009D204u,PE_LoadU32(0x8009D204u)-size);
     }
@@ -1553,6 +1570,7 @@ int func_800875FC(unsigned bank, pe_addr_t buffer)
     destination=0x68000u+bank*8192u;
     func_80085EB4(destination);
     func_800850F4(descriptors+count*64u,PE_LoadU32(buffer+0x14u));
+    if (PE_Port_ShouldStop()) return 1;
     pe_audio_bank_descriptors(descriptors,destination,count,0x800B4900u+bank*1024u);
     return 0;
 }

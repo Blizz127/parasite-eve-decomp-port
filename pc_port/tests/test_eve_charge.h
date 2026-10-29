@@ -1,4 +1,5 @@
 #include "retail_eve_charge_cases.h"
+#include "test_m0005i_code.h"
 
 static uint64_t ATK25_charge_hash(void)
 {
@@ -40,6 +41,7 @@ static void test_ATK25_retail_eve_charge(void)
             PE_StoreU32(0x80000000u+ATK25_charge_common[i][0],ATK25_charge_common[i][1]);
         for (i=ATK25_charge_cases[k].first;i<ATK25_charge_cases[k].end;i++)
             PE_StoreU32(0x80000000u+ATK25_charge_patches[i][0],ATK25_charge_patches[i][1]);
+        ASSERT(load_m0005i_code()==0,"ATK25: m0005i code from PE.IMG");
         PE_GTE_LoadRT33(0x80148000u);g_pe_gte.ofx=160*65536;g_pe_gte.ofy=112*65536;
         g_pe_gte.h=256;g_pe_gte.dqa=(int32_t)ATK25_charge_cases[k].dqa;
         g_pe_gte.dqb=(int32_t)ATK25_charge_cases[k].dqb;

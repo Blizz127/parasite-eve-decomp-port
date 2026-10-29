@@ -68,6 +68,75 @@ class EraAsmTests(unittest.TestCase):
                '    *ptr |= 0xC0;\n    return 1;\n}\n')
         self.assertTrue(analyze(src)["eligible"])
 
+    def test_tied_move_is_an_assignment(self):
+        # asm("" : "=r"(a) : "0"(b)) with a != b computes a = b (vendor leaves
+        # copy a parameter into a pinned register this way).
+        src = ('int func_80099990(int *effect) {\n'
+               '    register int *initial asm("$16");\n'
+               '    asm("" : "=r"(initial) : "0"(effect));\n'
+               '    return *initial;\n}\n')
+        self.assertTrue(analyze(src)["eligible"])
+        out = g.strip_era_asm(src)
+        self.assertIn("initial = effect; /* E2b: tied register move */", out)
+        same = 'void f(int *p) { asm volatile("" : "=r"(p) : "0"(p)); }'
+        self.assertNotIn("p = p", g.strip_era_asm(same))
+
+    def test_tied_move_constant_inputs_assign(self):
+        # cc1 reloads a constant tied input into the output register, so the
+        # statement assigns it (m0348i func_801918E8, m0437i func_80192500).
+        cases = {
+            'asm volatile("" : "=r"(b) : "0"(&D_80192E8C));': "b = &D_80192E8C;",
+            'asm("" : "=r"(one) : "0"(1));': "one = 1;",
+            'asm("" : "=r"(k16), "=r"(s) : "0"(16), "1"(&D_800F3368.f8));':
+                "k16 = 16; s = &D_800F3368.f8;",
+            # identity half of a parallel move assigns nothing
+            'asm("" : "=r"(m), "=r"(st) : "0"(0x4000000), "1"(st));': "m = 0x4000000;",
+            # untied inputs only order the statement
+            'asm("" : "=r"(m1) : "0"(-1), "r"(result));': "m1 = -1;",
+        }
+        for src, want in cases.items():
+            out = g.strip_era_asm(src)
+            self.assertIn(want + " /* E2b: tied register move */", out, src)
+            self.assertNotIn("asm", out.replace("E2b", ""), src)
+        # an input with a call is not a plain move
+        self.assertIn('"0"(f(y))', g.strip_era_asm('asm("" : "=r"(x) : "0"(f(y)));'))
+
+    def test_multi_output_tied_move_is_a_parallel_assignment(self):
+        # asm("" : "=r"(a), "=r"(b) : "0"(c), "1"(d)) computes a = c; b = d.
+        src = ('int func_80099990(int *owner, int state) {\n'
+               '    register int *callOwner asm("$17");\n'
+               '    register int workState asm("$18");\n'
+               '    asm("" : "=r"(callOwner), "=r"(workState) : "0"(owner), "1"(state));\n'
+               '    return *callOwner + workState;\n}\n')
+        self.assertTrue(analyze(src)["eligible"])
+        self.assertIn("callOwner = owner; workState = state; /* E2b: tied register move */",
+                      g.strip_era_asm(src))
+        # An output that is also an input is not a plain sequence of
+        # assignments: it stays a fence, and the pin it reads stays refused.
+        swap = ('int func_80099990(void) {\n'
+                '    register int a asm("$4");\n'
+                '    register int b asm("$5");\n'
+                '    asm("" : "=r"(a), "=r"(b) : "0"(b), "1"(a));\n'
+                '    return a + b;\n}\n')
+        self.assertNotIn("a = b", g.rewrite_tied_moves(swap))
+        self.assertIn("read before written", analyze(swap)["reason"])
+
+    def test_asm_output_operand_writes_the_pin(self):
+        # `mfc2 %0,$9 : "=r"(x)` writes the pin; the guard must not call that
+        # a read.  (The EXE path still refuses the real instruction as asm;
+        # the room lowering turns it into PE_GTE reads, E21b.)
+        src = ('int func_80099990(short *out) {\n'
+               '    register int x asm("$12");\n'
+               '    asm volatile("mfc2 %0,$9" : "=r"( x ));\n'
+               '    out[0] = x;\n    return 0;\n}\n')
+        self.assertEqual(analyze(src)["reason"], "asm")
+        # The same operand that is also an input is a read.
+        rd = ('int func_80099990(void) {\n'
+              '    register int x asm("$12");\n'
+              '    asm volatile("addu %0,%1,$0" : "=r"(x) : "r"(x));\n'
+              '    return x;\n}\n')
+        self.assertIn("read before written", analyze(rd)["reason"])
+
     def test_pin_read_before_write_is_rejected(self):
         src = ('int func_80099990(void) {\n'
                '    register int live asm("$4");\n'
@@ -271,6 +340,27 @@ class CodeAddressTests(unittest.TestCase):
         self.assertEqual(
             out, "func_80011111(func_80022222((pe_addr_t)0x80033333u), "
                  "(pe_addr_t)0x80044444u);")
+
+
+class BiosTtyTests(unittest.TestCase):
+    def test_native_tty_calls_keep_the_stack_arguments(self):
+        src = ("extern int func_80071A74(unsigned int fmt, ...);\n"
+               "extern void func_80073C5C(unsigned int str);\n"
+               "int func_80099990(unsigned int fmt) {\n"
+               "    func_80073C5C(fmt);\n"
+               "    return func_80071A74(fmt, 1, 2, 3, 4, 5, 6, 7);\n}\n")
+        plan = analyze(src)
+        self.assertTrue(plan["eligible"], plan.get("reason"))
+        leaf = {"name": "func_80099990", "file_offset": 0, "file_size": 4,
+                "vram": 0x80099990, "words": 1}
+        out = g.render("func_80099990", plan, {"func_80099990": leaf}, set(), {})
+        self.assertNotIn("PE_D_COMP_BOUNDARY", out)
+        self.assertIn("PE_GuestCallN(__func__, 0x80071A74u", out)
+        self.assertIn("PE_GuestCallN(__func__, 0x80073C5Cu", out)
+        self.assertIn("func_80071A74(fmt, 1, 2, 3, 4, 5, 6, 7)", out)
+        cc = g.find_compiler()
+        if cc:
+            self.assertEqual(g.compile_check(cc, [("func_80099990", out)]), {}, out)
 
 
 class PointerReturnTests(unittest.TestCase):
@@ -979,6 +1069,32 @@ class RectArrayArgTests(unittest.TestCase):
 class HostToGuestArgTests(unittest.TestCase):
     """host_to_guest_args wraps host pointer locals, never call results."""
 
+    def test_fixed_callee_pointer_arithmetic_stays_adapted(self):
+        src = ("extern void func_80099994(unsigned int addr);\n"
+               "extern char D_80012340;\n"
+               "void func_80099990(void) {\n"
+               "    char *p;\n    p = &D_80012340;\n"
+               "    func_80099994(p);\n"
+               "    func_80099994(p + 3);\n}\n")
+        plan = analyze(src)
+        self.assertTrue(plan["eligible"], plan.get("reason"))
+        out = g.host_to_guest_args(src, plan)
+        self.assertIn("func_80099994(PE_HostToGuest(p))", out)
+        self.assertIn("func_80099994(PE_HostToGuest(p + 3))", out)
+
+    def test_variadic_integer_at_pointer_position_not_wrapped(self):
+        src = ("extern void func_80071A74();\n"
+               "extern char D_80012340;\n"
+               "void func_80099990(int n) {\n"
+               "    char *s;\n    s = &D_80012340;\n"
+               "    func_80071A74(0x80012000u, s);\n"
+               "    func_80071A74(0x80012000u, n);\n}\n")
+        plan = analyze(src)
+        self.assertTrue(plan["eligible"], plan.get("reason"))
+        out = g.host_to_guest_args(src, plan)
+        self.assertIn("func_80071A74(0x80012000u, PE_HostToGuest(s))", out)
+        self.assertIn("func_80071A74(0x80012000u, n)", out)
+
     def test_call_result_at_recorded_index_not_wrapped(self):
         # func_8004DF74: `func_8005F1A0(t)` records (func_8005F1A0, 0); the
         # later `func_8005F1A0(func_8005BEE8())` passes a guest value.
@@ -1008,6 +1124,135 @@ class GuestCallArgWidthTests(unittest.TestCase):
         self.assertIn("(uintptr_t)(uint32_t)(*(int *)(p + 0xC))", out)
         self.assertIn("(uintptr_t)(uint32_t)(a1), 0, 0)", out)
         self.assertEqual(g.canonical_guest_call_args(out), out)
+
+
+class EraIlp32Tests(unittest.TestCase):
+    """gcc-2.7.2-psx `long` is 32 bits; a verbatim body must not widen it."""
+
+    def test_long_becomes_int(self):
+        self.assertEqual(g.era_ilp32("unsigned long dr_env[16];"), "unsigned int dr_env[16];")
+        self.assertEqual(g.era_ilp32("long chunk; long int k; x = (long)y;"),
+                         "int chunk; int k; x = (int)y;")
+
+    def test_long_long_and_identifiers_are_kept(self):
+        for s in ("long long ll;", "unsigned long long x;", "longer = along;"):
+            self.assertEqual(g.era_ilp32(s), s)
+
+    def test_plan_body_and_types_are_ilp32(self):
+        # ovl_03D2 801922F4 / ovl_03C5 80121A00: the DRAWENV overlay over
+        # D_800BCDC8 must keep retail's 0x5C stride on an LP64 host.
+        src = ("typedef struct { short x, y, w, h; } RECT;\n"
+               "typedef struct { RECT clip; unsigned long dr_env[16]; } DRAWENV;\n"
+               "extern DRAWENV D_800BCDC8[];\nextern DRAWENV D_801D13AC[];\n"
+               "void func_80099990(void) {\n    D_800BCDC8[0] = D_801D13AC[0];\n}\n")
+        plan = analyze(src)
+        self.assertNotRegex(plan["body"], r"\blong\b")
+        self.assertIn("unsigned int dr_env[16];", plan["body"])
+
+
+
+class RoomIdiomRewriteTests(unittest.TestCase):
+    def test_array_address_cast_becomes_literal(self):
+        src = "extern char D_80192BE8[];\nint f(void) { return (int)D_80192BE8; }\n"
+        out = g.rewrite_array_address_casts(src)
+        self.assertIn("(int)0x80192BE8u", out)
+
+    def test_indexed_array_cast_is_left_alone(self):
+        src = "extern char D_80192BE8[];\nint f(int i) { return (int)D_80192BE8[i]; }\n"
+        self.assertEqual(g.rewrite_array_address_casts(src), src)
+
+    def test_callee_word_store_and_load(self):
+        src = ("extern int *func_800C22F8();\nint f(int s) {\n"
+               "    *func_800C22F8(s) = 5;\n    return *func_800C22F8(s) == 0;\n}\n")
+        out = g.rewrite_callee_word_stores(src)
+        self.assertIn("PE_StoreU32((pe_addr_t)func_800C22F8(s), (uint32_t)(5));", out)
+        self.assertIn("return ((int)PE_LoadU32((pe_addr_t)func_800C22F8(s)))", out)
+
+    def test_multiply_is_not_a_deref(self):
+        src = "extern int *func_800C22F8();\nint f(int a) { return a * func_800C22F8(a); }\n"
+        self.assertEqual(g.rewrite_callee_word_stores(src), src)
+
+    def test_code_pointer_member_retyped(self):
+        src = ("typedef struct Obj { int a; void (*fn)(); } Obj;\nextern void func_80190390();\n"
+               "int f(Obj *o) { o->fn = func_80190390; return 0; }\n")
+        out = g.rewrite_code_pointer_members(src)
+        self.assertIn("unsigned int fn;", out)
+        self.assertIn("o->fn = 0x80190390u;", out)
+
+    def test_call_through_member_is_left_alone(self):
+        src = ("typedef struct Obj { int a; void (*fn)(); } Obj;\n"
+               "int f(Obj *o) { o->fn(o); return 0; }\n")
+        self.assertEqual(g.rewrite_code_pointer_members(src), src)
+
+
+class CallSiteSignednessTests(unittest.TestCase):
+    """E22: a callee whose host prototype flips the leaf's 32-bit return
+    signedness is cast back to the leaf's type where the value is used."""
+    SIGS = {"func_800C6CE0": {"ret": "int", "params": ["pe_addr_t slot"]},
+            "func_80071A54": {"ret": "unsigned int", "params": []},
+            "func_80077DC4": {"ret": "int32_t", "params": ["int"]}}
+
+    def cast(self, src):
+        return g.cast_leaf_call_returns("func_8018F054", src, self.SIGS)
+
+    def test_unsigned_leaf_compare(self):
+        # room_m0065i 8018F054: `if (func_800C6CE0(o) >= 2)` is sltiu in retail
+        out = self.cast("extern unsigned int func_800C6CE0();\nint func_8018F054(int o)\n{\n"
+                        "    if (func_800C6CE0(o) >= 2) { return 1; }\n    return 0;\n}\n")
+        self.assertIn("if (((unsigned int)/* E22 leaf type */func_800C6CE0(o)) >= 2)", out)
+
+    def test_signed_leaf_rand(self):
+        # room_m0418i 80193480: `func_80071A54() % 256 < t` is a signed compare
+        out = self.cast("extern int func_80071A54();\nint func_8018F054(int t)\n{\n"
+                        "    return func_80071A54() % 256 < t;\n}\n")
+        self.assertIn("return ((int)/* E22 leaf type */func_80071A54()) % 256 < t;", out)
+
+    def test_implicit_int_is_the_leaf_type(self):
+        out = self.cast("int func_8018F054(int t)\n{\n    return func_80071A54() % 3;\n}\n")
+        self.assertIn("((int)/* E22 leaf type */func_80071A54())", out)
+
+    def test_statement_calls_declarations_and_same_signedness_untouched(self):
+        src = ("extern unsigned int func_800C6CE0();\nextern int func_80077DC4();\n"
+               "int func_8018F054(int o)\n{\n    func_800C6CE0(o);\n"
+               "    if (o) func_800C6CE0(o); else func_800C6CE0(o);\n"
+               "    /* func_800C6CE0(o) */\n    return func_80077DC4(o);\n}\n")
+        out = self.cast(src)
+        self.assertEqual(out, src)          # nothing cast: no note, byte-identical (func_80077294)
+
+    def test_nested_calls(self):
+        out = self.cast("extern unsigned int func_800C6CE0();\nint func_8018F054(int o)\n{\n"
+                        "    return f(func_800C6CE0(func_800C6CE0(o)), 3);\n}\n")
+        self.assertIn("f(((unsigned int)/* E22 leaf type */func_800C6CE0(((unsigned int)/* E22 leaf type */"
+                      "func_800C6CE0(o)))), 3)", out)
+
+
+class ReturnSegmentTests(unittest.TestCase):
+    def test_symbol_address_returns(self):
+        # room_m0432i 80199048 returns &D_801994F4 whatever D_8009D254's segment
+        self.assertTrue(g.returns_symbol_addresses(
+            "short *f(int a){ if (a) return 0; return &D_801994F4; }"))
+        self.assertTrue(g.returns_symbol_addresses("int *f(){ return (int *)&D_80199500[3]; }"))
+
+    def test_root_derived_returns(self):
+        self.assertFalse(g.returns_symbol_addresses("int *f(){ return D_8009D254; }"))
+        self.assertFalse(g.returns_symbol_addresses("int *f(int *p){ return p + 4; }"))
+        self.assertFalse(g.returns_symbol_addresses("int *f(){ return 0; }"))
+
+
+class MultiDimArrayTests(unittest.TestCase):
+    def test_two_dimensional_array_extern_is_not_verbatim(self):
+        # ovl_0457 801247F4: `D_800BCDC8[k]` is a DRAWENV row, not a byte
+        src = ("extern int D_8009CDDC;\nextern unsigned char D_800BCDC8[][92];\n"
+               "extern void func_800754E4();\n"
+               "void func_80099990(void) {\n    func_800754E4(0, D_800BCDC8[D_8009CDDC]);\n}\n")
+        plan = analyze(src)
+        self.assertFalse(plan["eligible"])
+        self.assertIn("multi-dimensional array extern D_800BCDC8", plan["reason"])
+
+    def test_one_dimensional_array_extern_stays_eligible(self):
+        src = ("extern unsigned char D_800BCDC8[184];\n"
+               "int func_80099990(int k) {\n    return D_800BCDC8[k];\n}\n")
+        self.assertTrue(analyze(src)["eligible"], analyze(src).get("reason"))
 
 
 if __name__ == "__main__":

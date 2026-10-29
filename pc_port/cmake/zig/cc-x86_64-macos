@@ -1,0 +1,6 @@
+#!/bin/sh
+# `zig cc` for the x86_64-macos target: the C compiler and linker of
+# pc_port/cmake/zig-x86_64-macos.cmake.  PE_ZIG names the zig executable
+# (default: `zig` on PATH).  zig ships the macOS libc headers and the
+# libSystem link stub, so no macOS SDK is needed.
+exec "${PE_ZIG:-zig}" cc -target x86_64-macos "$@"

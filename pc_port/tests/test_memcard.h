@@ -4,6 +4,7 @@
 #include "pe_memcard.h"
 #include "pe_bios_string.h"
 #include <sys/stat.h>
+#include <errno.h>
 #if defined(_WIN32)
 #include <process.h>
 #define MC_GETPID() _getpid()
@@ -27,6 +28,221 @@ static void MC_TestTempPath(char *out, size_t cap, const char *leaf)
 static int MC_FrameOk(const uint8_t *f)
 {
     return PE_Memcard_FrameChecksum(f) == f[127];
+}
+
+/* Exercise the actual backend source with deterministic I/O failures, without
+ * a production hook, permissions assumptions, or changing the linked backend.
+ * All private-instance identifiers and interception macros end at this include. */
+static const char *MC_Io_path;
+static int MC_Io_read_error, MC_Io_write_error, MC_Io_reads, MC_Io_writes;
+
+static FILE *MC_Io_fopen(const char *path, const char *mode)
+{
+    if (MC_Io_path && strcmp(path, MC_Io_path) == 0 && strcmp(mode, "rb") == 0) {
+        MC_Io_reads++;
+        if (MC_Io_read_error) { errno = MC_Io_read_error; return NULL; }
+    }
+    if (MC_Io_path && strcmp(mode, "wb") == 0 &&
+        strncmp(path, MC_Io_path, strlen(MC_Io_path)) == 0 &&
+        strcmp(path + strlen(MC_Io_path), ".tmp") == 0) {
+        MC_Io_writes++;
+        if (MC_Io_write_error) { errno = MC_Io_write_error; return NULL; }
+    }
+    return fopen(path, mode);
+}
+
+#define fopen MC_Io_fopen
+#define McPort MC_Io_McPort
+#define McFile MC_Io_McFile
+#define g_ports MC_Io_ports
+#define g_files MC_Io_files
+#define g_last_error MC_Io_last_error
+#define g_boundary_mode MC_Io_boundary_mode
+#define g_search MC_Io_search
+#define set_error MC_Io_set_error
+#define seal_frame MC_Io_seal_frame
+#define put32 MC_Io_put32
+#define get32 MC_Io_get32
+#define put16 MC_Io_put16
+#define get16 MC_Io_get16
+#define free_dir_frame MC_Io_free_dir_frame
+#define make_dirs MC_Io_make_dirs
+#define default_path MC_Io_default_path
+#define resolve MC_Io_resolve
+#define save_image MC_Io_save_image
+#define load_port MC_Io_load_port
+#define parse_device MC_Io_parse_device
+#define dir_frame MC_Io_dir_frame
+#define name_equals MC_Io_name_equals
+#define find_file MC_Io_find_file
+#define block_is_free MC_Io_block_is_free
+#define file_offset MC_Io_file_offset
+#define create_file MC_Io_create_file
+#define get_file MC_Io_get_file
+#define transfer MC_Io_transfer
+#define pattern_match MC_Io_pattern_match
+#define search_next MC_Io_search_next
+#define PE_Memcard_LastError MC_Io_LastError
+#define PE_Memcard_SetBoundaryMode MC_Io_SetBoundaryMode
+#define PE_Memcard_BoundaryMode MC_Io_BoundaryMode
+#define PE_Memcard_FrameChecksum MC_Io_FrameChecksum
+#define PE_Memcard_FormatImage MC_Io_FormatImage
+#define PE_Memcard_ImageIsFormatted MC_Io_ImageIsFormatted
+#define PE_Memcard_SetPath MC_Io_SetPath
+#define PE_Memcard_Reset MC_Io_Reset
+#define PE_Memcard_Path MC_Io_Path
+#define PE_Memcard_Present MC_Io_Present
+#define PE_Memcard_IsFormatted MC_Io_IsFormatted
+#define PE_Memcard_Image MC_Io_Image
+#define PE_Memcard_Open MC_Io_Open
+#define PE_Memcard_Lseek MC_Io_Lseek
+#define PE_Memcard_Read MC_Io_Read
+#define PE_Memcard_Write MC_Io_Write
+#define PE_Memcard_Close MC_Io_Close
+#define PE_Memcard_Format MC_Io_Format
+#define PE_Memcard_FirstFile MC_Io_FirstFile
+#define PE_Memcard_NextFile MC_Io_NextFile
+#define PE_Memcard_Delete MC_Io_Delete
+#define PE_Memcard_CardInfoResult MC_Io_CardInfoResult
+#define PE_Memcard_CardClearResult MC_Io_CardClearResult
+#define PE_Memcard_CardLoadResult MC_Io_CardLoadResult
+#include "../platform/pe_memcard.c"
+#undef fopen
+#undef McPort
+#undef McFile
+#undef g_ports
+#undef g_files
+#undef g_last_error
+#undef g_boundary_mode
+#undef g_search
+#undef set_error
+#undef seal_frame
+#undef put32
+#undef get32
+#undef put16
+#undef get16
+#undef free_dir_frame
+#undef make_dirs
+#undef default_path
+#undef resolve
+#undef save_image
+#undef load_port
+#undef parse_device
+#undef dir_frame
+#undef name_equals
+#undef find_file
+#undef block_is_free
+#undef file_offset
+#undef create_file
+#undef get_file
+#undef transfer
+#undef pattern_match
+#undef search_next
+#undef PE_Memcard_LastError
+#undef PE_Memcard_SetBoundaryMode
+#undef PE_Memcard_BoundaryMode
+#undef PE_Memcard_FrameChecksum
+#undef PE_Memcard_FormatImage
+#undef PE_Memcard_ImageIsFormatted
+#undef PE_Memcard_SetPath
+#undef PE_Memcard_Reset
+#undef PE_Memcard_Path
+#undef PE_Memcard_Present
+#undef PE_Memcard_IsFormatted
+#undef PE_Memcard_Image
+#undef PE_Memcard_Open
+#undef PE_Memcard_Lseek
+#undef PE_Memcard_Read
+#undef PE_Memcard_Write
+#undef PE_Memcard_Close
+#undef PE_Memcard_Format
+#undef PE_Memcard_FirstFile
+#undef PE_Memcard_NextFile
+#undef PE_Memcard_Delete
+#undef PE_Memcard_CardInfoResult
+#undef PE_Memcard_CardClearResult
+#undef PE_Memcard_CardLoadResult
+#undef MC_DIR_FRAMES
+#undef MC_STATE_FREE
+#undef MC_STATE_FIRST
+#undef MC_STATE_MIDDLE
+#undef MC_STATE_LAST
+#undef MC_STATE_DEL_FIRST
+#undef MC_STATE_DEL_MIDDLE
+#undef MC_STATE_DEL_LAST
+#undef MC_NAME_MAX
+#undef MC_MAX_FDS
+#undef MC_FD_BASE
+
+static void test_MC_open_error_preserves_image(void)
+{
+    char path[512];
+    static uint8_t before[PE_MC_IMAGE_SIZE], after[PE_MC_IMAGE_SIZE];
+    FILE *f;
+    int first_failed, second_failed, reads, writes, diagnostic, recovered;
+    size_t n;
+    TEST("MC_open_error_preserves_image");
+    MC_TestTempPath(path, sizeof path, "unreadable.mcd");
+    PE_Memcard_FormatImage(before);
+    before[0x2000] = 0x5A;
+    f = fopen(path, "wb");
+    ASSERT(f != NULL, "create disposable existing card");
+    n = fwrite(before, 1, sizeof before, f);
+    diagnostic = fclose(f);
+    ASSERT(n == sizeof before && diagnostic == 0, "write disposable existing card");
+    MC_Io_Reset();
+    MC_Io_SetPath(0, path);
+    MC_Io_path = path;
+    MC_Io_read_error = EACCES;
+    MC_Io_write_error = 0;
+    MC_Io_reads = MC_Io_writes = 0;
+    first_failed = MC_Io_Image(0) == NULL;
+    second_failed = MC_Io_Image(0) == NULL;
+    reads = MC_Io_reads;
+    writes = MC_Io_writes;
+    diagnostic = strstr(MC_Io_LastError(), "open") != NULL;
+    MC_Io_path = NULL;
+    MC_Io_read_error = 0;
+    recovered = MC_Io_Image(0) != NULL && MC_Io_Image(0)[0x2000] == 0x5A;
+    f = fopen(path, "rb");
+    n = f ? fread(after, 1, sizeof after, f) : 0;
+    if (f) fclose(f);
+    MC_Io_Reset();
+    remove(path);
+    ASSERT(first_failed && second_failed && reads == 2, "failed loads retry; no blank loaded cache");
+    ASSERT(writes == 0 && diagnostic, "read failure reports error without attempting persistence");
+    ASSERT(n == sizeof before && memcmp(before, after, sizeof before) == 0,
+           "existing card remains byte-identical");
+    ASSERT(recovered, "read succeeds once transient error clears without resetting card");
+    PASS();
+}
+
+static void test_MC_create_error_stays_unloaded(void)
+{
+    char path[512];
+    int first_failed, second_failed, reads, writes, diagnostic, recovered;
+    TEST("MC_create_error_stays_unloaded");
+    MC_TestTempPath(path, sizeof path, "create_failure.mcd");
+    MC_Io_Reset();
+    MC_Io_SetPath(0, path);
+    MC_Io_path = path;
+    MC_Io_read_error = ENOENT;
+    MC_Io_write_error = EACCES;
+    MC_Io_reads = MC_Io_writes = 0;
+    first_failed = MC_Io_Image(0) == NULL;
+    second_failed = MC_Io_Image(0) == NULL;
+    reads = MC_Io_reads;
+    writes = MC_Io_writes;
+    diagnostic = strstr(MC_Io_LastError(), "open") != NULL;
+    MC_Io_path = NULL;
+    MC_Io_read_error = MC_Io_write_error = 0;
+    recovered = MC_Io_IsFormatted(0);
+    MC_Io_Reset();
+    remove(path);
+    ASSERT(first_failed && second_failed && reads == 2 && writes == 2,
+           "failed missing-card creation propagates and retries instead of caching blank card");
+    ASSERT(diagnostic && recovered, "creation error reported; normal creation recovers when writable");
+    PASS();
 }
 
 static void test_MC_format_layout(void)
@@ -72,6 +288,65 @@ static void test_MC_sprintf(void)
     ASSERT(strcmp(host, "bu10:BASLUS-00662TESTSV1C|7|ok|00be|-5 | 42|") == 0, "sprintf text");
     ASSERT(PE_Bios_SprintfHost(host, 6, fmt, args, 8) == 44 && strcmp(host, "bu10:") == 0,
            "host variant truncates with NUL");
+    f = "%hd|%hu|%hx|%.0d|%.0x";
+    for (unsigned i = 0; i <= strlen(f); i++) PE_StoreU8(fmt + i, (uint8_t)f[i]);
+    args[0] = args[1] = args[2] = 0x0001FFFFu;
+    args[3] = args[4] = 0u;
+    ASSERT(PE_Bios_SprintfHost(host, sizeof host, fmt, args, 5) == 15 &&
+           strcmp(host, "-1|65535|ffff||") == 0,
+           "short integer and zero-precision formatting");
+    f = "%p";
+    for (unsigned i = 0; i <= strlen(f); i++) PE_StoreU8(fmt + i, (uint8_t)f[i]);
+    args[0] = 0x0001ABCDu;
+    ASSERT(PE_Bios_SprintfHost(host, sizeof host, fmt, args, 1) == 8 &&
+           strcmp(host, "0001ABCD") == 0, "pointer formatting");
+    f = "%#x|%#o|%#08X|%#.0x";
+    for (unsigned i = 0; i <= strlen(f); i++) PE_StoreU8(fmt + i, (uint8_t)f[i]);
+    args[0] = 42u; args[1] = 8u; args[2] = 42u; args[3] = 0u;
+    ASSERT(PE_Bios_SprintfHost(host, sizeof host, fmt, args, 4) == 20 &&
+           strcmp(host, "0x2a|010|0X00002A|0x") == 0, "alternate integer formatting");
+    f = "%#s|%#.2s";
+    for (unsigned i = 0; i <= strlen(f); i++) PE_StoreU8(fmt + i, (uint8_t)f[i]);
+    PE_StoreU8(str, 3u); PE_StoreU8(str + 1u, 'A');
+    PE_StoreU8(str + 2u, 0u); PE_StoreU8(str + 3u, 'B');
+    args[0] = args[1] = str;
+    ASSERT(PE_Bios_SprintfHost(host, sizeof host, fmt, args, 2) == 6 &&
+           memcmp(host, "A\0B|A\0\0", 7) == 0, "length-prefixed strings");
+#if !defined(_WIN32)
+    {
+        FILE *capture = tmpfile();
+        ASSERT(capture != NULL, "cannot capture TTY");
+        fflush(stderr);
+        int saved = dup(fileno(stderr));
+        ASSERT(saved >= 0, "cannot save stderr");
+        int redirected = dup2(fileno(capture), fileno(stderr));
+        if (redirected >= 0) (void)PE_Bios_Printf(fmt, args, 2);
+        fflush(stderr);
+        (void)dup2(saved, fileno(stderr));
+        close(saved);
+        rewind(capture);
+        size_t count = fread(host, 1, sizeof host, capture);
+        fclose(capture);
+        ASSERT(redirected >= 0 && count == 13u &&
+               memcmp(host, "[TTY] A\0B|A\0\n", 13) == 0,
+               "TTY lost bytes after embedded NUL");
+    }
+#endif
+    f = "ABC%nD%hn";
+    for (unsigned i = 0; i <= strlen(f); i++) PE_StoreU8(fmt + i, (uint8_t)f[i]);
+    PE_StoreU32(dst, 0u); PE_StoreU32(dst + 4u, 0xA5A5A5A5u);
+    args[0] = dst; args[1] = dst + 4u;
+    ASSERT(PE_Bios_SprintfHost(host, sizeof host, fmt, args, 2) == 4 &&
+           strcmp(host, "ABCD") == 0 && PE_LoadU32(dst) == 3u &&
+           PE_LoadU32(dst + 4u) == 0xA5A50004u, "count writes and width");
+    f = "%.1s";
+    for (unsigned i = 0; i <= strlen(f); i++) PE_StoreU8(fmt + i, (uint8_t)f[i]);
+    PE_StoreU8(0x801FFFFFu, 'Q'); args[0] = 0x801FFFFFu;
+    ASSERT(PE_Bios_SprintfHost(host, sizeof host, fmt, args, 1) == 1 &&
+           strcmp(host, "Q") == 0, "precision read past guest RAM");
+    PE_StoreU8(fmt + 2u, '0'); args[0] = 0x81000000u;
+    ASSERT(PE_Bios_SprintfHost(host, sizeof host, fmt, args, 1) == 0 &&
+           host[0] == 0, "zero precision dereferenced string");
     PASS();
 }
 
@@ -481,6 +756,8 @@ static void test_MC_all(void)
     test_MC_sprintf();
     test_MC_file_roundtrip();
     test_MC_persistence();
+    test_MC_open_error_preserves_image();
+    test_MC_create_error_stays_unloaded();
     test_MC_bios_trampolines();
     test_MC_card_status_events();
     test_MC_operation_scan_and_save();

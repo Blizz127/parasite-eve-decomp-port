@@ -105,7 +105,54 @@ __attribute__((constructor)) static void pe_strict_boundary_env(void)
     if (e && e[0] == '1') g_pe_strict_effect_stack = 1;
 }
 
-int PE_M0023I_Flash(int32_t mode,pe_addr_t data,int16_t retained_position[3])
+/* Day-1 shim diagnostics; nothing reads them back.  Each distinct effect-stack
+ * state that leaves F710's borrowed bytes unknown is logged once, and every
+ * hit is counted (summary at exit), so a run names the callback whose stack
+ * writes must be bound before the shim can go. */
+enum { FLASH_SHIM_CAUSES=16 };
+static struct { PeEffectStackCause cause; unsigned hits; } g_flash_shim[FLASH_SHIM_CAUSES];
+static unsigned g_flash_shim_causes,g_flash_shim_untracked,g_flash_shim_total;
+static PeEffectStackCause g_flash_shim_last;
+static int flash_shim_same(const PeEffectStackCause *a,const PeEffectStackCause *b)
+{
+    return a->active==b->active && a->context==b->context && a->known==b->known &&
+        a->reset_fn==b->reset_fn && a->reset_context==b->reset_context;
+}
+static void flash_shim_summary(void)
+{
+    char text[160];
+    for(unsigned i=0;i<g_flash_shim_causes;i++) {
+        PE_EffectStackDescribe(&g_flash_shim[i].cause,text,sizeof text);
+        fprintf(stderr,"[DAY1_SHIM] PE_M0023I_Flash: %u hit(s): %s\n",g_flash_shim[i].hits,text);
+    }
+    if(g_flash_shim_untracked)
+        fprintf(stderr,"[DAY1_SHIM] PE_M0023I_Flash: %u hit(s) with further causes\n",g_flash_shim_untracked);
+}
+static void flash_shim_note(void)
+{
+    PeEffectStackCause cause;char text[160];unsigned i;
+    PE_EffectStackCause(&cause);g_flash_shim_last=cause;g_flash_shim_total++;
+    for(i=0;i<g_flash_shim_causes;i++)
+        if(flash_shim_same(&g_flash_shim[i].cause,&cause)) {g_flash_shim[i].hits++;return;}
+    if(g_flash_shim_causes==FLASH_SHIM_CAUSES) {g_flash_shim_untracked++;return;}
+    if(!g_flash_shim_causes)atexit(flash_shim_summary);
+    g_flash_shim[g_flash_shim_causes].cause=cause;g_flash_shim[g_flash_shim_causes++].hits=1;
+    PE_EffectStackDescribe(&cause,text,sizeof text);
+    fprintf(stderr,"[DAY1_SHIM] PE_M0023I_Flash: F710 caller-stack ring position unresolved (%s); "
+        "using owner joint position\n",text);
+}
+unsigned PE_M0023I_FlashShimLast(PeEffectStackCause *cause)
+{
+    if(cause)*cause=g_flash_shim_last;
+    return g_flash_shim_total;
+}
+
+/* borrowed: F710's six caller-stack bytes (NULL: not tracked on this path).
+ * known: which of X(1)/Y(2)/Z(4) hold the original bytes.  State 0 reads them
+ * as the ring position.  Every mode-2 call ends by writing the joint position
+ * over all six (pe_m0023i_flash_oracle.py hashes 0x801FEFB8 after the
+ * original call), so a tracked caller knows all six afterwards. */
+static int flash(int32_t mode,pe_addr_t data,int16_t borrowed[3],unsigned known)
 {
     int16_t local[3];uint8_t ring_color[3],fan_color[3];
     for(unsigned i=0;i<3;i++) {
@@ -126,23 +173,24 @@ int PE_M0023I_Flash(int32_t mode,pe_addr_t data,int16_t retained_position[3])
     } else if(mode==2) {
         int state=lh(data+4u),timer=lh(data+2u);int32_t scale=0,brightness=0;
         if(state==0) {
-            if(!retained_position && g_pe_strict_effect_stack) {
+            const int16_t *ring=borrowed;int16_t fallback[3];
+            if((!borrowed || known!=7u) && g_pe_strict_effect_stack) {
                 Bootstrap_ReturnVoid("PE_M0023I_Flash","original F710 caller stack position is unresolved");
                 PE_Port_RequestStop(PE_PORT_STOP_UNRESOLVED_BOUNDARY);return 0;
             }
-            if(!retained_position) {
+            if(!borrowed || known!=7u) {
                 /* DAY1 SHIM (docs/ai_context/DAY1_FIDELITY_GAPS.md,
-                 * "M0023I F710 flash ring position"): the borrowed caller
-                 * stack bytes are not modelled on this call path.  Retail
-                 * leaves F710's own last write there (the joint position
-                 * stored at the end of every mode-2 call below), so use the
-                 * current joint position instead of stopping the game. */
-                static int16_t fallback[3];static int warned;
-                if(!warned){warned=1;fprintf(stderr,"[DAY1_SHIM] PE_M0023I_Flash: F710 caller-stack ring position unresolved; using owner joint position\n");}
+                 * "M0023I F710 flash ring position"): the model has lost the
+                 * borrowed bytes (an unbound callback ran at this depth, the
+                 * RAM generation changed, or this path is not tracked).
+                 * Retail reads whatever their last writer left.  Substitute
+                 * the current joint position instead of stopping the game.
+                 * That is not the original value; the log names the cause. */
+                flash_shim_note();
                 PE_ActorJointPositionCE8F0(owner(),(uint32_t)(int32_t)lh(data),local,fallback);
-                retained_position=fallback;
+                ring=fallback;
             }
-            PE_EffectRingD0728(retained_position,600,800,32,0,timer,timer,ring_color,0,
+            PE_EffectRingD0728(ring,600,800,32,0,timer,timer,ring_color,0,
                 func_80077CF4(timer*128)/32,1);
             scale=timer*256;brightness=80;
             if(timer>=8) {PE_StoreU16(data+4u,1);PE_StoreU16(data+2u,0);}
@@ -161,7 +209,7 @@ int PE_M0023I_Flash(int32_t mode,pe_addr_t data,int16_t retained_position[3])
         if(time&1u)scale=(int32_t)((uint32_t)scale*5u)/4;
         int16_t position[3],angles[4]={0,0,(int16_t)((0u-time)<<6u),0};
         PE_ActorJointPositionCE8F0(owner(),(uint32_t)(int32_t)lh(data),local,position);
-        if(retained_position)for(unsigned i=0;i<3;i++)retained_position[i]=position[i];
+        if(borrowed)for(unsigned i=0;i<3;i++)borrowed[i]=position[i];
         int32_t sprite_scale=(int32_t)((uint32_t)scale*3u)/2;
         PE_EffectSpriteValuesCEE20(position,angles,sprite_scale,sprite_scale,128,clut(48),1,
             brightness/(int32_t)(1u+(time&1u)),0);
@@ -169,6 +217,14 @@ int PE_M0023I_Flash(int32_t mode,pe_addr_t data,int16_t retained_position[3])
         PE_EffectFanD004C(position,600,600,12,0,scale,scale,fan_color,0,64,1);
     }
     return 0;
+}
+int PE_M0023I_Flash(int32_t mode,pe_addr_t data,int16_t retained_position[3])
+{
+    return flash(mode,data,retained_position,retained_position?7u:0u);
+}
+int PE_M0023I_FlashTracked(pe_addr_t data,int16_t borrowed[3],unsigned known)
+{
+    return flash(2,data,borrowed,known);
 }
 
 /* SDK 785D4: left rotation becomes the GTE rotation; each right column

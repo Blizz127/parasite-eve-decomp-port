@@ -55,7 +55,7 @@ segments:
       - [0xCFC, c, func_8018FCE4]
       - [0xFC8, c, func_8018FFB0]
       - [0x10BC, c, func_801900A4]
-      - [0x12C4, asm]
+      - [0x12C4, c, func_801902AC]
       - [0x1D0C, c, func_80190CF4]
       - [0x1D30, bin]
   - [0x23800]

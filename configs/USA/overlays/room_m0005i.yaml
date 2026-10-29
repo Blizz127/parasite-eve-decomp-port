@@ -33,7 +33,10 @@ segments:
     subsegments:
       - [0x0, bin]
       - [0x30, c, func_8018F018]
-      - [0x348, asm]
+      - [0x348, c, func_8018F330]
+      - [0x62C, asm]
+      - [0xB9C, c, func_8018FB84]
+      - [0xDDC, asm]
       - [0x1A84, c, func_80190A6C]
       - [0x1AB0, bin]
   - [0x30000]

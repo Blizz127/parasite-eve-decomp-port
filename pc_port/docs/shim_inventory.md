@@ -447,7 +447,11 @@ never native function pointers.
   next tick `2A7F8` mode 3 is `2AA98` xor `2B29C` (zero
   fixture → `2B29C` case 0). `2B0E8` is mode 2.
   `game/boot/func_8002AA98_port.c`,
-  `game/boot/func_80053E6C_port.c`
+  `game/boot/func_80053E6C_port.c`.
+  **2026-10-26:** the hand `func_8002AA98` translated phase 0 only (of 8).
+  The function is now the generated TU of
+  `src/nonmatching/exe/func_8002AA98.c` (`game/decomp/func_8002AA98_port.c`);
+  see `docs/evidence/native-revive-20261026/`.
 - ~~`func_8006A25C` / `2B29C` cases 1-5~~ — TRANSLATED
   (PE-BTL101): player-death phase drain; case 5 mode=-1
   and dest `0xA9400048`. `game/boot/func_8002AA98_port.c`

@@ -39,9 +39,20 @@ void HostFB_SetVBlankDispatch(int (*dispatch)(void));
  * guest's own retry budget and the player restarts mid-frame from sector 0.
  * Read-only on guest state beyond the device/IRQ model. */
 void HostFB_StreamTick(void);
+/* One CD-status poll: device time with the device attached (pe_cdreg). */
+void HostFB_DevicePoll(void);
 void HostFB_DrawSync(int mode);
 int  HostFB_WritePPM(const char *path);
 const uint8_t *HostFB_GetPixels(void);
+/* Window presentation only; screenshots/capture must retain GetPixels().
+ * Returns native 320x240 when scale is 1 or the second scan-out is unavailable. */
+const uint8_t *HostFB_GetPresentationPixels(int *width, int *height);
+/* Box-downsample the shadow to a separate native-sized presentation frame.
+ * Effective only at render scales 2..4; GetPixels() always remains native. */
+void HostFB_SetSSAA(int enabled);
+int HostFB_GetSSAA(void);
+/* Explicit diagnostic export of the second scan-out, with no capture hooks. */
+int HostFB_WritePresentationPPM(const char *path);
 void HostFB_GetState(int *vsync, int *drawsync, int *presented, int *mask);
 /* Display-only refresh after a VBlank scan-out (not a present). */
 void HostFB_SetScanoutHook(void (*hook)(void));

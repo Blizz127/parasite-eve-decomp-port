@@ -2,6 +2,7 @@
  * Native callbacks share the original effect pools and GPU packet arena. */
 #include "psx_compat.h"
 #include "pe_port_compat.h"
+#include "game_port.h"
 #include "pe_sdk.h"
 
 static int32_t reaction_time(void) { return (int32_t)PE_LoadU32(0x800E27ECu); }
@@ -118,10 +119,12 @@ int func_800D751C(int32_t mode,pe_addr_t data)
         }
         if (time>=70) return 1;
         func_800CE688(PE_LoadU32(data+4u));
+        if (PE_Port_ShouldStop()) return 0;
         PE_StoreU32(0x800E21E8u,PE_LoadU32(data+4u));
     } else if (mode==2) {
         PE_GTE_LoadRT(PE_LoadU32(0x800BCFA4u));PE_StoreU16(0x800F3374u,8u);
         func_800CE78C(PE_LoadU32(data+4u));
+        if (PE_Port_ShouldStop()) return 0;
         func_800CE870(PE_LoadU32(0x8009D254u),1,0x800E21E0u);
         PE_StoreU16(0x800F3368u,32u);PE_StoreU16(0x800F336Au,2u);
         PE_StoreU16(0x800F3376u,32u);PE_StoreU16(0x800F3378u,32u);PE_StoreU16(0x800F336Cu,1u);

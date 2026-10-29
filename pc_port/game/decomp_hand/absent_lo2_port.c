@@ -11,6 +11,7 @@
  * Tests: pc_port/tests/test_pa_lo2.h.
  */
 #include "pe_guest_decomp.h"
+void func_80048918(int a0, int a1, int a2);   /* decomp_hand/port6_port.c */
 
 /* decomp-derived callees (generated TUs have no header of their own) */
 int func_80053F20(int a0);
@@ -453,7 +454,7 @@ void func_8004E97C(void)
  * battle (else 0), message 830; 3 close 51/52, D_8009CF30 = 1, message
  * 894; 4 leave (func_8004E97C) — each ending with func_800525EC().
  * Cancel (key & 0x40) leaves and calls func_80052634.  Returns 1.
- * func_80048918 (message box) has no pc_port implementation: boundary. */
+ * Messages 830/894 go to the native func_80048918 (decomp_hand/port6_port.c). */
 int func_8004ECB4(pe_addr_t self, int key)
 {
     pe_addr_t w;
@@ -503,7 +504,7 @@ int func_8004ECB4(pe_addr_t self, int key)
             PE_StoreU32(0x8009CF30u, 1u);
             id = 894;
         show:
-            (void)PE_D_COMP_BOUNDARY3("func_80048918", 0x80048918u, id, -1, -1);
+            func_80048918(id, -1, -1);
             func_800525EC();
             break;
         case 4:

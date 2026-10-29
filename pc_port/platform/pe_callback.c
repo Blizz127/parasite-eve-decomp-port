@@ -146,7 +146,7 @@ int PE_Callback_DispatchChecked(void)
         if (fn) {
             fn();
             if(PE_Port_StopEpoch()!=epoch)return 0;
-        } else if (code) {
+        } else if (code && code->thunk) {
             /* No manual bind (e.g. func_8003E680 now a generated TU that
              * registers the retail pointer only): the verified guest-code
              * registry resolves the address, as the retail jalr would. */

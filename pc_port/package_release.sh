@@ -154,7 +154,7 @@ LOG_FILE="$LOG_DIR/run-$(date -u +%Y%m%dT%H%M%SZ).log"
 ls -1t "$LOG_DIR"/run-*.log 2>/dev/null | tail -n +10 | xargs -r rm -f -- || true
 
 exec "$HERE/bin/parasite-eve-port" "${MODE[@]}" \
-    --window-title "Parasite Eve - Day 1" \
+    --window-title "Parasite Eve" \
     --disc-image "$DISC" "$@" 2>&1 | tee "$LOG_FILE"
 LAUNCHER
 chmod 0755 "$STAGE/parasite-eve"

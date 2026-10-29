@@ -106,9 +106,40 @@ static void check_mapping(void)
     printf("  nearest mapping: in range, integer scales exact: %s\n", g_fail ? "FAIL" : "ok");
 }
 
+
+/* Fullscreen policy (HostWindow_WantFullscreen) over a fake environment. */
+static const char *g_env[8][2];
+static const char *fake_env(const char *n)
+{
+    for (int i = 0; i < 8 && g_env[i][0]; i++) if (!strcmp(g_env[i][0], n)) return g_env[i][1];
+    return NULL;
+}
+static int want(int req, const char *k, const char *v, const char *k2, const char *v2)
+{
+    memset(g_env, 0, sizeof(g_env));
+    g_env[0][0] = k; g_env[0][1] = v; g_env[1][0] = k2; g_env[1][1] = v2;
+    return HostWindow_WantFullscreen(req, fake_env);
+}
+static void check_fullscreen_policy(void)
+{
+    CHECK(want(0, NULL, NULL, NULL, NULL) == 0, "plain desktop stays windowed");
+    CHECK(want(1, NULL, NULL, NULL, NULL) == 1, "--fullscreen");
+    CHECK(want(0, "GAMESCOPE_WAYLAND_DISPLAY", "gamescope-0", NULL, NULL) == 1, "gamescope");
+    CHECK(want(0, "XDG_CURRENT_DESKTOP", "gamescope", NULL, NULL) == 1, "gamescope session");
+    CHECK(want(0, "XDG_CURRENT_DESKTOP", "KDE", NULL, NULL) == 0, "KDE desktop");
+    CHECK(want(0, "SteamDeck", "1", NULL, NULL) == 1, "Steam Deck");
+    CHECK(want(0, "SteamGamepadUI", "1", NULL, NULL) == 1, "Steam Game Mode");
+    CHECK(want(0, "SteamTenfoot", "1", NULL, NULL) == 1, "Big Picture");
+    CHECK(want(0, "PE_FULLSCREEN", "0", "GAMESCOPE_WAYLAND_DISPLAY", "gamescope-0") == 0, "PE_FULLSCREEN=0 override");
+    CHECK(want(0, "PE_FULLSCREEN", "1", NULL, NULL) == 1, "PE_FULLSCREEN=1");
+    CHECK(want(1, "PE_FULLSCREEN", "0", NULL, NULL) == 1, "--fullscreen beats PE_FULLSCREEN=0");
+    printf("  fullscreen policy: %s\n", g_fail ? "FAIL" : "ok");
+}
+
 int main(void)
 {
     check_mapping();
+    check_fullscreen_policy();
 
     /* Exact same aspect, no scale change: no borders. */
     check_case("exact-320x240", 320, 240, 320, 240, 320, 240, 0, 0);

@@ -32,7 +32,21 @@ static int32_t pe_375e0_sdiv10(int32_t n)
     return (hi >> 2) - (n >> 31);
 }
 
+/* Native-only provenance: bit g of message_digits_unknown[slot] = digit group
+ * g holds bytes whose original value is unproven (a caller passed list
+ * entries from unresolved stack residue).  Only text code FB 08 reads digit
+ * groups; it stops on an unknown group instead of drawing invented digits. */
+static uint8_t message_digits_unknown[4];
+int PE_MessageDigitsKnown(pe_addr_t rec,unsigned int group)
+{
+    if(rec<GA_D_800BCEA8 || rec>=GA_D_800BCEA8+4u*REC_STRIDE || group>=5u)return 1;
+    return !(message_digits_unknown[(rec-GA_D_800BCEA8)/REC_STRIDE]&(1u<<group));
+}
 void func_800375E0(int id, unsigned int mode, pe_addr_t list)
+{PE_MessageOpenPartial(id,mode,list,0u);}
+/* unknown bit i: list entry i is unproven.  An unknown value may also be the
+ * -1 terminator, so it and every later group become unknown. */
+void PE_MessageOpenPartial(int id, unsigned int mode, pe_addr_t list, unsigned int unknown)
 {
     unsigned int slot;
     pe_addr_t rec;
@@ -71,6 +85,11 @@ void func_800375E0(int id, unsigned int mode, pe_addr_t list)
             PE_StoreU8(rec + 9u, 1u);
         }
         for (list_i = 0; list_i < 5u; list_i++) {
+            if (unknown & (1u << list_i)) {
+                message_digits_unknown[slot] |= (uint8_t)(0x1Fu & (0x1Fu << list_i));
+                return;
+            }
+            message_digits_unknown[slot] &= (uint8_t)~(1u << list_i);
             raw = PE_LoadU16(list);
             list += 2u;
             value = (int16_t)raw;

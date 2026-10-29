@@ -3,7 +3,7 @@
  * 6-case command switch on a2 (jtbl_8018F1CC fold); record base a0+0xC pinned to $5 (reuses the dead a1 register). */
 
 extern int func_8005186C();
-extern int func_80193114();
+extern int func_80193114(int, int **);
 
 int func_80192E64(char *a0, char *a1, unsigned int a2, int a3, int a4, int a5)
 {
@@ -29,7 +29,7 @@ int func_80192E64(char *a0, char *a1, unsigned int a2, int a3, int a4, int a5)
                                    + ((*(int *)a4 - *(int *)(p + 0x30)) >> 16) * ((*(int *)a4 - *(int *)(p + 0x30)) >> 16));
         break;
     case 3:
-        *(int *)a4 = func_80193114(*(int *)a3);
+        *(int *)a4 = func_80193114(*(int *)a3, (int **)b);
         break;
     case 4:
         *(int *)(b + 0) = a3;

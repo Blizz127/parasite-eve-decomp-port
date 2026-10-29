@@ -44,7 +44,7 @@ extern s16 D_800F3374;
 extern s16 D_800F3376;
 extern s16 D_800F3378;
 extern char D_8018EFF4[];
-void func_800CE560(void *arg0, s32 arg1, s32 arg2, void *arg3);
+s32 func_800CE560(void *arg0, s32 arg1, s32 arg2, void *arg3);
 void *func_800CE610(void *arg0);
 void func_800CE8F0(void *arg0, s32 arg1, void *arg2, void *arg3);
 s32 func_80071A54(void);
@@ -80,8 +80,8 @@ mode0:
     ent->y = D_800942EC;
     value = func_800D3FD8();
     func_800D3F64(0x579, value);
-    func_800CE560(((void **)D_800F33E0)[2], 0x14, 0x18, func_801900CC);
-    goto done;
+    /* Retail 80190654 preserves the pool initializer result in v0. */
+    return func_800CE560(((void **)D_800F33E0)[2], 0x14, 0x18, func_801900CC);
 mode1:
     value = D_800E27EC;
     if (value == 1) {
@@ -193,5 +193,4 @@ mode2:
     D_800F3370 = D_800E2850[D_800E11EA];
 ret0:
     return 0;
-done:;
 }

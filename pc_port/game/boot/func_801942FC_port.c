@@ -67,7 +67,7 @@ static void transition_blend(unsigned count,unsigned delta,unsigned output)
     for(unsigned i=0;i<3;i++)SW(output+i*4u,(uint32_t)H(delta+32u+i*2u)+(uint32_t)((int32_t)v[i]>>shift));
     if(!H(count))for(unsigned i=0;i<3;i++)SW(output+i*4u,H(delta+40u+i*2u));
 }
-void PE_TransitionUpdate(const uint16_t *menu_tail,const uint16_t *subtitle_tail)
+static void transition_update(const uint16_t *menu_tail,unsigned menu_unknown,const uint16_t *subtitle_tail)
 {
     const pe_addr_t scratch=0x1F800300u;
     uint8_t saved[160];unsigned epoch=PE_Port_StopEpoch();
@@ -198,7 +198,8 @@ void PE_TransitionUpdate(const uint16_t *menu_tail,const uint16_t *subtitle_tail
         func_80038940(PE_LoadU8(selected_entry()+29u),128,128,128);
         if(H(0xC034)!=10) {
             if(!message_list(scratch+112u,menu_tail))goto done;
-            func_800375E0(PE_LoadU8(selected_entry()+29u),3,scratch+112u);CHECK();
+            /* list[0]=0 is written; list[1..4] = tail[0..3]. */
+            PE_MessageOpenPartial(PE_LoadU8(selected_entry()+29u),3,scratch+112u,(menu_unknown&15u)<<1);CHECK();
         }
         SW(0xC01C,1);SH(0xC028,PE_LoadU8(selected_entry()+29u));
     }
@@ -206,6 +207,44 @@ void PE_TransitionUpdate(const uint16_t *menu_tail,const uint16_t *subtitle_tail
  done:
     for(unsigned i=0;i<160;i++)PE_StoreU8(scratch+i,saved[i]);
 }
+/* Menu-list tail = original 801942FC sp+138..145 = scratchpad 1F800392..99
+ * (8001220C runs M0000I on the scratchpad stack, sp 1F8003F8; loop sp S =
+ * 1F8003C8; tail = S-54..S-47).  Last original writers, proven statically
+ * (docs/evidence/transition-menu-tail/REPORT.md):
+ *  - constructor 80196498 (sp S-240): local sp+184 = 52*10 after its record
+ *    loop => tail0 = hi(520) = 0; local sp+192 = positions+84 => tail3 = lo.
+ *    It never writes sp+188..191 (tail1..2): those are older scratchpad
+ *    residue (power-on, or a previous visit's exit selector 80192030 saves).
+ *  - each draw pass: PutDrawEnv 80075424(env) -> 80076C34 saves env+28/env at
+ *    S-56/S-52 => tail0..2; DrawOTag 800752AC(ot) -> 80076354 saves ot at
+ *    S-48 => tail3.  8019BF8C and steady input 8003EB04 do not reach these
+ *    bytes; VSync(-1), 80191DE8, 80071A54/64 neither; interrupts use libetc's
+ *    own stack.
+ *  - input's actuator call 800828F4 -> 80083BB8 saves ra 8008291C at S-56
+ *    => tail0 = 0x8008.
+ * Unproven halves are passed as unknown: the opener marks those digit groups
+ * unknown and the renderer stops only if text consumes one.  Never invent. */
+static uint16_t menu_tail_words[4];
+static unsigned menu_tail_known; /* bit i: tail[i] proven */
+void PE_TransitionMenuTailReset(void){menu_tail_known=0;}
+void PE_TransitionMenuTailConstructed(pe_addr_t record_cursor)
+{
+    menu_tail_words[0]=(uint16_t)((52u*10u)>>16);
+    menu_tail_words[3]=(uint16_t)record_cursor;
+    menu_tail_known=(menu_tail_known&6u)|9u;
+}
+void PE_TransitionMenuTailDrawn(pe_addr_t env,pe_addr_t ot)
+{
+    if(PE_LoadU8(0x8009574Eu)>=2u){menu_tail_known=0;return;} /* printf jalr */
+    menu_tail_words[0]=(uint16_t)((env+28u)>>16);
+    menu_tail_words[1]=(uint16_t)env;
+    menu_tail_words[2]=(uint16_t)(env>>16);
+    menu_tail_words[3]=(uint16_t)ot;
+    menu_tail_known=15u;
+}
+void PE_TransitionMenuTailActuator(void){menu_tail_words[0]=0x8008u;menu_tail_known|=1u;}
+void PE_TransitionUpdate(const uint16_t *menu_tail,const uint16_t *subtitle_tail)
+{transition_update(menu_tail,0u,subtitle_tail);}
 void func_801942FC(void)
 {
     /* Sole original caller9234C supplies s2=0/1,s3=00FFFFFF. The most
@@ -213,7 +252,7 @@ void func_801942FC(void)
      * s2.high=0, s3.low=-1. Opener stops at -1; later bytes are unread.
      * pe_transition_stack_audit.py verifies these last writers. */
     static const uint16_t subtitle_tail[]={0,0xFFFF,0,0};
-    PE_TransitionUpdate(NULL,subtitle_tail);
+    transition_update(menu_tail_words,~menu_tail_known&15u,subtitle_tail);
 }
 #undef A
 #undef B

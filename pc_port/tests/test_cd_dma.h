@@ -45,11 +45,12 @@ static void test_DAY2_cd_dma(void)
         PeCdDeviceState state;PE_CdReg_GetDeviceState(&state);ASSERT(state.data_remaining==280u,"DMA consumed wrong sector span");
         (void)PE_IRQ_ServicePendingForGeneration(PE_IRQ_Generation());
         ASSERT(!PE_Port_ShouldStop() && PE_LoadU16(0x80150000u)==2u && PE_LoadU32(0x800BE9E4u)==1u && !PE_LoadU32(0x800B89F4u),"DMA3 callback did not finalize frame");
-        /* Validate before transfer: an oversized DMA must preserve FIFO/RAM. */
-        PE_CdReg_WriteU32(PE_CDREG_DMA3,0x80160000u);PE_CdReg_WriteU32(PE_CDREG_DMA3+4u,71u);
+        /* Validate before transfer: an out-of-RAM DMA must preserve FIFO/RAM. */
+        PE_StoreU32(PE_RAM_BASE+PE_RAM_SIZE-4u,0u);
+        PE_CdReg_WriteU32(PE_CDREG_DMA3,PE_RAM_SIZE-4u);PE_CdReg_WriteU32(PE_CDREG_DMA3+4u,2u);
         PE_CdReg_WriteU32(PE_CDREG_DMA3+8u,0x11000000u);
         PE_CdReg_GetDeviceState(&state);
-        ASSERT(PE_Port_ShouldStop() && CountOrderLog("CD_dma3_fifo_range")==1 && state.data_remaining==280u && !PE_LoadU32(0x80160000u),"DMA overflow partially transferred");
+        ASSERT(PE_Port_ShouldStop() && CountOrderLog("CD_dma3_ram_range")==1 && state.data_remaining==280u && !PE_LoadU32(PE_RAM_BASE+PE_RAM_SIZE-4u),"DMA overflow partially transferred");
     }
     /* Idle B0CD0 pump: busy defer leaves the sector pending; when output
      * DMA clears, ServiceDevice retries 7C564 instead of overrunning. */

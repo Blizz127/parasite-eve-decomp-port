@@ -62,7 +62,7 @@ static void test_DAY2_cd_sector_device(void)
             ASSERT(!(PE_CdReg_ReadU8(PE_CDREG_BASE)&0x40u),"FIFO request stayed active after drain");
         }
         CdSectorCommand(9u,NULL,0);ASSERT(CdSectorReply(response,1)==3u && response[0]==0x22u,"Pause first response");
-        PE_CdReg_ServiceDevice(0x100000u);ASSERT(CdSectorReply(response,1)==2u && response[0]==2u,"Pause completion");
+        PE_CdReg_ServiceDevice(PE_CdReg_TimeSlice(0x2000000u));ASSERT(CdSectorReply(response,1)==2u && response[0]==2u,"Pause completion");
         PE_CdReg_ServiceDevice(period*3u);
         PeCdDeviceState state;PE_CdReg_GetDeviceState(&state);
         ASSERT(!state.reading && state.sectors==2u && state.next_lba==22u && !state.data_remaining && !PE_Port_ShouldStop(),"sequential read/pause state");
@@ -83,13 +83,17 @@ static void test_DAY2_cd_sector_device(void)
         ASSERT(!PE_Port_ShouldStop() && held.sectors==1u,
             "B0CD0 catchup must hold the unread sector, not overrun");
     }
-    /* Unread data is retained; no silent sector substitution on overrun. */
+    /* An acknowledged sector not requested with BFRD may be superseded. */
     PE_StoreU16(0x800B0CD0u,0u);
     PE_CdReg_Reset();ASSERT(PE_CdReg_EnableDevice(7u),"overrun attachment");
     CdSectorCommand(2u,loc,3);(void)CdSectorReply(response,1);
     CdSectorCommand(6u,NULL,0);(void)CdSectorReply(response,1);
     PE_CdReg_ServiceDevice(451584u);ASSERT(CdSectorReply(response,1)==1u,"overrun first data response");
     PE_CdReg_ServiceDevice(451584u);
-    ASSERT(PE_Port_ShouldStop() && CountOrderLog("CD_device_sector_overrun")==1,"unimplemented multi-sector buffering must stop");
+    ASSERT(!PE_Port_ShouldStop() && CdSectorReply(response,1)==1u,"acknowledged unread sector replacement");
+    PE_CdReg_WriteU8(PE_CDREG_BASE,0u);PE_CdReg_WriteU8(PE_CDREG_BASE+3u,0x80u);
+    /* Attachment starts in mode 0x20: raw 2340-byte window at offset 12. */
+    for(unsigned i=0;i<2340u;i++)
+        ASSERT(PE_CdReg_ReadU8(PE_CDREG_BASE+2u)==fx.img[21u*2352u+12u+i],"replacement sector FIFO bytes");
     PE_CdReg_Reset();PE_Disc_SetActive(NULL);FxFree(&fx);PASS();
 }

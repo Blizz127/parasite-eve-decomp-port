@@ -27,6 +27,16 @@
 /* ── framebuffer state ───────────────────────────────────────────────── */
 
 static uint8_t fb[PE_PORT_FB_WIDTH * PE_PORT_FB_HEIGHT * 3];  /* RGB */
+static uint8_t *fb_presentation;
+static int fb_presentation_scale = 1;
+static uint64_t fb_presentation_generation;
+static int fb_ssaa;
+static int fb_presentation_ssaa;
+static int fb_presentation_movie;   /* last scan-out was a 24-bit movie frame */
+static uint8_t fb_antialias[PE_PORT_FB_WIDTH * PE_PORT_FB_HEIGHT * 3];
+
+void HostFB_SetSSAA(int enabled) { fb_ssaa = enabled == 1; }
+int HostFB_GetSSAA(void) { return fb_ssaa; }
 static int     fb_presented = 0;
 static int     fb_mask      = 0;   /* 0 = blanked, 1 = visible (SetDispMask) */
 static uint32_t fb_device_cycles = 0;
@@ -51,6 +61,8 @@ static uint32_t fb_scanouts;   /* idle-VBlank rescans (PE_FRAME_TRACE) */
 void HostFB_Init(void)
 {
     memset(fb, 0, sizeof(fb));
+    free(fb_presentation); fb_presentation = NULL; fb_presentation_scale = 1;
+    fb_presentation_movie = 0;
     fb_presented = 0;
     fb_mask      = 0;
     fb_vsync_count = 0;
@@ -165,6 +177,97 @@ void HostFB_PresentDispEnv(pe_addr_t env)
     PE_Port_InvokePresentHook();
 }
 
+/* Separate scan-out keeps native screenshot/capture pixels unchanged. 24-bit
+ * movie frames are nearest-expanded from their native packed-byte scan-out. */
+static void ScanPresentation(uint32_t dx, uint32_t dy, uint32_t dw,
+                             uint32_t top, uint32_t dh, int rgb24)
+{
+    int scale = PE_GPU_GetRenderScale();
+    size_t bytes = (size_t)PE_PORT_FB_WIDTH * PE_PORT_FB_HEIGHT * scale * scale * 3u;
+    fb_presentation_movie = rgb24;
+    if (scale == 1) { fb_presentation_scale = 1; return; }
+    /* A movie frame is decoded at 320x240: a larger copy adds nothing and
+     * would cost the window's XRender path. */
+    if (rgb24) return;
+    if (fb_presentation_scale != scale || !fb_presentation) {
+        uint8_t *next = realloc(fb_presentation, bytes);
+        if (!next) { fb_presentation_scale = 1; return; }
+        fb_presentation = next; fb_presentation_scale = scale;
+    }
+    fb_presentation_generation = PE_GPU_GetRenderGeneration();
+    fb_presentation_ssaa = fb_ssaa;
+    memset(fb_presentation, 0, bytes);
+    if (!fb_mask) {
+        if (fb_ssaa) memset(fb_antialias, 0, sizeof(fb_antialias));
+        return;
+    }
+    if (dw > PE_PORT_FB_WIDTH) dw = PE_PORT_FB_WIDTH;
+    for (uint32_t y = 0; y < PE_PORT_FB_HEIGHT * (uint32_t)scale; y++) {
+        for (uint32_t x = 0; x < PE_PORT_FB_WIDTH * (uint32_t)scale; x++) {
+            uint8_t *dst = fb_presentation + ((size_t)y * PE_PORT_FB_WIDTH * scale + x) * 3u;
+            if (rgb24) {
+                const uint8_t *src = fb + ((size_t)(y / scale) * PE_PORT_FB_WIDTH + x / scale) * 3u;
+                memcpy(dst, src, 3u);
+            } else if (y >= top * scale && y / scale - top < dh && x / scale < dw) {
+                uint16_t pixel;
+                if (PE_GPU_ReadRenderPixel(dx * scale + x, dy * scale + y - top * scale, &pixel))
+                    HostVRAM_DecodePixel(pixel, dst);
+            }
+        }
+    }
+
+    if (fb_ssaa) {
+        if (rgb24) memcpy(fb_antialias, fb, sizeof(fb_antialias));
+        else for (unsigned int y = 0; y < PE_PORT_FB_HEIGHT; y++)
+            for (unsigned int x = 0; x < PE_PORT_FB_WIDTH; x++) {
+                unsigned int sum[3] = {0,0,0};
+                for (int sy = 0; sy < scale; sy++)
+                    for (int sx = 0; sx < scale; sx++) {
+                        const uint8_t *src = fb_presentation +
+                            (((size_t)y * scale + sy) * PE_PORT_FB_WIDTH * scale + x * scale + sx) * 3u;
+                        for (unsigned int ch = 0; ch < 3; ch++) sum[ch] += src[ch];
+                    }
+                for (unsigned int ch = 0; ch < 3; ch++)
+                    fb_antialias[((size_t)y * PE_PORT_FB_WIDTH + x) * 3u + ch] =
+                        (uint8_t)((sum[ch] + scale * scale / 2) / (scale * scale));
+            }
+    }
+}
+
+int HostFB_WritePresentationPPM(const char *path)
+{
+    int width, height;
+    const uint8_t *pixels = HostFB_GetPresentationPixels(&width, &height);
+    FILE *file = fopen(path, "wb");
+    if (!file) return -1;
+    int failed = fprintf(file, "P6\n%d %d\n255\n", width, height) < 0;
+    size_t bytes = (size_t)width * height * 3u;
+    if (fwrite(pixels, 1, bytes, file) != bytes) failed = 1;
+    if (fclose(file)) failed = 1;
+    return failed ? -1 : 0;
+}
+
+const uint8_t *HostFB_GetPresentationPixels(int *width, int *height)
+{
+    if (fb_presentation_movie) {
+        if (width) *width = PE_PORT_FB_WIDTH;
+        if (height) *height = PE_PORT_FB_HEIGHT;
+        return fb;
+    }
+    int scale = fb_presentation && fb_presentation_scale == PE_GPU_GetRenderScale() &&
+                fb_presentation_generation == PE_GPU_GetRenderGeneration() &&
+                fb_presentation_ssaa == fb_ssaa ?
+                fb_presentation_scale : 1;
+    if (scale > 1 && fb_ssaa) {
+        if (width) *width = PE_PORT_FB_WIDTH;
+        if (height) *height = PE_PORT_FB_HEIGHT;
+        return fb_antialias;
+    }
+    if (width) *width = PE_PORT_FB_WIDTH * scale;
+    if (height) *height = PE_PORT_FB_HEIGHT * scale;
+    return scale > 1 ? fb_presentation : fb;
+}
+
 static void ScanDisplay(uint32_t dx, uint32_t dy, uint32_t dw, uint32_t top, uint32_t dh, int rgb24)
 {
     uint32_t row, col;
@@ -203,6 +306,7 @@ static void ScanDisplay(uint32_t dx, uint32_t dy, uint32_t dw, uint32_t top, uin
             }
         }
     }
+    ScanPresentation(dx, dy, dw, top, dh, rgb24);
 }
 
 void HostFB_SetDispMask(int mask)
@@ -212,27 +316,51 @@ void HostFB_SetDispMask(int mask)
 
 static void HostFB_ServiceDeviceIrq(void)
 {
-    if(!PE_Port_ShouldStop() && !PE_LoadU16(0x800945E6u) && (PE_IRQ_ReadStatus()&PE_IRQ_GetMask()))
-        (void)PE_IRQ_ServicePendingForGeneration(PE_IRQ_Generation());
+    PeIrqServiceResult result;
+    if (PE_Port_ShouldStop() || PE_LoadU16(0x800945E6u) ||
+        !(PE_IRQ_ReadStatus() & PE_IRQ_GetMask())) return;
+    result = PE_IRQ_ServicePendingForGeneration(PE_IRQ_Generation());
+    if ((result == PE_IRQ_SERVICE_BOUNDARY || result == PE_IRQ_SERVICE_STALE) &&
+        !PE_Port_ShouldStop())
+        PE_Port_RequestStop(PE_PORT_STOP_UNRESOLVED_BOUNDARY);
 }
 static void HostFB_DeviceTime(uint32_t cycles)
 {
-    /* NTSC host approximation:33868800 CPU cycles/60 frames. Device
-     * responses are serviced before the next generated VBlank edge. */
-    PE_CdReg_ServiceDevice(cycles);HostFB_ServiceDeviceIrq();
-    PE_MMIO_Commit();           /* host-pointer MMIO writes (pe_mmio.h) */
-    PE_Rcnt2_Advance(cycles);   /* root counter 2 (pe_rcnt2.h) */
-    if(PE_Port_ShouldStop()) return;
-    fb_device_cycles+=cycles;
-    while(fb_device_cycles>=564480u) {
-        fb_device_cycles-=564480u;
-        PeIrqGeneration generation=PE_IRQ_Generation();
-        PE_GPU_VBlankStep();
-        (void)PE_GPU_SetVBlank(0,generation);
-        (void)PE_GPU_SetVBlank(1,generation);
+    /* Advance to each CD deadline and VBlank edge separately, servicing
+     * IRQs between sectors. Keep the full elapsed quantum: at double speed
+     * a 564480-cycle NTSC frame contains 2.5 sectors, not one sector. */
+    while(cycles && !PE_Port_ShouldStop()) {
+        uint32_t step=PE_CdReg_TimeSlice(cycles);
+        uint32_t to_vblank=564480u-fb_device_cycles;
+        if(step>to_vblank) step=to_vblank;
+        PE_CdReg_ServiceDevice(step);
+        if (PE_Port_ShouldStop()) return;
         HostFB_ServiceDeviceIrq();
-        (void)PE_GPU_SetVBlank(0,generation);
+        if (PE_Port_ShouldStop()) return;
+        PE_MMIO_Commit();
+        if (PE_Port_ShouldStop()) return;
+        PE_Rcnt2_Advance(step);
         if(PE_Port_ShouldStop()) return;
+        cycles-=step;
+        fb_device_cycles+=step;
+        if(fb_device_cycles>=564480u) {
+            fb_device_cycles-=564480u;
+            PeIrqGeneration generation=PE_IRQ_Generation();
+            PE_GPU_VBlankStep();
+            if (PE_Port_ShouldStop()) return;
+            if (!PE_GPU_SetVBlank(0,generation) ||
+                !PE_GPU_SetVBlank(1,generation)) {
+                if (!PE_Port_ShouldStop())
+                    PE_Port_RequestStop(PE_PORT_STOP_UNRESOLVED_BOUNDARY);
+                return;
+            }
+            HostFB_ServiceDeviceIrq();
+            /* Deassert even after a stopped IRQ; a stale generation remains
+             * an explicit stop rather than a completed VBlank. */
+            if (!PE_GPU_SetVBlank(0,generation) && !PE_Port_ShouldStop())
+                PE_Port_RequestStop(PE_PORT_STOP_UNRESOLVED_BOUNDARY);
+            if (PE_Port_ShouldStop()) return;
+        }
     }
 }
 
@@ -276,9 +404,14 @@ uint32_t HostFB_VSyncTimer(void)
 
 uint32_t HostFB_VSync(int mode)
 {
+    PE_Port_EscapePoint();      /* armed only by PE_Main_EnterCredits */
+    if (PE_Port_ShouldStop()) return 0;
+    PE_Port_CreditsPadPoint();  /* likewise: the per-VBlank pad refill */
+    if (PE_Port_ShouldStop()) return 0;
     /* A nonblocking audio upload must complete even when the game only
      * polls its completion flag. Service DMA at the normal host tick. */
     (void)PE_SpuDma_Service();
+    if (PE_Port_ShouldStop()) return 0;
     /* While a movie decode is in flight the GPU DMA2 upload of the
      * previous slice completes in parallel with the MDEC on hardware.
      * The host tick is the asynchronous-progress stand-in, so complete
@@ -286,15 +419,27 @@ uint32_t HostFB_VSync(int mode)
      * DMA IRQ checkpoint) before the MDEC decodes into the rotating
      * buffer again. Without this, queued LoadImages execute late and
      * read overwritten slice buffers. */
-    if(PE_MDEC_HasDecode() && PE_GPU_DMA2Pending())
-        (void)PE_Port_ServiceDmaIrqCheckpoint();
+    if (PE_MDEC_HasDecode() && PE_GPU_DMA2Pending()) {
+        PEPortDmaIrqCheckpointResult checkpoint = PE_Port_ServiceDmaIrqCheckpoint();
+        if (checkpoint == PE_PORT_DMA_IRQ_CHECKPOINT_BOUNDARY ||
+            checkpoint == PE_PORT_DMA_IRQ_CHECKPOINT_STALE) {
+            if (!PE_Port_ShouldStop())
+                PE_Port_RequestStop(PE_PORT_STOP_UNRESOLVED_BOUNDARY);
+            return 0;
+        }
+    }
+    if (PE_Port_ShouldStop()) return 0;
     (void)PE_MDEC_Service();
+    if (PE_Port_ShouldStop()) return 0;
     if(PE_MDEC_HasDecode()) HostFB_ServiceDeviceIrq();
+    if (PE_Port_ShouldStop()) return 0;
     /* Deterministic host CPU-work quantum, including busy counter queries.
      * This is an approximate device clock, not a cycle-accurate CPU model. */
     int device=PE_CdReg_DeviceEnabled();
     if(device && (mode<0 || mode==1)) HostFB_DeviceTime(1024u);
+    if (PE_Port_ShouldStop()) return 0;
     if (mode >= 0) PE_Event_ServiceAudioCommands();
+    if (PE_Port_ShouldStop()) return 0;
     /* Negative VSync is a counter query and mode 1 queries elapsed scan
      * lines. Waiting modes advance the shared 60 Hz clock used by menus. */
     if (mode>=0 && mode!=1) {
@@ -307,6 +452,7 @@ uint32_t HostFB_VSync(int mode)
             HostFB_ShotVBlank();
         }
     }
+    if (PE_Port_ShouldStop()) return 0;
     fb_vsync_count++;
     HostFB_ShotVBlank();
     /* VBlank edge. The retail return contract (80073A44) samples the free-
@@ -314,9 +460,17 @@ uint32_t HostFB_VSync(int mode)
      * 0xFFFF` for every non-negative mode; waiting modes then re-latch the
      * baseline to the post-wait value (this is what makes a following
      * mode-1 query read the elapsed scanlines) and negative modes instead
-     * return the absolute VBlank counter (D_800956AC). */
+     * return the absolute VBlank counter (D_800956AC).  With the device
+     * attached, that counter is the real one: VBlanks come from device time,
+     * the libetc source-0 handler 8007440C bumps it once per VBlank, and each
+     * query adds its 1024 device cycles above, so a busy loop on VSync(-1)
+     * still advances.  Without the device no VBlank happens inside a busy
+     * loop, so the host keeps its call count there.  The call count moves
+     * twice per frame inside a VSync callback (its own query plus the wait),
+     * so a callback testing `VSync(-1) & 0x1F` (the credits' func_80125A40)
+     * can lock onto odd values and never fire. */
     if (mode < 0)
-        return (uint32_t)fb_vsync_count;
+        return device ? PE_LoadU32(0x800956ACu) : (uint32_t)fb_vsync_count;
     uint32_t entry = fb_vsync_timer;
     uint32_t ret = (entry - fb_vsync_baseline) & 0xFFFFu;
     fb_vsync_timer = (fb_vsync_timer + 1u) & 0xFFFFu;
@@ -353,6 +507,23 @@ int HostFB_WritePPM(const char *path)
 const uint8_t *HostFB_GetPixels(void)
 {
     return fb;
+}
+
+/* One guest CD-status poll (func_8007F418 DsSync(0), func_8007F72C
+ * DsSystemStatus).  Retail's drive runs while the CPU spins on these; a C
+ * busy loop over them (the generated ending-credits waits, e.g.
+ * `while (DsSystemStatus() != 1 || DsQueueLen() != 0) {}`) makes no
+ * progress unless each poll stands for some CPU time.  64 cycles is the
+ * retail cost of one such iteration, to within about a factor of two:
+ * func_8007F72C (19 words) + func_8007FBF0 + func_8007F778 (4 words) + the
+ * loop test, about 31 instructions with ~10 uncached RAM accesses.  It is
+ * not the 1024-cycle VSync(-1) quantum, which would advance the drive ~16x
+ * faster per poll than retail.  No effect with the device detached. */
+void HostFB_DevicePoll(void)
+{
+    PE_Port_EscapePoint();      /* armed only by PE_Main_EnterCredits */
+    if (!PE_Port_ShouldStop() && PE_CdReg_DeviceEnabled())
+        HostFB_DeviceTime(64u);
 }
 
 /* One guest poll-loop iteration of a CD stream wait.  HostFB_VSync(-1)

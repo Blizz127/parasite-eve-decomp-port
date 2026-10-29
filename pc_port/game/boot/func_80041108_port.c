@@ -18,6 +18,7 @@
 #include "pe_sdk.h"
 #include "pe_memcard.h"
 #include "pe_bios_string.h"
+#include "pe_guestcode.h"
 #include <string.h>
 
 int  func_8004D27C(void);
@@ -164,7 +165,15 @@ void func_8004D5CC(uint32_t index)
         case 0x80042928u:func_80042928();break;
         case 0x8005C488u:func_8005C488();break;
         case 0x80062F9Cu:func_80062F9C();break;
-        default:operation_boundary("func_8004D5CC",callback,0u,0u,0u,0u,0u,0u);return;
+        default:
+            /* Any other target is retail's argument-less jalr through the
+             * guest-code registry.  func_80042264 installs 0x80042228 (a
+             * generated TU) after a card CRC match; unresolved stays a stop. */
+            if(PE_GuestCode_Resolve(callback)) {
+                (void)PE_GuestCall("func_8004D5CC:D_8009CFFC",callback,0u,0u,0u,0u,0u);
+                break;
+            }
+            operation_boundary("func_8004D5CC",callback,0u,0u,0u,0u,0u,0u);return;
         }
         if(PE_Port_StopEpoch()!=epoch)return;
         PE_StoreU32(0x8009CFFCu,0u);

@@ -1,8 +1,16 @@
 /*
- * PE-BTL100 — 2A7F8 mode-3: 2AA98 / 2B29C case 0.
+ * PE-BTL100 — 2A7F8 mode-3: 2B29C case 0 and the mode-3 cut.
  *
  * Authority: build/disc1.candidate.exe SHA-1
- * 452fb033f2eaa4b18aa20a5bca60b8125af3a37b. No matching src/ C.
+ * 452fb033f2eaa4b18aa20a5bca60b8125af3a37b.
+ *
+ * func_8002AA98 itself is no longer here.  Its matched leaf
+ * src/func_8002AA98.c is byte-exact, and the generated TU
+ * pc_port/game/decomp/func_8002AA98_port.c now comes from the NON_MATCHING
+ * src/nonmatching/exe/func_8002AA98.c, which only makes retail's
+ * register-passed a1 to func_8006F39C explicit and is checked against the
+ * retail EXE by e21 (docs/evidence/native-revive-20261026/).  The hand
+ * version here ran only phase 0 of the eight.
  *
  * 2A7F8 is a compare chain, not a jump table:
  *   mode 1 → 25EE8 (not this cut)
@@ -59,35 +67,6 @@ static int pe_aya_death_clip_ready(pe_addr_t aya)
     if (aya == 0u)
         return 0;
     return PE_LoadU8(aya + 0x0Fu) == (uint8_t)PE_LoadU16(aya + 0x16u);
-}
-
-int func_8002AA98(void)
-{
-    pe_addr_t aya;
-    uint8_t phase;
-    uint32_t flags;
-
-    phase = PE_LoadU8(GA_D_8009CE74);
-    if (phase >= 8u)
-        return 0;
-    if (phase != 0u)
-        return 0;
-
-    aya = PE_LoadU32(GA_D_8009D254);
-    if (!pe_aya_death_clip_ready(aya)) {
-        aya = PE_LoadU32(GA_D_8009D254);
-        if (aya != 0u) {
-            flags = PE_LoadU32(aya + 0x98u);
-            PE_StoreU32(aya + 0x98u, flags & ~0x100u);
-        }
-        return 0;
-    }
-    aya = PE_LoadU32(GA_D_8009D254);
-    PE_StoreU8(GA_D_8009CE70, 16u);
-    flags = PE_LoadU32(aya + 0x98u);
-    PE_StoreU32(aya + 0x98u, flags | 0x100u);
-    PE_StoreU8(GA_D_8009CE74, (uint8_t)(phase + 1u));
-    return 0;
 }
 
 __attribute__((unused)) static void func_8002B29C_case0(void)
@@ -474,36 +453,8 @@ void func_8002B29C(void)
  *      (6A674) skips 6CDA4; bit4 clear returns 0 →
  *      295E4, mode=9, B0CD8&=~0x8000. Do not plant 0x41.
  */
-/* Full 2F300 victory initialization, retaining the historical entry name. */
-static void victory_rgb(pe_addr_t at,uint8_t r,uint8_t g,uint8_t b)
-{ PE_StoreU8(at,r); PE_StoreU8(at+1u,g); PE_StoreU8(at+2u,b); }
-
-void func_8002F300_mode2_cut(void)
-{
-    static const pe_addr_t hp[]={0x800B00ECu,0x800B00FCu,0x800B0110u,0x800B0120u};
-    static const pe_addr_t at[]={0x800B0134u,0x800B0144u,0x800B017Cu,0x800B018Cu};
-    static const pe_addr_t pe[]={0x800B0158u,0x800B0168u,0x800B01A0u,0x800B01B0u};
-    pe_addr_t aya;
-    unsigned i;
-    func_800293F4(0u);
-    for (i=0;i<4;i++) {
-        victory_rgb(hp[i],0u,70u,130u); victory_rgb(hp[i]+8u,159u,255u,249u);
-        victory_rgb(at[i],0u,130u,54u); victory_rgb(at[i]+8u,74u,255u,59u);
-        victory_rgb(pe[i],255u,61u,129u); victory_rgb(pe[i]+8u,131u,19u,1u);
-    }
-    victory_rgb(0x800B692Cu,159u,255u,249u); victory_rgb(0x800B6948u,159u,255u,249u);
-    PE_StoreU32(GA_D_8009D28C, 2u);
-    PE_StoreU32(GA_D_8009D2E8,PE_LoadU32(GA_D_8009D2E8)|1u);
-    aya=PE_LoadU32(GA_D_8009D254);
-    PE_StoreU32(aya+0x68u,0u); PE_StoreU32(aya+0x6Cu,0u); PE_StoreU32(aya+0x70u,0u);
-    PE_StoreU32(aya+0x98u,PE_LoadU32(aya+0x98u)&~0x100u);
-    PE_StoreU32(GA_D_800B0CD8,PE_LoadU32(GA_D_800B0CD8)|0x8000u);
-    if (!(D_8009D1A0&0x1800u)) {
-        func_8001A680_command_cut(aya,20u);
-        func_8006DE80(0x45B,0,(int16_t)PE_LoadU16(aya+0x2Au),
-            (int16_t)PE_LoadU16(aya+0x2Eu),(int16_t)PE_LoadU16(aya+0x32u));
-    }
-}
+/* Victory initialization uses the existing matched-source generated TU. */
+void func_8002F300(void);
 
 /*
  * 292EC remaining-enemy tail (inside 28E94).
@@ -535,7 +486,7 @@ void func_800292EC_victory_ready_cut(void)
         return;
     if ((int16_t)PE_LoadU16(rec + 0x0Cu) <= 0)
         return;
-    func_8002F300_mode2_cut();
+    func_8002F300();
 }
 
 /* func_8002B0E8: ported from the matching decomp -- generated TU pc_port/game/decomp/func_8002B0E8_port.c (src/func_8002B0E8.c); hand port retired after differential verification (docs/evidence/portverify/REPORT.md, round 6). */
@@ -550,14 +501,21 @@ void func_8002A7F8_mode3_cut(void)
     if (rec == 0u)
         return;
     flags = PE_LoadU32(rec + 0x4Cu);
+    /* As func_800299CC's mode-3 arm and retail 0x8002A880..0x8002A8D8: a
+     * finished revive (v0 & 0xFF) reloads the record and +0x4C before the
+     * bit clear (phase 7's func_800293F4 rewrote +0x4C), and consumes item
+     * 18 on the item arm. */
     if (flags & 0x800u) {
-        if (func_8002AA98() != 0)
-            PE_StoreU32(rec + 0x4Cu, flags & ~0x800u);
+        if ((uint8_t)func_8002AA98()) {
+            rec = PE_LoadU32(GA_D_8009D278);
+            PE_StoreU32(rec + 0x4Cu, PE_LoadU32(rec + 0x4Cu) & ~0x800u);
+        }
         return;
     }
     occ = func_80053E6C(18);
     if (occ != 0) {
-        (void)func_8002AA98();
+        if ((uint8_t)func_8002AA98())
+            (void)func_8005409C(0x12);
         return;
     }
     func_8002B29C();

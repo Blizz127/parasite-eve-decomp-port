@@ -84,7 +84,23 @@ for off, ws in bodies(dst):
     pn, lp = prof_env(t, fn)
     envs = '-'
     pname = 'era_o2_g0 (default)'
-    if pn is not None:
+    gp = None
+    if pn is not None and lp is None:
+        # A shared (global) profile from profiles_from, e.g. era_o2_g0_expand_div:
+        # the twin keeps the same profile, assigned by name in this room.
+        src_j = json.load(open(f'configs/USA/overlays/{t}_build_profiles.json'))
+        gj = json.load(open(src_j.get('profiles_from', 'configs/USA/disc1_build_profiles.json')))
+        gp = gj.get('profiles', gj).get(pn)
+        if (gp is None or gp.get('flags') != ['-O2', '-G0'] or
+                set(gp.get('environment', {})) - {'MASPSX_EXPAND_DIV', 'MASPSX_THREE_WORD_SYMBOL_STORE'}):
+            print('SKIP', new, 'unsupported profile', pn); continue
+        j = json.load(open(dst_prof_path))
+        lst = j.setdefault('assignments', {}).setdefault(pn, [])
+        if new not in lst: lst.append(new)
+        if not DRY: open(dst_prof_path, 'w').write(json.dumps(j, indent=2) + '\n')
+        envs = ' '.join(f'{k}={v}' for k, v in gp.get('environment', {}).items()) or '-'
+        pname = pn + ' (shared profile)'
+    elif pn is not None:
         if lp is None or set(lp.get('environment', {})) - {'MASPSX_THREE_WORD_SYMBOL_STORE', 'MASPSX_DISPATCH_FOLD'} or lp.get('flags') != ['-O2', '-G0']:
             print('SKIP', new, 'unsupported profile', pn); continue
         tabs = []

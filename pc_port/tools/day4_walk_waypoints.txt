@@ -1,0 +1,85 @@
+# Day 4 walk (day4_walk segment of day3_route_regress.py): TOKEN@STORY[&MASK][#VISIT]=x,z[,r][!N][~T];...
+# m0098i at 0x1B8: east into module 5's door trigger (x -654..-567, z 1017..1425) -> m0099i
+A8009448@1B8=-610,1200,40
+# m0099i: north-east to the payload-1 door (x -187..-14, z 1430..1759); with p2C 0x20000 set it opens to m0100i
+A80094C8@1B8=-179,906,60;-73,1358,60;-100,1600,40
+# m0100i: north along the corridor to the m0116i door (payload 6, x 820..900, z 605..1614), Day 3's path
+A8020048@1B8=-50,-3674,80;-7,-2741,80;-7,-1879,80;-60,-1550,60;40,-1300,60;105,-800,60;-10,-348,60;85,-252,60;133,600,60;488,1108,60;798,1100,60;1100,1074,40~300
+# m0115i: west to door 3 (payload 3, x -4116..-3900); with p2C 0x400000 set it opens to m0121i (Day 3's path)
+A80212C8@1B8=150,-1500,80;100,-2400,80;-2000,-2450,80;-4000,-2463,60;-4450,-2463,30~400
+# m0116i: to the payload-2 door (x 471..1155, z -1098..-858); at 0x1B8 it opens to m0115i
+A8021348@1B8=800,-600,80;800,-980,40
+# m0121i: to the m0117i door (payload 2, x -896..-725, z 10..174)
+A80220C8@1B8=-1467,494,80;-810,400,60;-810,90,40
+# m0117i at 0x1B8: module 6 trigger (x -18..613, z -752..-666) starts the 0x1C0 scene
+A80213C8@1B8=300,-710,40
+# m0103i hospital entrance at 0x1C0 (the m0000i selector puts Aya here): south into the payload-2 exit (x -267..285, z -1140..-996) -> m0000i
+A80201C8@1C0=0,-1070,40
+# m0000i city map at 0x1C0: index 4 = precinct m0039i (index 6 m0024i, 7 hospital m0103i, 8 m0058i, 9 m0192i)
+A8000048@1C0=4,0
+# m0125i at 0x1CC: west to module 3's door trigger (x 3600..3900, z 200..1150): writes 0x1D0, -> m0126i
+A80222C8@1CC=4620,-100,80;4550,650,80;3750,700,40
+# m0125i at 0x1D0 (module 2's entrance scene wrote it): around the NPC by the doors, west to the m0126i door trigger
+A80222C8@1D0=4950,950,80;4300,950,80;3750,750,40
+# m0126i museum lobby at 0x1D0: west to the m0127i door (payload 2, x -500..-150, z 250..1000)
+A8022348@1D0=1500,650,80;0,650,80;-320,620,40
+# m0127i at 0x1D0: south-west to the m0128i door (x -700..-450, z -1200..-750)
+A80223C8@1D0=-150,-1234,40;-300,-1234,30!20;-200,-875,40;-560,-875,40   (m0127i: elevator call panel x -350..-250 z -1284..-1184 facing west opens the m0128i door, then door x -700..-450 z -1200..-750)
+A8022448@1D0=280,-100,40;280,-225,25!20   (m0128i elevator panel x 245..320 z -250..-200 facing south; 1D3 written after the floor dialog)
+A8022448@1D3=280,-120,40;280,-225,25!20;0,-250,40;0,-380,40   (m0128i: second panel press opens the doors (payload 3), then exit payload 1 x -250..250 z -400..-300 -> m0131i)
+A8062048@1D6=-1000,190,60;-500,150,80;1100,0,40   (m0320i corridor east past the bin on the north side -> payload 1 x 800..1500 -> m0321i)
+A80620C8@1D6=700,-2450,80;1600,-2550,80;2650,-2500,40   (m0321i corridor east -> payload 2/3 x 2300..3000 z -2800..-2150 -> m0134i)
+A8062148@1DC=50,-700,60;50,-880,40   (m0322i exit payload 1 x -500..600 z -950..-800 -> m0321i)
+# 0x1DC basement key hunt; entries keyed on persist[0x41]: bit 1 = key A (item D1, m0325i), bit 2 = key B (item D2, m0328i)
+A80620C8@1DC=700,-2450,80;-500,-2450,80;-1600,-2450,80;-2400,-2300,60;-2450,-1900,40   (m0321i, no key: west along z -2450 (clear of payloads 1/5/6) -> payload 4 x -2750..-2150 z -2150..-1700 -> m0323i)
+A80621C8@1DC=-2400,-800,80;-2400,500,80;-2350,1150,40   (m0323i corridor north at x -2400 (clear of payload 3) -> payload 1 x -2650..-2000 z 1000..1300 -> m0339i)
+A80634C8@1DC=-2550,1600,60;-2950,1550,40   (m0339i, no key: west alcove payload 2 x -3200..-2650 z 1500..1750 -> m0325i)
+A80622C8@1DC=0,1450,60;-300,1880,60;-520,1885,40;-615,1885,20!20;-300,1750,60;400,1500,60;800,1400,40   (m0325i: north first (clear of payload 2 x -400..100 z 900..1200), key A press x -700..-578 z 1800..1957 facing west, then payload 1 x 580..1000 z 1100..1600 -> m0339i)
+A80634C8@1DC&41:1=-2400,1500,60;-2400,1150,40   (m0339i with key A: back south payload 1 x -2750..-2000 z 900..1400 -> m0323i)
+A80621C8@1DC&41:1=-2400,500,80;-2400,-800,80;-2400,-2050,40   (m0323i with key A: south -> z -2200..-1900 exit -> m0321i)
+A80620C8@1DC&41:1=-1600,-2450,80;-500,-2450,80;875,-2400,60;875,-1900,40   (m0321i with key A: east -> payload 7 x 750..1000 z -2300..-1700 facing north (needs persist[0x41] bit 1) -> m0327i)
+A80623C8@1DC&41:1=350,0,60;520,450,60;650,800,50;790,1080,30   (m0327i with key A: payload 2 x 700..900 z 900..1100 -> m0328i)
+A8062448@1DC&41:1=1300,-1300,60;1450,-500,80;1500,700,80;1500,950,25!20;1450,650,60;1450,0,80;1300,-1000,80;900,-1150,80;300,-1300,80;40,-1380,40;40,-1470,25!20;40,-1380,60;700,-1350,80;1250,-1450,60;1350,-1950,40   (m0328i: battle; fuse 0xCF pickup x 1400..1650 z 850..1100 facing +z (persist[0x41] or= 0x80); key B (0xD2) press at 40,-1470 facing the item at 24,-1620 (or= 2); payload 1 exit -> m0327i)
+A80623C8@1DC&41:3=550,700,60;300,0,60;-450,-700,60;-760,-1000,50;-760,-1220,30   (m0327i with both keys: payload 1 x -900..-600 z -1550..-1000 -> m0321i)
+A80620C8@1DC&41:3=700,-2450,80;-500,-2450,80;-1600,-2450,80;-2400,-2300,60;-2450,-1900,40   (m0321i with both keys: west -> m0323i)
+A80621C8@1DC&41:3=-2400,-800,80;-2400,150,60;-2080,150,40   (m0323i with both keys: east door payload 3 x -2200..-1900 z 0..300 -> m0326i)
+A8062348@1DC&41:3=-450,650,60;-300,500,80;200,100,80;250,-400,60;250,-600,40;520,-600,25!20;250,-500,60;200,100,80;-300,500,80;-650,750,60;-760,880,40   (m0326i: fuse 0xCE pickup x 470..680 z -690..-500 facing +x (or= 0x40), back to payload 2 x -900..-600 z 650..1050 -> m0323i)
+A80621C8@1DC&41:43=-2400,150,60;-2400,500,80;-2350,1150,40   (m0323i with keys + fuse 0xCE: north -> m0339i)
+A80634C8@1DC&41:3=-2550,1800,60;-2250,1600,40;-2200,1800,30!20;-2550,2000,60;-2500,2450,40   (m0339i with both keys: shutter panel x -2350..-2000 z 1700..1900 facing north (needs persist[0x41] bit 2) opens collision 0xC, then payload 3 x -2750..-2200 z 2300..2600 -> m0329i)
+A80624C8@1DC=-2850,-2300,80;-2850,-1450,60;-2400,-1420,40   (m0329i, no fuse 0xD0: payload 5 x -2650..-2100 z -1600..-1250 -> m0332i)
+A8063148@1DC=-550,1300,60;-580,850,60;-300,600,80;300,300,80;400,-250,80;700,-450,60;772,-600,60;772,-760,25!20;700,-450,80;400,-250,80;300,300,80;-300,600,80;-580,850,60;-550,1300,60;-550,2050,40   (m0332i: fuse 0xD0 at 772,-825 (pickup x 672..872 z -925..-725, or= 0x100), back to payload 1 x -700..-400 z 1800..2250 -> m0329i)
+A80624C8@1DC&41:100=-2850,-1500,60;-2850,-1100,80;-2850,0,80;-2740,250,60;-2735,420,40   (m0329i with fuse 0xD0: north along the west side, payload 4 x -2850..-2600 z 300..450 -> m0144i)
+A8024248@1DC=-2710,360,40;-2710,430,20!150;-2710,420,20!150;-2710,430,20!150;-2850,430,20!8;-2850,430,20%90;-2850,430,20^8;-2850,430,20%20;-2850,430,20!120;-2850,420,20!8;-2850,420,20%90;-2850,420,20!120   (m0144i fuse box: right side payload 8 x -2776..-2650 z 380..450 three times (YES: insert fuses CE/CF/D0, persist[0x41] or= 0x200/0x400/0x800), then left side payload 7 x -2900..-2800 with the power off: menu Down + Cross = REPAIR WIRES (or= 0x10000), then the left side again: TOGGLE POWER ON (or= 0x8000))
+A8024148@1E8=-2600,0,60;-2300,0,40   (m0142i after the power: east payload 1 x -2500..-2100 z -300..400 -> m0129i)
+
+
+A80224C8@1E8#1=-1300,0,60;-1161,120,30;-1161,191,6!40;-1161,191,6%500;-1050,150,40;-905,205,30;-905,205,30%600;-1161,191,40;-1600,250,40;-1600,500,40%300   (m0129i at 0x1E8: elevator button (Cross facing north) opens the doors, the bacterium battle in the encounter quad x -980..-761 z 177..352, then walk north into the car (module 2 quad x -1750..-1450 z 300..700, payload 1 -> A8023148))
+A8023148@1E8=-220,-100,20;-240,-190,8~120$FF3F:8;-205,-176,60!40;-205,-176,60%400;0,-200,30;0,-380,40   (m0132i elevator car at 0x1E8: floor panel quad x -400..-200 z -300..-160 (walkable x>=-225), confirm facing rot E00+-200)
+A80223C8@1E8=0,-500,40;0,-959,40;0,-1750,40   (m0127i at 0x1E8, off the elevator: south to the north-quad exit x -450..450 z -1850..-1650, payload 1 -> m0126i)
+A8022348@1E8=-200,660,40;-320,620,40   (m0126i at 0x1E8 before the m0127i NPC scene (persist[0x43] bit 1 clear): straight back through the m0127i door, so that scene plays now and not at 0x1EB, where it deadlocks against the 0xC key-return scene)
+A8022348@1E8&43:1=-100,700,60;300,1300,60;700,2300,60;700,2600,40   (m0126i at 0x1E8: from the m0127i door up to the north exit x 350..1200 z 2450..2750, payload 3 -> m0146i)
+A8024348@1E8=-1000,-1250,60   (m0146i at 0x1E8: exit x -2000..-150 z -1400..-1100, payload 2 -> m0147i; first guess)
+A80243C8@1E8=-400,-1400,60;0,-1500,60;600,-1460,50;780,-1400,40;930,-1280,25!40;930,-1280,25%300   (m0147i at 0x1E8: item 0xD3 at 985,-1250 (east pocket): Cross -> persist[0x41] bit 4, story 0x1EB)
+A80243C8@1EB=780,-1400,40;600,-1460,50;0,-1500,60;-400,-1400,60;-800,-800,40   (m0147i at 0x1EB, key 0xD3 taken: back west to the exit quad x -1250..-350 z -1000..-550, payload 1 -> m0146i)
+A8024348@1EB=-600,-1000,60;0,-300,60;800,300,60;1100,700,50;1275,1000,40   (m0146i at 0x1EB: from the m0147i door to the north-east exit x 1000..1550 z 850..1150, payload 1 -> m0126i)
+A8022348@1EB&43:1=700,2300,60;300,1300,60;-100,700,60;-320,620,40   (m0126i at 0x1EB: from the m0146i door back to the m0127i exit x -500..-150 z 250..1000)
+A80223C8@1EB=0,-920,400%3000   (m0127i at 0x1EB: the entry cutscene (module 1 payload 0xC: walk to 67,-1248, dialogue, op_1C(4,0,0xD)...) sets story 0x1EC; just wait)
+A80223C8@1EC=0,-700,40;150,-646,30;290,-646,12!30;290,-646,12%300;100,-700,40;0,-600,30;0,-450,20;50,-275,40   (m0127i at 0x1EC: key 0xD3 door panel: Cross facing +x in x 250..350 z -696..-596 (payload 7 uses the key: persist[0x41] bit 0x20, [0x42] bit 0x10), then north through the now-open door, quad x -300..400 z -350..-200, payload 4 -> m0148i), then east through it toward m0148i), then the quad x -300..400 z -350..-200, payload 4 -> m0148i)
+A8024448@1EC=-150,-300,40;-380,0,40;-460,330,30;-600,350,40   (m0148i at 0x1EC: exit x -750..-300 z 150..550, payload 2 -> m0149i)
+A80244C8@1EC=-850,2000,60;-950,1200,60;-900,600,50;-400,560,40;-100,620,40;125,690,20;125,790,12!40;125,790,12%300   (m0149i at 0x1EC: Cross facing +z in x 70..180 z 732..902 -> persist[0x41] bit 0x4000000, story 0x1EE; first guess)
+A80244C8@1EE=-100,620,40;-400,560,40;-900,600,50;-950,1200,60;-850,2000,60;-760,2840,40   (m0149i at 0x1EE: back the way in (west side, past the furniture at -404,1461) to the exit x -950..-576 z 2717..2972, payload 1 -> m0148i)
+A8024448@1EE=-390,60,40;-380,0,40;-150,-300,40;-300,-700,40;-525,-875,40   (m0148i at 0x1EE: from the m0149i alcove back to the m0127i exit x -700..-350 z -1200..-550)
+A80223C8@1EE=0,-700,40;120,-1240,25;150,-1240,12;265,-1240,12%10;265,-1240,60!20;265,-1240,60%900;200,-950,40;575,-950,40   (m0127i at 0x1EE: east elevator: call panel x 235..350 z -1296..-1196 facing +x (payload 6), wait for the car, then the east door x 450..700 z -1200..-750 (payload 3) -> m0132i)
+A8023148@1EE=-220,-100,20;-220,-100,20%300;-240,-190,8~120$FF3F:8;-205,-176,60!8;-205,-176,60%200;-205,-176,60!8;-205,-176,60%150;-205,-176,60^8;-205,-176,60%30;-205,-176,60^8;-205,-176,60%30;-205,-176,60!8;-205,-176,60%400;0,-200,30;0,-380,40   (m0132i car at 0x1EE: wait out the car arrival (it re-places Aya at 0,-100, about 300 frames after entry on a through run); the panel now opens "Select Floor" (msg 0x75, op_43 choice: Basement / Lobby / 13th Floor -> var 0x13 = 0/1/0xD). Cross opens it, Cross shows the options, Down twice = 13th Floor, Cross; then the door quad x -200..200 z -450..-250 (payload 4) -> m0150i, story 0x1F0); Down twice for choice 2, then the door quad x -200..200 z -450..-250 (payload 4 -> m0150i, story 0x1F0); first guess at the choice order)
+A8025048@1F0=0,200,60;200,1000,40;500,1000,30   (m0150i at 0x1F0: up the hall to the east alcove x 390..540 z 900..1100, payload 2 -> m0152i)
+A8025148@1F0=100,-1300,60;175,0,60;175,700,40;175,990,25;175,990,40%20;175,990,40!8;175,990,60%500;230,990,20;230,990,40%20;230,990,40!8;230,990,60%900;380,1030,20;380,1030,40%20;380,1030,40!8;380,1030,60%700;300,0,60;900,-1300,60;1175,-1300,30   (m0152i at 0x1F0, fresh state: tri 19 (pocket mouth) is blocked (op_80 0x13) and the north desk chain runs. Quad 3 x 100..250 z 950..1050 Cross facing north -> msg 3 scene; quad 4 x 160..240 Cross facing east -> msg 4 (door/drawer, persist 0x41 bit 0x8000000); quad 5 x 290..430 Cross facing north -> msg 5 (persist 0x42 bit 0x80, op_81 0x13 unblocks tri 19). Then the east pocket x 1050..1300 z -1550..-1200, payload 2 -> m0153i)
+A80251C8@1F0=650,-3100,60;1100,-2900,60;1100,-1300,60;1100,-500,60;1100,1050,40   (m0153i at 0x1F0: from the south door up the east corridor to quad 2 x 550..1650 z 800..1300 -> m0154i)
+A8025248@1F0=100,-2150,40;274,-2150,30;450,-2200,40;900,-2000,60;1000,-1700,40;1000,-1250,40;1150,-1120,30;1200,-850,30;1200,-850,60%900   (m0154i at 0x1F0: from the m0153i door east and north through trigger zone A x 600..1050 z -1300..-900 into zone B x 1051..1350 z -950..-660 -> msg 0xB scene sets story 0x1F4)
+A8025248@1F4=1150,-1120,30;1000,-1250,40;1000,-1700,40;900,-2000,60;450,-2200,40;274,-2150,30;100,-2000,40;-205,-1000,60;-205,-760,25;-205,-760,40%20;-205,-760,40!8;-205,-760,60%600;0,-760,30;0,-500,40   (m0154i at 0x1F4: back west and up the west block; Cross facing north at the panel quad x -250..-160 z -820..-700 (msg 4), then quad 2 x -200..200 z -700..-300 -> story 0x1F6, m0271i)
+A80252C8@1F8=-210,-100,30;-210,-165,20;-210,-165,40%20;-210,-165,40!8;-210,-165,60%600;0,-300,40;0,-450,40   (m0155i at 0x1F8: Cross facing south at quad 2 x -250..-167 z -200..-139 -> module 2 msg 2, op_81 0xE unblocks the south exit; then quad x -300..300 z -600..-300 -> m0156i)
+A8025348@1F8=3300,-6000,60;3000,-7000,60;2000,-7200,60;1500,-7500,60;1000,-7000,60   (m0156i at 0x1F8: walk west into the module 3 encounter zone x -149..2647 z -9769..-5931; the battle end (msg 0xFD -> payload 1) transfers to m0380i)
+A80680C8@1FC=1991,-5055,40+;2149,-6612,40+;1946,-7137,40+;1978,-7924,40+;1978,-8658,40+;879,-8842,40+;52,-8816,40+;52,-9441,40+;-97,-9523,40+;-1077,-9523,40+;-1219,-9381,40+;-2450,-10500,40+   (m0381i at 0x1FC: after the Eve scene the roof is on a timer (module 1 payload 0x13 -> m0438i game over); floor-mesh path north-west to the module 5 quad x -3200..-1700 z -11000..-10000 -> msg 0xFB, payload 1 -> m0157i)
+A8004348@216=-85,-887,40;-175,-887,40;-175,-811,40;-390,-633,40;-694,-374,40;-885,-325,40;-993,-114,40;-993,145,40;-1021,237,40;-1020,404,40;-1020,658,40;-1026,788,40;-989,788,40;-1034,870,40   (m0046i at 0x216: back from the m0381i roof by car; floor path to the south-west door quad x -1143..-925 z 746..994 -> m0043i)
+A80041C8@216=-7,-2741,40;-50,-3342,40;-50,-3674,40;-50,-3859,40;2,-3941,40;4,-4052,40;119,-4070,40;-6,-4198,40;10,-4215,40   (m0043i at 0x216: from the m0046i door north up the corridor to quad x -180..200 z -4335..-4095 -> m0042i)
+A8004148@216=-52,1164,40;-104,1127,40;-168,1101,40;-300,1057,40;-578,1023,40   (m0042i at 0x216: from the m0043i door west to quad x -650..-506 z 952..1094 -> m0041i)
+A80040C8@216=-829,1101,40;-866,1015,40;-866,818,40;-862,646,40;-838,458,40;-839,45,40;-962,28,40;-1326,100,40   (m0041i at 0x216: from the m0042i door south to module 8 quad x -2029..-624 z -4..209 -> module 2 payload 0x64: scene, story 0x218, -> m0352i, which sets 0x220)

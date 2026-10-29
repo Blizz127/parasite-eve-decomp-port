@@ -122,10 +122,12 @@ void func_800236E8(void)
     if (kind==8) {
         actor=PE_LoadU32(queue);
         func_80021278(actor,0x8009CE54u,0);
+        if (PE_Port_ShouldStop()) return;
         if ((int8_t)PE_LoadU8(0x8009CE54u)==1) {
             uint32_t resistance;
             func_8006DE80(0x46D,0,(int16_t)PE_LoadU16(actor+0x268u),
                 (int16_t)PE_LoadU16(actor+0x26Au),(int16_t)PE_LoadU16(actor+0x26Cu));
+            if (PE_Port_ShouldStop()) return;
             if (PE_LoadU32(hit_weapon()+16u)&0x6000u) {
                 pe_addr_t body=PE_LoadU32(PE_LoadU32(queue));
                 resistance=(PE_LoadU32(body+0xCCu)>>12u)&3u;
@@ -141,12 +143,16 @@ void func_800236E8(void)
         hit_apply_result(PE_LoadU32(queue));
     } else if (kind==6) {
         int previous;
-        actor=PE_LoadU32(queue); func_80021278(actor,0x8009CE54u,0); hit_apply_result(actor);
+        actor=PE_LoadU32(queue); func_80021278(actor,0x8009CE54u,0);
+        if (PE_Port_ShouldStop()) return;
+        hit_apply_result(actor);
         previous=(int8_t)PE_LoadU8(0x8009CE55u);
         if ((int8_t)PE_LoadU8(0x8009CE54u)==1) {
             for (actor=PE_LoadU32(0x8009D20Cu);actor;actor=PE_LoadU32(actor+4u)) {
                 if (!hit_eligible(actor) || actor==PE_LoadU32(queue)) continue;
-                func_80021278(actor,0x8009CE54u,previous); hit_apply_result(actor);
+                func_80021278(actor,0x8009CE54u,previous);
+                if (PE_Port_ShouldStop()) return;
+                hit_apply_result(actor);
             }
         }
     } else if ((PE_LoadU32(weapon+16u)&0xC0u)==0x80u && !(PE_LoadU32(hit_record()+0x4Cu)&0x100000u)) {
@@ -163,11 +169,17 @@ void func_800236E8(void)
                                         (int16_t)PE_LoadU16(actor+0x26Cu)-(int16_t)PE_LoadU16(aya+0x32u));
             if (center>=-1536 && center<1536) { if (angle<lower || angle>upper) continue; }
             else if (angle<upper && angle>lower) continue;
-            func_80021278(actor,0x8009CE54u,0); hit_apply_result(actor);
+            func_80021278(actor,0x8009CE54u,0);
+            if (PE_Port_ShouldStop()) return;
+            hit_apply_result(actor);
         }
     } else {
         actor=PE_LoadU32(queue);
-        if (actor) { func_80021278(actor,0x8009CE54u,0); hit_apply_result(PE_LoadU32(queue)); }
+        if (actor) {
+            func_80021278(actor,0x8009CE54u,0);
+            if (PE_Port_ShouldStop()) return;
+            hit_apply_result(PE_LoadU32(queue));
+        }
     }
     PE_StoreU8(0x8009D294u,0u);
     PE_StoreU8(0x8009D274u,0u);

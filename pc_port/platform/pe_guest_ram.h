@@ -67,6 +67,20 @@ pe_addr_t PE_HostToGuest(const volatile void *host);
  * host pointer is obtained; len is an exact unsigned 32-bit guest length. */
 void PE_Fill(pe_addr_t address, uint32_t len, uint8_t value);
 
+/* ── Native guest frames (E21 lowered leaves) ───────────────────────────
+ * A lowered leaf whose local aggregate (or address-taken local) must have a
+ * guest address -- because it is passed to a callee that takes one, or its
+ * address is stored into guest RAM -- gets that local in a guest-RAM frame,
+ * exactly like retail's stack frame.  Frames are a strict LIFO arena in the
+ * otherwise unused bottom of the retail stack, [PE_GUEST_FRAME_LO,
+ * PE_GUEST_FRAME_HI) (the host scratch windows at 0x801FEFE8.. stay clear).
+ * Enter returns the 8-aligned frame base; Leave(base, size) pops it.
+ * Overflow is fatal and loud. */
+#define PE_GUEST_FRAME_LO 0x801FE000u
+#define PE_GUEST_FRAME_HI 0x801FEC00u
+pe_addr_t PE_GuestFrame_Enter(uint32_t size);
+void      PE_GuestFrame_Leave(pe_addr_t base, uint32_t size);
+
 /* ── Little-endian guest loads / stores ─────────────────────────────── */
 
 uint8_t  PE_LoadU8 (pe_addr_t address);

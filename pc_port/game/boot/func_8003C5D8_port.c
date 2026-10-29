@@ -13,6 +13,9 @@
 #include "psx_compat.h"
 #include "pe_port_compat.h"
 #include "pe_sdk.h"
+#include "game_port.h"
+
+void PE_Decomp_NoteStopDetail(const char *text);
 
 /* func_8003C5D8: ported from the matching decomp -- generated TU pc_port/game/decomp/func_8003C5D8_port.c (src/func_8003C5D8.c); hand port retired after differential verification (docs/evidence/portverify/REPORT.md). */
 
@@ -34,16 +37,18 @@ void func_8003B144(pe_addr_t dest)
             pe_addr_t packet = packet_base + bank * stride[kind];
             uint32_t xy[4], depth_sum = 0u;
             uint16_t index[4];
-            int32_t x[3], y[3], area, bucket;
+            int32_t area, bucket;
             for (v = 0; v < 3u; v++) {
                 index[v] = PE_LoadU16(geometry + 4u + v * 2u);
                 xy[v] = PE_LoadU32(0x800B1644u + index[v] * 4u);
-                x[v] = (int16_t)xy[v];
-                y[v] = (int16_t)(xy[v] >> 16);
             }
-            area = (int32_t)(uint32_t)((int64_t)x[0]*y[1] + (int64_t)x[1]*y[2]
-                 + (int64_t)x[2]*y[0] - (int64_t)x[0]*y[2]
-                 - (int64_t)x[1]*y[0] - (int64_t)x[2]*y[1]);
+            /* Retail leaves SXY0-2, MAC0, FLAG and the scratch area live,
+             * including for culled and far-rejected polygons. */
+            PE_GTE_WriteData(12u, xy[0]);
+            PE_GTE_WriteData(14u, xy[2]);
+            PE_GTE_WriteData(13u, xy[1]);
+            area = PE_GTE_NCLIP();
+            PE_StoreU32(0x1F800000u, (uint32_t)area);
             if (area <= 0) {
                 PE_StoreU32(packet, PE_LoadU32(packet) & 0xFF000000u);
                 continue;
@@ -77,8 +82,9 @@ void func_8003B144(pe_addr_t dest)
  * transformed y lies below the plane, replace its projected screen entry
  * (0x800B1644 + index*4) with that clip point and count it. When every
  * model vertex (u16 model+0x1A) was clipped, dest+0x9E = 0; otherwise
- * dest+0x9E = (dest+0x9C & 0x200) ? 0 : 1. Retail keeps the scratchpad
- * vector at 1F800000; the port keeps it in locals.
+ * dest+0x9E = (dest+0x9C & 0x200) ? 0 : 1. The scratchpad
+ * vector at 1F800000 and projected screen word at 1F800008 remain visible
+ * in guest scratchpad, including when the bounds/vertex tests reject them.
  */
 static void pe_gte_load_bone(pe_addr_t m)
 {
@@ -89,6 +95,7 @@ void func_8003C2E0(pe_addr_t dest, int level, pe_addr_t view)
 {
     pe_addr_t model = PE_LoadU32(dest);
     unsigned int bones, bone, clipped = 0u;
+    level = (int16_t)level;
     if (model == 0u || (int16_t)PE_LoadU16(dest + 0xBAu) == 0)
         return;
     bones = PE_LoadU8(model + 2u);
@@ -107,14 +114,19 @@ void func_8003C2E0(pe_addr_t dest, int level, pe_addr_t view)
                      (int16_t)PE_LoadU16(entry + 4u));
         PE_GTE_MVMVA(0x0480012u);
         ox = (int16_t)g_pe_gte.ir[0]; oy = (int16_t)g_pe_gte.ir[1]; oz = (int16_t)g_pe_gte.ir[2];
+        PE_StoreU16(0x1F800000u, (uint16_t)ox);
+        PE_StoreU16(0x1F800002u, (uint16_t)oy);
+        PE_StoreU16(0x1F800004u, (uint16_t)oz);
         radius = (int16_t)PE_LoadU16(entry + 6u);
         if (!(level < oy)) {
             if (!(level < oy - radius) && !(level < oy + radius))
                 continue;
         }
+        PE_StoreU16(0x1F800002u, (uint16_t)level);
         PE_GTE_LoadRT(view);
         PE_GTE_SetV0((int16_t)ox, (int16_t)level, (int16_t)oz);
         PE_GTE_RTPS_coordinates(&clip_xy, &clip_z);
+        PE_StoreU32(0x1F800008u, clip_xy);
         start = PE_LoadU16(rec);
         count = PE_LoadU16(rec + 2u);
         src = PE_LoadU32(dest + 8u) + start * 8u;
@@ -123,6 +135,9 @@ void func_8003C2E0(pe_addr_t dest, int level, pe_addr_t view)
             PE_GTE_SetV0((int16_t)PE_LoadU16(src), (int16_t)PE_LoadU16(src + 2u),
                          (int16_t)PE_LoadU16(src + 4u));
             PE_GTE_MVMVA(0x0480012u);
+            PE_StoreU16(0x1F800000u, (uint16_t)g_pe_gte.ir[0]);
+            PE_StoreU16(0x1F800002u, (uint16_t)g_pe_gte.ir[1]);
+            PE_StoreU16(0x1F800004u, (uint16_t)g_pe_gte.ir[2]);
             if (level < (int16_t)g_pe_gte.ir[1]) {
                 PE_StoreU32(0x800B1644u + (start + i) * 4u, clip_xy);
                 clipped++;
@@ -153,28 +168,46 @@ int func_8003AF14(pe_addr_t dest, pe_addr_t scratch)
     }
     if (PE_LoadU16(dest + 0x9Cu) & 0x10u)
         func_8003C2E0(dest, (int16_t)PE_LoadU16(dest + 0x9Au), scratch);
-    /* Isolated pre-constructor tests have no packet storage. */
-    if (PE_LoadU8(dest + 0x9Eu) == 1u
-        && PE_RangeIsRam(PE_LoadU32(dest + 0x54u), 4u))
-        func_8003B144(dest);
+    if (PE_LoadU8(dest + 0x9Eu) == 1u) {
+        pe_addr_t packets = PE_LoadU32(dest + 0x54u);
+        if (packets != 0u && PE_RangeIsRam(PE_RamCanonical(packets, 4u), 4u)) {
+            func_8003B144(dest);
+        } else {
+            pe_addr_t model = PE_LoadU32(dest);
+            /* An empty model has no packet accesses; a nonempty one must
+             * not silently drop its draw when its packet buffer is absent. */
+            if (PE_LoadU16(model + 8u) || PE_LoadU16(model + 10u) ||
+                PE_LoadU16(model + 12u) || PE_LoadU16(model + 14u)) {
+                PE_Decomp_NoteStopDetail("RENDER/REFUSED missing model packet storage");
+                PE_Port_RequestStop(PE_PORT_STOP_UNRESOLVED_BOUNDARY);
+                return 0;
+            }
+        }
+    }
     flags = PE_LoadU16(dest + 0x9Cu);
     if (flags & 0x20u) {
         func_8003B708(dest, (int16_t)PE_LoadU16(0x8009CDDCu));
+        if (PE_Port_ShouldStop()) return 0;
         PE_StoreU8(dest + 0x9Fu, PE_LoadU32(0x8009CDDCu) == 0u);
         PE_StoreU16(dest + 0x9Cu, (PE_LoadU16(dest + 0x9Cu) & 0xFFDFu) | 0x40u);
     } else if (flags & 0x40u) {
         func_8003B708(dest, PE_LoadU8(dest + 0x9Fu));
+        if (PE_Port_ShouldStop()) return 0;
         PE_StoreU16(dest + 0x9Cu, PE_LoadU16(dest + 0x9Cu) & 0xFFBFu);
     }
     flags = PE_LoadU16(dest + 0x9Cu);
     if (flags & 2u) {
-        if ((int16_t)func_8003C818(dest))
+        int completed = func_8003C818(dest);
+        if (PE_Port_ShouldStop()) return 0;
+        if ((int16_t)completed)
             PE_StoreU16(dest + 0x9Cu, (PE_LoadU16(dest + 0x9Cu) & 0xFFFDu) | 0x200u);
     } else if (flags & 4u) {
-        if ((int16_t)func_8003C638(dest))
+        int completed = func_8003C638(dest);
+        if (PE_Port_ShouldStop()) return 0;
+        if ((int16_t)completed)
             PE_StoreU16(dest + 0x9Cu, PE_LoadU16(dest + 0x9Cu) & 0xFFFBu);
     } else if (flags & 9u) {
-        func_8003B97C_lighting_cut(dest, 0x800BEA40u);
+        func_8003B97C(dest, 0x800BEA40u);
         if (!(flags & 8u)) func_8003BCE0(dest, 0, (int16_t)PE_LoadU16(0x8009CDDCu));
     }
     if (PE_LoadU16(dest + 0x9Cu) & 8u)

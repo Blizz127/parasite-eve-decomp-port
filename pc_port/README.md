@@ -158,6 +158,10 @@ LB/RB = L1/R1, LT/RT = L2/R2, Back = Select, Start = Start, D-pad or left stick
 `PE_PAD_SWAP_XY=1` swaps Square/Triangle, `PE_PAD_DEBUG=1` logs raw events.
 Tested by `pe-host-pad-tests` (CTest `host-pad-input`). The owner preview
 package is built by `pc_port/package_preview.sh` (no game data inside).
+Packaging requires `PE_PREVIEW_DEV_MENU=1` (owner/checkpoint build: Back+Start
+or F8 opens the dev menu) or `PE_PREVIEW_DEV_MENU=0` (public preview); the
+launcher's `PE_DEV_MENU` environment override still wins at run time, and
+`pc_port/tools/check_preview_dev_menu.sh <tarball> <0|1>` verifies a package.
 Resizing or maximizing scales the full game image to fit while keeping its
 original 4:3 aspect ratio; unused space has black borders.
 Pacing is per emulated VBlank (`PE_AudioDriver_SetVBlankPacer`): one VBlank
@@ -166,7 +170,7 @@ its `VSync(n)` waits and the 240 Hz music clock all run at retail speed; a
 present only polls input. (Pacing per present had run gameplay and music at
 2x.) F6 toggles normal speed (60000/1001 Hz) and uncapped fast-forward; on a
 controller L3 (left stick click) toggles it and R3 (right stick click)
-fast-forwards while held. The window title shows the active mode, and the sound
+fast-forwards while held. The window title gains "[Fast-forward]" while it is active, and the sound
 device is muted with a fade while fast-forwarding (the WAV dump is not). Normal is the default. Frame waits use a monotonic
 clock and poll input; long pauses discard the timing backlog.
 

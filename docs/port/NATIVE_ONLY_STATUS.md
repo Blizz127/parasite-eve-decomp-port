@@ -161,3 +161,13 @@ releases are unchanged.
   unset).
 - You provide your own supported Parasite Eve (USA) Disc 1 image as a raw
   2352-byte-sector BIN/CUE.
+
+## Status update (2026-10-29): source sync, no new public build
+
+The source tree was synced from the development tree at `41ecb77e3`. See the
+2026-10-29 entry in `CHANGELOG.md` for what changed, what is held back, and
+how it was checked. In short: production still runs only native C with no
+interpreter; an unported call stops instead of being emulated; Day 1 with
+pad input only reaches the sewer alligator's second phase, and Days 2 to 5
+were only exercised as warp-started assisted diagnostics. No binary is
+published, because the runtime still links Psy-Q-classified functions.

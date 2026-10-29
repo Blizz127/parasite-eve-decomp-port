@@ -5,16 +5,15 @@
 #include "game_port.h"
 
 static pe_addr_t use_ram(pe_addr_t p) {return p<0x200000u?p|0x80000000u:p;}
-static void use_boundary(const char *name)
-{
-    Bootstrap_ReturnVoid(name,"func_80057834");
-    PE_Port_RequestStop(PE_PORT_STOP_UNRESOLVED_BOUNDARY);
-}
+/* Native bodies (decomp_hand/absent_lo_menu_port.c, decomp_hand/port6_port.c). */
+void func_8004F23C(void);
+void func_80048918(int a0, int a1, int a2);
 
 void func_800516B4(int32_t item)
 {
     pe_addr_t aya,record,weapon;uint32_t bank;
     func_80023E14(item);
+    if (PE_Port_ShouldStop()) return;
     aya=PE_LoadU32(0x8009D254u);if (!aya) return;
     record=PE_LoadU32(aya);if (!record) return;
     PE_StoreU16(0x800C0E08u,PE_LoadU16(record+12u));
@@ -25,26 +24,7 @@ void func_800516B4(int32_t item)
     func_80052E30(bank);
 }
 
-void func_80057834(int32_t index)
-{
-    pe_addr_t record=func_8005332C(index);
-    if (PE_LoadU32(0x8009D028u)) {
-        pe_addr_t history=func_80051098(),slot=D_8009D048+(uint32_t)index*2u;
-        PE_StoreU32(use_ram(history),0u);
-        PE_StoreU32(use_ram(history+8u),(uint32_t)index);
-        PE_StoreU32(use_ram(history+4u),(uint32_t)(int32_t)(int16_t)PE_LoadU16(use_ram(slot)));
-        PE_MenuCommitResult((uint32_t)(int32_t)(int16_t)PE_LoadU16(use_ram(slot))+3u);
-        func_80057D30(index);
-    } else {
-        unsigned subtype=PE_LoadU8(use_ram(record+14u));
-        if (subtype==1u) {
-            func_800516B4((int16_t)PE_LoadU16(use_ram(D_8009D048+(uint32_t)index*2u)));
-            func_80057D30(index);func_80055760();
-        } else if (subtype==2u) use_boundary("func_8004F23C");
-        else if ((subtype>=4u && subtype<=6u) || (subtype>=12u && subtype<=14u))
-            use_boundary("func_80048918");
-    }
-}
+/* func_80057834: ported from the matching decomp -- generated TU pc_port/game/decomp/func_80057834_port.c (src/func_80057834.c); hand port retired after differential verification (docs/port/NATIVE_COMPLETION.md, "Hand ports retired"). */
 
 int func_80044B0C(pe_addr_t window,uint32_t event)
 {
@@ -68,7 +48,9 @@ int func_80044B0C(pe_addr_t window,uint32_t event)
         func_80062F1C(window);
         if (PE_LoadU32(0x8009CF0Cu)==2u) {func_80062F3C(51u);func_80062F3C(52u);}
         if (func_8005B89C()) func_80062F1C(PE_LoadU32(use_ram(func_80062CC4()+4u)));
-        func_80057834((int32_t)PE_LoadU32(0x8009CF04u));func_800525EC();return 1;
+        func_80057834((int32_t)PE_LoadU32(0x8009CF04u));
+        if (PE_Port_ShouldStop()) return 1;
+        func_800525EC();return 1;
     case 1:
         list=PE_LoadU32(window+4u);
         PE_StoreU32(use_ram(list+76u),PE_LoadU32(use_ram(list+68u)));

@@ -109,7 +109,9 @@ static int menu_transfer(pe_addr_t node,pe_addr_t other,int same)
     current=func_80063428(node);saved=menu_saved_index(other);
     id=PE_LoadU32(node+36u);other_id=PE_LoadU32(other+36u);
     if ((same || id==other_id) && current==saved) return 0;
-    if (menu_callback(PE_LoadU32(node+132u),id,(uint32_t)current,other_id,(uint32_t)saved)) {
+    int accepted = menu_callback(PE_LoadU32(node+132u),id,(uint32_t)current,other_id,(uint32_t)saved);
+    if (PE_Port_ShouldStop()) return 0;
+    if (accepted) {
         PE_StoreU32(other+76u,UINT32_MAX);func_800525EC();
     } else func_800526C4();
     return 1;
@@ -187,14 +189,19 @@ int func_80063E0C(pe_addr_t node,uint32_t event)
     if (event&0x10000u) {
         if (!PE_LoadU32(node+132u)) return 0;
         handled|=menu_transfer(node,node,1);
+        if (PE_Port_ShouldStop()) return handled;
         handled|=menu_transfer(node,PE_LoadU32(node+120u),0);
+        if (PE_Port_ShouldStop()) return handled;
         handled|=menu_transfer(node,PE_LoadU32(node+124u),0);
         return handled;
     }
     if (event&64u) {
         if (menu_word(node,76u)>=0) {
             menu_restore_cursor(node);
-            if (PE_LoadU32(node+136u)) (void)menu_callback(PE_LoadU32(node+136u),0u,0u,0u,0u);
+            if (PE_LoadU32(node+136u)) {
+                (void)menu_callback(PE_LoadU32(node+136u),0u,0u,0u,0u);
+                if (PE_Port_ShouldStop()) return handled;
+            }
             handled=1;func_80052634();
         }
         other=PE_LoadU32(node+120u);

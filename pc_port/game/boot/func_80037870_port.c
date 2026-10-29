@@ -18,8 +18,7 @@
  *   FF + state==2 + (D1F4&0x100) + !(flags&0x02000000) → 0
  *   FB 07 nn pauses on +0x0D
  *
- * Custom window frames, substituted numbers and extended glyph pages are
- * still outside this cut. Ordinary field dialogue uses the disc font atlas,
+ * Ordinary field dialogue uses the disc font atlas,
  * bearing/advance table and per-bank packet arena, not a host text overlay.
  * Host refuses to walk a non-KSEG stream (ROM would load
  * address 0). Scan length is capped at 0x10000 —
@@ -28,6 +27,7 @@
 #include "psx_compat.h"
 #include "pe_port_compat.h"
 #include "pe_guest_ram.h"
+#include "game_port.h"
 
 #define GA_D_800BCEA8 0x800BCEA8u
 #define GA_D_8009CE90 0x8009CE90u
@@ -35,6 +35,8 @@
 #define REC_STRIDE    56u
 #define SCAN_CAP      0x10000u
 #define GLYPH_BYTES   28u
+extern void func_8005E894(int x, int y);
+
 #define ARENA_BYTES   0x2400u /* func_8006A8D4's per-bank allocation */
 
 typedef struct {
@@ -141,8 +143,12 @@ static pe_addr_t pe_37870_find_marker(pe_addr_t stream, int id)
             b2 = PE_LoadU8(stream + 2u);
             if (b1 == 0xFEu && (int)b2 == id)
                 return stream + 3u;
+            /* Retail advances past the marker and its next two bytes even
+             * when they do not identify the requested message. */
+            stream += 3u;
+        } else {
+            stream++;
         }
-        stream++;
     }
     return 0;
 }
@@ -197,6 +203,14 @@ static void pe_37870_record(pe_addr_t rec, PeMessageDraw *draw, unsigned int ban
         y = PE_LoadU16(rec + 0x14u);
         if (!(PE_LoadU32(rec + 0x0Cu) & 0x02000000u))
             y = (uint16_t)(y + 6u);
+        if (mode == 1u) {
+            func_8005E894((int)PE_LoadU16(rec + 0x12u),
+                          (int)PE_LoadU16(rec + 0x14u));
+            if (PE_Port_ShouldStop()) return;
+            func_80061C34(PE_LoadU16(rec + 0x16u),
+                          PE_LoadU16(rec + 0x18u), 0u, 0u);
+            if (PE_Port_ShouldStop()) return;
+        }
     } else if (PE_LoadU8(rec + 9u) != 0u) {
         pe_37870_background(draw, bank);
     }
@@ -239,6 +253,7 @@ static void pe_37870_record(pe_addr_t rec, PeMessageDraw *draw, unsigned int ban
             sub = PE_LoadU8(cursor + 1u);
             if(sub<4u || sub>=10u) {pe_37870_extended(draw,byte,sub,&x,y);cursor+=2u;continue;}
             if(sub==8u) {
+                if(!PE_MessageDigitsKnown(rec,(digits-(rec+0x1Au))/6u)){PE_Port_RequestStop(PE_PORT_STOP_UNRESOLVED_BOUNDARY);return;}
                 for(int count=(int8_t)PE_LoadU8(digits+5u);count>0;count--)
                     pe_37870_extended(draw,0u,PE_LoadU8(digits+(unsigned)count-1u),&x,y);
                 digits+=6u;cursor+=2u;continue;
@@ -348,7 +363,7 @@ void func_80037870(void)
     unsigned int bank = PE_LoadU32(0x8009CDDCu);
     PeMessageDraw draw;
 
-    if (bank > 1u)
+    if (PE_Port_ShouldStop() || bank > 1u)
         return;
     draw.packet = PE_LoadU32(0x800B0E44u + bank * 4u);
     draw.end = PE_RangeIsRam(draw.packet, ARENA_BYTES) ?
@@ -358,6 +373,8 @@ void func_80037870(void)
     draw.background = 0;
     if (PE_LoadU32(0x8009CED4u) != 0u)
         pe_37870_background(&draw, bank);
-    for (i = 0; i < 4u; i++)
+    for (i = 0; i < 4u; i++) {
         pe_37870_record(GA_D_800BCEA8 + i * REC_STRIDE, &draw, bank);
+        if (PE_Port_ShouldStop()) return;
+    }
 }

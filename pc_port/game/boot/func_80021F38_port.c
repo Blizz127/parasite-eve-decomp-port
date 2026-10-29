@@ -3,6 +3,7 @@
  * transitions. Effects are signaled through the native 6F6D4 dispatcher. */
 #include "psx_compat.h"
 #include "pe_port_compat.h"
+#include "game_port.h"
 
 static pe_addr_t shot_aya(void) { return PE_LoadU32(0x8009D254u); }
 static pe_addr_t shot_record(void) { return PE_LoadU32(0x8009D278u); }
@@ -39,6 +40,7 @@ static void shot_end_effects(int check_secondary)
 {
     if ((int16_t)PE_LoadU16(shot_weapon()+6u)!=8)
         (void)func_8006F6D4(PE_LoadU32(0x8009D200u),0u,0u,2u,0u,0u);
+    if (PE_Port_ShouldStop()) return;
     if (!check_secondary || PE_LoadU32(0x8009D2FCu)!=0xFFFFFFFFu)
         (void)func_8006F6D4(PE_LoadU32(0x8009D2FCu),0u,0u,2u,0u,0u);
 }
@@ -56,8 +58,12 @@ void func_80022D7C(pe_addr_t target)
     else if ((flags&0x1000u) && (resist&0x30u)!=0x10u) { effect=7;mode=0;sound=0x480;needs_argument=1; }
     if (effect) {
         uint32_t index=(uint32_t)func_8006F39C(effect,target);
+        if (PE_Port_ShouldStop()) return;
         PE_StoreU32(0x8009D208u,index);
-        if (needs_argument) (void)func_8006F6D4(index,0u,0u,mode,0u,0u);
+        if (needs_argument) {
+            (void)func_8006F6D4(index,0u,0u,mode,0u,0u);
+            if (PE_Port_ShouldStop()) return;
+        }
         /* Hit anchors are packed shorts, unlike the 16.16 actor pose. */
         func_8006DE80((int)sound,0,(int16_t)PE_LoadU16(target+0x268u),
             (int16_t)PE_LoadU16(target+0x26Au),(int16_t)PE_LoadU16(target+0x26Cu));
@@ -73,7 +79,9 @@ void func_80023008(void)
         PE_StoreU8(0x8009D294u,1u);
         if (!(PE_LoadU32(shot_record()+0x4Cu)&0x100000u)) {
             (void)func_8006F6D4(PE_LoadU32(0x8009D200u),0u,0u,1u,0u,0u);
+            if (PE_Port_ShouldStop()) return;
             shot_weapon_sound(0);
+            if (PE_Port_ShouldStop()) return;
         }
         weapon=shot_weapon();
         PE_StoreU32(weapon+12u,(PE_LoadU32(weapon+12u)&~0x3FFu)|
@@ -167,12 +175,15 @@ void func_80021F38(void)
         }
     }
     PE_StoreU16(shot_aya()+0x3Au,(uint16_t)func_80030584(target+0x1B4u,shot_aya()+0x28u));
-    if ((uint8_t)func_8002312C(slot)==1u) {
+    uint8_t advanced=(uint8_t)func_8002312C(slot);
+    if (PE_Port_ShouldStop()) return;
+    if (advanced==1u) {
         unsigned index=PE_LoadU8(0x8009D1D4u);
         if (target!=PE_LoadU32(shot_queue(index+1u)) ||
             (int32_t)PE_LoadU32(PE_LoadU32(target)+0x10u)<=0) {
             PE_StoreU8(0x8009CE39u,(uint8_t)(PE_LoadU8(0x8009CE39u)+PE_LoadU8(0x8009CE3Bu)));
             if (PE_LoadU32(shot_weapon()+12u)&0x3FFu) func_80022D7C(target);
+            if (PE_Port_ShouldStop()) return;
         }
         index=PE_LoadU8(0x8009D1D4u)+1u; PE_StoreU8(0x8009D1D4u,(uint8_t)index);
         if ((index&255u)==PE_LoadU8(0x8009CE3Cu)) shot_end_effects(1);

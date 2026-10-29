@@ -10,6 +10,7 @@
  * (it ends only when a transfer-step callback advances D_8009B764).
  */
 #include "pe_guest_decomp.h"   /* brings game/decomp_hand/hand_absent_cd_protos.h */
+#include "pe_plat/cd_stream.h"
 #include "pe_sio0.h"
 #include "pe_rcnt2.h"
 
@@ -19,6 +20,98 @@
 #define PACD_K   0x8015C900u   /* kernel word pair (D_8009B784) */
 #define PACD_B   0x8015CA00u   /* byte buffers                  */
 #define PACD_UNK 0x80099990u   /* a code address with no host implementation */
+
+static void test_cd_stream_copy_words(void)
+{
+    TEST("cd_stream_copy_words");
+    ResetTestState();
+    PE_StoreU32(PACD_S, 0x12345678u);
+    PE_StoreU32(PACD_S + 4u, 0xABCDEF01u);
+    PE_StoreU32(PACD_S + 8u, 0x98765432u);
+    (void)PE_GuestCall("CD word copy", 0x8007CE80u, 3u, PACD_R, PACD_S, 3u, 0u);
+    ASSERT(!PE_Port_ShouldStop() && PE_LoadU32(PACD_R) == 0x12345678u &&
+           PE_LoadU32(PACD_R + 4u) == 0xABCDEF01u &&
+           PE_LoadU32(PACD_R + 8u) == 0x98765432u,
+           "guest dispatch did not copy three words");
+    pe_plat_cd_stream_copy_words(PACD_S + 4u, PACD_S, 2u);
+    ASSERT(PE_LoadU32(PACD_S + 4u) == 0x12345678u &&
+           PE_LoadU32(PACD_S + 8u) == 0x12345678u,
+           "overlapping word copy did not proceed forward");
+    pe_plat_cd_stream_copy_words(0u, 0u, 0u);
+    ASSERT(!PE_Port_ShouldStop(), "zero-word copy accessed guest memory");
+    PASS();
+}
+
+static void test_cd_stream_decode_status(void)
+{
+    unsigned i;
+    TEST("cd_stream_decode_status");
+    ResetTestState();
+    PE_StoreU8(0x8009B558u, 4u);
+    PE_StoreU32(0x8009B624u + 16u, 2u);
+    for (i = 0; i < 8u; i++) PE_StoreU8(PACD_S + i, (uint8_t)(0x40u + i));
+    PE_StoreU8(PACD_S + 1u, 0xE2u);
+    (void)PE_GuestCall("CD decode", 0x8008080Cu, 2u, 2u, PACD_S, 0u, 0u);
+    ASSERT(!PE_Port_ShouldStop() && PE_LoadU8(0x8009B56Cu) == 0xE2u &&
+           PE_LoadU8(0x8009B588u) == 1u && PE_LoadU8(0x8009B589u) == 1u &&
+           PE_LoadU8(0x8009B58Au) == 1u && PE_LoadU8(0x8009B58Bu) == 1u &&
+           PE_LoadU8(0x8009B564u + 7u) == 0x47u,
+           "status offset, flags or response copy differs");
+    PE_StoreU32(0x8009B624u + 16u, 0u);
+    (void)PE_GuestCall("CD decode", 0x8008080Cu, 2u, 2u, PACD_S, 0u, 0u);
+    ASSERT(PE_LoadU8(0x8009B56Cu) == 0xE2u, "zero response length changed state");
+    (void)PE_GuestCall("CD decode", 0x8008080Cu, 2u, 5u, PACD_S, 0u, 0u);
+    ASSERT(!PE_Port_ShouldStop() && PE_LoadU8(0x8009B56Cu) == 0x40u,
+           "status 5 did not select response byte zero");
+    PASS();
+}
+
+static void test_cd_command_progress_dispatch(void)
+{
+    TEST("cd_command_progress_dispatch");
+    ResetTestState();
+    PE_StoreU32(0x8009B578u, 12u);
+    PE_StoreU8(0x8009B56Cu, 0u);
+    PE_StoreU32(0x8009B590u, 7u);
+    (void)PE_GuestCall("CD command progress", 0x80080404u, 2u, 2u, PACD_S, 0u, 0u);
+    ASSERT(!PE_Port_ShouldStop() && PE_LoadU32(0x8009B578u) == 14u &&
+           PE_LoadU32(0x8009B574u) == 2u && PE_LoadU32(0x8009B57Cu) == 21u &&
+           PE_LoadU32(0x8009B590u) == 8u, "initial recovery phase differs");
+    (void)PE_GuestCall("CD command progress", 0x80080404u, 2u, 2u, PACD_S, 0u, 0u);
+    ASSERT(!PE_Port_ShouldStop() && PE_LoadU32(0x8009B57Cu) == 22u &&
+           PE_LoadU32(0x8009B58Cu) == 0u, "second recovery phase differs");
+    PE_StoreU32(0x8009B57Cu, 24u);
+    PE_StoreU8(0x8009B56Cu, 2u);
+    PE_StoreU32(0x800A36ACu, PACD_UNK);
+    (void)PE_GuestCall("CD command progress", 0x80080404u, 2u, 2u, PACD_S, 0u, 0u);
+    ASSERT(PE_Port_ShouldStop() && PE_LoadU32(0x8009B578u) == 11u &&
+           PE_LoadU32(0x8009B57Cu) == 0u,
+           "unresolved completion callback did not stop after the state transition");
+    PASS();
+}
+
+static void test_cd_native_wrappers(void)
+{
+    TEST("cd_native_wrappers");
+    ResetTestState();
+    (void)PE_GuestCall("CD DMA3 callback", 0x8007A8ECu, 1u, 0x80123450u, 0u, 0u, 0u);
+    ASSERT(!PE_Port_ShouldStop() &&
+           PE_LoadU32(PE_DMA_CallbackSlotAddress(3u)) == 0x80123450u,
+           "DMA3 callback wrapper did not register the guest handler");
+    PE_StoreU32(0x8009B27Cu, PACD_S);
+    PE_StoreU32(0x8009B288u, PACD_S + 8u);
+    PE_StoreU32(0x8009B28Cu, PACD_S + 12u);
+    PE_StoreU8(PACD_S + 8u, 0u);
+    PE_StoreU8(0x8009B294u, 0xFFu);
+    PE_StoreU8(0x8009B295u, 0xFFu);
+    PE_StoreU8(0x8009B296u, 0xFFu);
+    (void)PE_GuestCall("CD latch reset", 0x8007A3CCu, 0u, 0u, 0u, 0u, 0u);
+    ASSERT(!PE_Port_ShouldStop() && PE_LoadU8(0x8009B294u) == 2u &&
+           PE_LoadU8(0x8009B295u) == 0u && PE_LoadU8(0x8009B296u) == 0u &&
+           PE_LoadU32(PACD_S + 12u) == 0x1325u,
+           "CD latch reset wrapper did not reach native backend");
+    PASS();
+}
 
 static int pacd_call(int i, const char *sym, uint32_t target,
                      uint32_t a0, uint32_t a1, uint32_t a2)
@@ -62,6 +155,7 @@ static void pacd_sio_fixture(uint16_t stat)
 
 static void test_PA_cd_spu_and_small(void)
 {
+    int spu_event;
     TEST("PA_cd_spu_and_small");
     pacd_reset();
 
@@ -70,11 +164,16 @@ static void test_PA_cd_spu_and_small(void)
     PE_StoreU32(0x8009B44Cu, 1u);
     PE_StoreU32(0x8009B3FCu, PACD_S);
     PE_StoreU16(PACD_S + 0x1AAu, 0xFFFFu);
+    spu_event = PE_Event_Open(0xF0000009u, 0x20u, 0x2000u, 0u);
+    ASSERT(spu_event > 0 && PE_Event_Enable(spu_event), "SPU event setup failed");
     func_8007D614();
     ASSERT(PE_LoadU16(PACD_S + 0x1AAu) == 0xFFCFu, "8007D614 clears bits 4-5 only");
-    ASSERT(g_bootstrap_arg4_call_count == 1 &&
-           pacd_call(0, "func_80073A34", 0x80073A34u, 0xF0000009u, 0x20u, 0u),
-           "8007D614 no-callback arm posts (0xF0000009, 0x20)");
+    ASSERT(!PE_Port_ShouldStop() && !g_bootstrap_arg4_call_count &&
+           PE_Event_ConsumeSpuDma(spu_event), "8007D614 did not deliver the enabled SPU event");
+    PE_Event_Disable(spu_event);
+    func_8007D614();
+    PE_Event_Enable(spu_event);
+    ASSERT(!PE_Event_ConsumeSpuDma(spu_event), "disabled SPU event recorded delivery");
     /* with a callback: no func_80073A34, the slot is called with no args */
     pacd_reset();
     PE_StoreU32(0x8009B44Cu, 1u);
@@ -85,6 +184,13 @@ static void test_PA_cd_spu_and_small(void)
            strcmp(PE_Decomp_BoundaryName(0), "D_8009B434 (SPU DMA callback)") == 0 &&
            g_bootstrap_arg4_call_count == 0,
            "8007D614 calls D_8009B434() with no argument");
+    pacd_reset();
+    PE_StoreU32(0x8009B44Cu, 1u);
+    PE_StoreU32(0x8009B3FCu, PACD_S);
+    PE_StoreU32(0x8009B434u, 0x80085F44u);
+    func_8007D614();
+    ASSERT(!PE_Port_ShouldStop() && PE_LoadU32(0x8009B434u) == 0xF0000000u,
+           "8007D614 did not forward the live a0 register");
 
     /* func_80080F64: (a0 & 0xFF) == 2 -> func_80081D74(func_80080F98, -1) */
     pacd_reset();
@@ -599,6 +705,10 @@ static void test_PA_cd_multisector(void)
 
 static void test_PA_cd_all(void)
 {
+    test_cd_stream_copy_words();
+    test_cd_stream_decode_status();
+    test_cd_command_progress_dispatch();
+    test_cd_native_wrappers();
     test_PA_cd_spu_and_small();
     test_PA_cd_poll();
     test_PA_cd_tables();

@@ -52,24 +52,27 @@ static const pe_addr_t overlay_handlers[7] = {
  * clear, stream the D_80093162 offset/size pair from the current mount base
  * (D_800B0DD8) into D_80011618, polling with a -1 restart, then install the
  * seven handlers and raise bit 0x10000. */
-static void otag_install_overlay_handlers(void)
+static int otag_install_overlay_handlers(void)
 {
     int r;
     int i;
 
     if ((PE_LoadU32(GA_D_800B0CD8) & 0x10000u) != 0u)
-        return;
+        return 1;
 
 retry:
     do {
+        if (PE_Port_ShouldStop()) return 0;
         r = func_8006E6A8(
             PE_LoadU32(GA_D_800B0DD8) + (int)PE_LoadU16(GA_D_80093162),
             PE_LoadU32(GA_D_80011618),
             (int)PE_LoadU16(GA_D_80093162 + 2u) -
                 (int)PE_LoadU16(GA_D_80093162));
+        if (PE_Port_ShouldStop()) return 0;
     } while (r == -1);
     for (;;) {
         r = func_8006E7E8();
+        if (PE_Port_ShouldStop()) return 0;
         if (r == 0)
             break;
         if (r == -1)
@@ -82,6 +85,7 @@ retry:
         PE_StoreU32(GA_D_800E10A0 + (pe_addr_t)i * 4u, overlay_handlers[i]);
     PE_StoreU32(GA_D_800B0CD8,
                 PE_LoadU32(GA_D_800B0CD8) | 0x10000u);
+    return 1;
 }
 
 void func_800D4620(pe_addr_t slot)
@@ -141,13 +145,16 @@ int func_8006F39C(unsigned int code, pe_addr_t userdata)
     int i;
     uint8_t used;
 
+    /* A stopped native disc issue returns -1: retrying after that signal
+     * never completes and must not publish handlers or allocate a slot. */
+    if (PE_Port_ShouldStop()) return -1;
     orig = code;
     extra = 0u;
     if (code >= 0xC0u)
         return -7;
 
-    if (code >= 0x6Cu && code <= 0x72u)
-        otag_install_overlay_handlers();
+    if (code >= 0x6Cu && code <= 0x72u && !otag_install_overlay_handlers())
+        return -1;
 
     PE_M34StackConstruct(code);
     (void)func_8006914C(0);
@@ -215,6 +222,10 @@ int func_8006F39C(unsigned int code, pe_addr_t userdata)
         (void)PE_M32MovementInit(slot);
     else if (PE_GuestCode_Resolve(fn))
         /* Generated overlay / EXE TU at that address (pe_guestcode.h). */
+        (void)PE_GuestCall("@8006F39C:init", fn, 1u, (uintptr_t)slot, 0, 0, 0);
+    else if (PE_Decomp_BoundaryStopEnabled())
+        /* Native-only: an unported init is a CPU_BOUNDARY/REFUSED STOP under
+         * the port binary's stop policy; the skip below is record-policy only. */
         (void)PE_GuestCall("@8006F39C:init", fn, 1u, (uintptr_t)slot, 0, 0, 0);
     else if (g_pe_strict_effect_stack) {
         fprintf(stderr, "[func_8006F39C] unresolved init fn=%08X code=%02X token=%08X slot=%08X\n",

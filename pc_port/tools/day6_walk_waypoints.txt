@@ -1,0 +1,20 @@
+# Day 6 route-pilot waypoints (PE_ROUTE_WAYPOINTS entries, grammar in
+# pc_port/src/route_day3_pilot.h:12-41), for day6_route_regress.py.
+# One entry per line: TOKEN@MINSTORY[#VISIT]=X,Z[,R][suffixes];...   (comment)
+# Spawns (op 0x0B #0 after the door compare) and exit quads (op 0x77 POLY
+# checks that SEND the transfer event) are decoded from the room scripts;
+# '+' = run. Rooms without an entry are driven by their own scripts (the
+# pilot only presses the Cross/Circle text pad there) or by the battle aid.
+A80472C8@2D6=1600,-2150,40   (m0275i at 0x2D6, first visit: spawn door 0x1A9 (2500,-773); exit quad x 1400..1800 z -2300..-2000 -> ev0 -> door 0x113, m0276i)
+A8047348@2D6=0,0,5000!600;0,0,5000!8;0,0,5000^120;0,0,5000!8;0,0,5000^120;0,0,5000!8;0,0,5000^120;0,0,5000!8;0,0,5000^120;0,0,5000!8;0,0,5000^120;0,0,5000!8;0,0,5000^120;0,0,5000!84;0,0,5000$FFF7:4;0,0,5000%16;0,0,5000$BFFF:4;0,0,5000!80;0,0,5000$FFF7:4;0,0,5000%16;0,0,5000$BFFF:4;0,0,5000!160;515,-835,40   (m0276i at 0x2D6, first visit: spawn door 0x113 (300,-956). The scene runs from entry (Cross pulses); msg 0x15 is Cross-gated and ~30 frames later msg 0x17 offers a 3-way choice (op 0x43): options 0/1 open the equipment screen (op 0xEE) and loop back, so each Cross is followed by Down pulses (the cursor clamps at the last option) until option 2 is taken; msg 0x56; then op 0xEF opens the weapon list (Cross picks one) and its name entry (Start jumps to END, Cross accepts), then the same for the armor list (Normal Armor); msg 0x19 sets P[2F] 0x8000. Start only where a name entry is open: in a message box it pauses the game and stops presents. Then the quad x 400..630 z -1130..-540 -> ev1 -> door 0x114, m0426i)
+A80472C8@2E1=1600,-2150,40+   (m0275i at 0x2E1, chase start: default spawn (302,720) (door 0x1AE matches no arm); exit quad x 1400..1800 z -2300..-2000 -> m0276i; the pursuer catch -> m0438i)
+A8047348@2E1=-1415,240,40+   (m0276i at 0x2E1: spawn door 0x113 (300,-956); exit quad x -1650..-1180 z 150..333 -> door 0x114, m0278i)
+A8047448@2E1=1300,2100,40+   (m0278i at 0x2E1: spawn door 0x114 (-900,150); exit quad x 850..1750 z 2000..2200 -> door 0x116, m0280i; avoid x 950..1550 z -2600..-2400 (m0279i) and x -1234..-1100 z 0..350 (back))
+A8048048@2E1=430,1500,40+   (m0280i at 0x2E1: spawn door 0x116 (-64,-2020); exit quad x 360..500 z 1200..1800 -> door 0x118, m0281i; back quad x -600..300 z -2500..-2300 just south of the spawn)
+A80480C8@2E1=-625,-30,40+   (m0281i at 0x2E1: spawn door 0x118 (-151,2780); exit quad x -700..-550 z -110..50 -> door 0x119, m0282i; back quad x -540..-188 z 2900..3150)
+A8048148@2E1=0,-400,60+;27,6620,40+   (m0282i at 0x2E1: C2/C3 first clear the back quad x -2200..-1972 z -369..0 along z=-400, then turn north; spawn door 0x119 (-1998,-400); exit quad x -200..255 z 6543..6700 -> door 0x11A, m0283i)
+A80481C8@2E1=500,-500,60+;500,-4200,60+;1100,-4400,60+;1100,-4750,40+   (m0283i at 0x2E1: C3 follows the left corridor around the central floor hole; spawn door 0x11A (3333,-400); exit quad x 1000..1200 z -4900..-4600 -> door 0x11B, m0284i; back quad x 3240..3500 z -222..-40)
+A8048248@2E1=520,-2475,40+   (m0284i at 0x2E1: spawn door 0x11B (500,1478); exit quad x 300..740 z -2600..-2350 -> door 0x11C, m0285i; back quad x -150..808 z 1700..2400)
+A80482C8@2E1=-25,-2200,40+   (m0285i at 0x2E1: spawn door 0x11C (600,3160); exit quad x -150..100 z -2400..-2000 -> door 0x11D, m0286i; quad x 350..880 z 3300..3588 near the spawn)
+A8048348@2E1=-457,3900,40+   (m0286i at 0x2E1: spawn door 0x11D (-255,0); exit quad x -567..-347 z 3556..4240 -> door 0x11E, m0287i; back quad x -550..-400 z -250..100)
+A80483C8@2E1=-2525,0,40+   (m0287i at 0x2E1: spawn door 0x11E (1998,250); exit quad x -2650..-2400 z -540..540 -> movie 0x2C, story 0x2E2, door 0x11F, m0288i; back quad x 2000..2550 z 300..550)

@@ -21,12 +21,16 @@ extern "C" {
 #define PE_GPU_VRAM_HEIGHT       512u
 #define PE_GPU_VRAM_PIXELS      (PE_GPU_VRAM_WIDTH * PE_GPU_VRAM_HEIGHT)
 
+#define PE_GPU_STATUS_IRQ 0x01000000u
+#define PE_GPU_STATUS_DMA_REQUEST 0x02000000u
 #define PE_GPU_STATUS_READY_GP0 0x04000000u
 #define PE_GPU_STATUS_READY_READ 0x08000000u
+#define PE_GPU_STATUS_READY_DMA 0x10000000u
 
 #define PE_GPU_DMA2_CHCR_IDLE   0x00000401u
 #define PE_GPU_DMA2_CHCR_LOAD   0x01000201u
 #define PE_GPU_DMA2_CHCR_STORE  0x01000200u
+#define PE_GPU_DMA2_CHCR_LIST   0x01000401u
 #define PE_GPU_DMA2_CHCR_BUSY   0x01000000u
 #define PE_GPU_DMA2_DPCR_ENABLE 0x00000800u
 #define PE_GPU_DMA2_DICR_ENABLE 0x00040000u
@@ -52,7 +56,10 @@ typedef enum {
     PE_GPU_GP0_LINE_DATA,
     PE_GPU_GP0_READ_EXPECT_POSITION,
     PE_GPU_GP0_READ_EXPECT_SIZE,
-    PE_GPU_GP0_READ_DATA
+    PE_GPU_GP0_READ_DATA,
+    PE_GPU_GP0_COPY_EXPECT_SOURCE,      /* GP0(80h..9Fh) VRAM-to-VRAM copy */
+    PE_GPU_GP0_COPY_EXPECT_DESTINATION,
+    PE_GPU_GP0_COPY_EXPECT_SIZE
 } PeGpuGp0State;
 
 /* Read-only snapshot.  Every address is a 32-bit guest address; no native
@@ -128,6 +135,8 @@ typedef struct {
     pe_addr_t dma2_madr;
     uint32_t dma2_bcr;
     uint32_t dma2_chcr;
+    uint32_t dma6_madr, dma6_bcr, dma6_chcr;
+    uint64_t dma6_event_count;
     uint32_t dpcr;
     uint32_t dicr;
 
@@ -155,11 +164,36 @@ typedef struct {
  * between platform initialization and a GP1/control reset. */
 void PE_GPU_Init(void);
 void PE_GPU_Reset(void);
+/* Host presentation only. Scale 1 uses native VRAM; 2..4 own a separate
+ * render surface. Changes seed it from native VRAM; allocation failure falls
+ * back to 1. Init clears both surfaces, Reset preserves both. */
+void PE_GPU_SetRenderScale(int scale);
+int PE_GPU_GetRenderScale(void);
+/* 0 nearest (default), 1 conservative bilinear on shadow polygons only.
+ * Rectangles and native VRAM always retain nearest sampling. */
+void PE_GPU_SetTextureFilter(int filter);
+int PE_GPU_GetTextureFilter(void);
+/* Shadow dithering: 0 retail (native pattern magnified, default), 1 fine
+ * (pattern at shadow resolution), 2 off.  Native VRAM is never affected. */
+void PE_GPU_SetShadowDither(int mode);
+int PE_GPU_GetShadowDither(void);
+/* Sub-pixel geometry on the shadow surface: a polygon whose every vertex
+ * word has a fraction from lookup (x | y << 8, 1/256 px) is placed at it at
+ * the shadow's resolution.  Other polygons, native VRAM and scale 1 are
+ * unchanged.  NULL (the default) is off. */
+void PE_GPU_SetSubpixelLookup(int (*lookup)(uint32_t xy, uint32_t *frac));
+/* Invalidates cached host scan-out when Init or a scale change reseeds VRAM. */
+uint64_t PE_GPU_GetRenderGeneration(void);
+/* Coordinates are in scaled VRAM units; never wraps. */
+int PE_GPU_ReadRenderPixel(uint32_t x, uint32_t y, uint16_t *pixel);
 
+/* Status derives command/write readiness and DREQ from the synchronous
+ * parser. SetReady controls host word acceptance, not command boundaries.
+ * Reads never advance execution; this is not cycle-accurate FIFO timing. */
 uint32_t PE_GPU_ReadStatus(void);
 void PE_GPU_SetReady(int ready);
 
-/* Supported GP0 subset: 00h NOP, 0x01000000 cache clear, GP0(E1h..E6h)
+/* Supported GP0 subset: 00h NOP, 0x01000000 cache clear, 1Fh IRQ, GP0(E1h..E6h)
  * drawing-environment registers, GP0(02h) fill,
  * GP0(20h..3Fh) flat/shaded, textured/untextured triangles and quads,
  * GP0(40h..47h,50h..57h) flat/shaded single lines,
@@ -167,14 +201,17 @@ void PE_GPU_SetReady(int ready);
  * and 16x16 textured rectangles,
  * GP0(60h..7Bh) untextured rectangles (opaque and semi-transparent, all
  * four size classes), and the A0 upload and C0 readback streams.
- * Supported GP1 subset: exact commands 00, 01, 02, DMA directions 0/2/3,
- * and display registers05..08.
+ * Supported GP1 subset: 00/01 reset, 02 IRQ ack, 03 display enable,
+ * 04 DMA direction, display registers05..08, and v2 info readback10..1F.
  * Return 1 on acceptance, 0 when the command is unsupported or invalid for
  * the current state. */
 int PE_GPU_WriteGP0(uint32_t value);
 /* C0 readback consumes two pixels per word; an unused odd high half is zero.
+ * Outside a readback transfer, returns the latched info/last data word.
  * Active DMA owns the read port until explicit completion. */
 int PE_GPU_ReadGP0(uint32_t *value);
+/* GP1 resets may abort GPU work during a raw DMA2 transfer, retaining DMA
+ * registers/event ownership. The high-level snapshot helper remains atomic. */
 int PE_GPU_WriteGP1(uint32_t value);
 
 /* Word count (command word included) of a GP0 drawing primitive that this
@@ -196,9 +233,36 @@ int PE_GPU_MoveImage(uint32_t source, uint32_t destination, uint32_t size);
  * query: it never changes readiness, parser, DMA, VRAM, or event state. */
 int PE_GPU_CanBeginImageLoad(int needs_dma);
 
-/* Upload/readback block DMA. Validation precedes all register/state mutation.
- * Issue never reads VRAM/payload, writes the destination, or completes DMA. */
+/* Upload/readback block DMA: SyncMode1, 1..16 words per block; zero block
+ * count means 65536. Total words must match the complete image transfer.
+ * Validation precedes all register/state mutation.
+ * Upload issue snapshots guest source words; readback issue does not read
+ * VRAM. Neither writes its destination or completes DMA at issue time.
+ * MADR exposes 24 bits; completion advances it and clears BCR block count. */
 int PE_GPU_DMA2Issue(pe_addr_t madr, uint32_t bcr, uint32_t chcr);
+/* Raw MADR/BCR/CHCR offsets 0/4/8. Image/command request mode or linked-list
+ * RAM->GP0 (01000401h). List service consumes one node (0..255 words) per
+ * call and retains GP0 parser state between nodes; FFFFFFh ends the DMA.
+ * BCR is ignored/unchanged in list mode. Cycles, out-of-model RAM and
+ * unsupported GP0 stop at an explicit boundary, never report completion.
+ * CHCR arms an event; service obeys live DPCR and GPUSTAT DREQ, accepts
+ * GP1 direction 1/2 for writes and 3 for reads, and reads RAM then. Clearing busy cancels the event. Unsupported setup/races return 0;
+ * Request writes feed GP0 in its current parser state: an image payload may
+ * be followed by commands in the same transfer. The image cursor survives
+ * a partial transfer. All raw request transfers (image upload,
+ * readback or commands/parameters) consume one BCR block (1..16 words) per
+ * service, retaining parser state and live DREQ gating between blocks.
+ * Image readback requires C0 setup.
+ * Readback extending past its image remains unsupported.
+ * Raw request mode supports increment/decrement word addressing, validating
+ * the full span before starting. List mode retains its forward-only subset.
+ * Request bit28 forces the first block without DREQ (still needs DPCR),
+ * clearing at block start; subsequent blocks obey live request gates.
+ * No chopping or RAM-mirror/bus-error modeling. */
+/* Raw readback can wait for a later CPU GP0 read command. RAM is admitted
+ * before arming; the pending read must fit the available image when serviced.
+ * Forced empty reads and reads spanning multiple images remain boundaries. */
+int PE_GPU_WriteDMA2Register(uint32_t offset,uint32_t value);
 pe_addr_t PE_GPU_ReadDMA2MADR(void);
 uint32_t PE_GPU_ReadDMA2BCR(void);
 uint32_t PE_GPU_ReadDMA2CHCR(void);
@@ -207,6 +271,15 @@ int PE_GPU_DMA2CompletionPending(void);
 int PE_GPU_DMA2InterruptAsserted(void);
 uint64_t PE_GPU_DMA2EventToken(void);
 int PE_GPU_ServiceDMA2Completion(uint64_t event_token);
+
+/* Native DMA6 ordering-table clear: word offsets 0/4/8, fixed decrement,
+ * synchronous burst when CHCR busy+trigger and DPCR channel6 enable agree.
+ * Writes descending 24-bit links and a final FFFFFFh tag. BC=0 means 65536;
+ * MADR/BCR retain their burst-mode values. CHCR only exposes bits24/28/30
+ * and fixed bit1. Bus snooping, RAM mirrors/underflow and bus timing remain
+ * explicit boundaries; all destination RAM is checked before any write. */
+uint32_t PE_GPU_ReadDMA6Register(uint32_t offset);
+int PE_GPU_WriteDMA6Register(uint32_t offset,uint32_t value);
 
 uint32_t PE_GPU_ReadDPCR(void);
 void PE_GPU_WriteDPCR(uint32_t value);

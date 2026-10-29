@@ -39,7 +39,7 @@ static void test_NAM10_retail_store_image(void)
             ASSERT(PE_LoadU32(destination+i*4u)==0xA5A5A5A5u,"readback wrote outside its CPU prefix before DMA completion");
         if (NAM10_store_image_cases[k].dma[2]) {
             uint64_t token=PE_GPU_DMA2EventToken();uint32_t value=0u;
-            ASSERT(PE_GPU_DMA2Pending() && PE_GPU_ReadDMA2MADR()==NAM10_store_image_cases[k].dma[0] &&
+            ASSERT(PE_GPU_DMA2Pending() && PE_GPU_ReadDMA2MADR()==(NAM10_store_image_cases[k].dma[0]&0x00FFFFFFu) &&
                 PE_GPU_ReadDMA2BCR()==NAM10_store_image_cases[k].dma[1] &&
                 PE_GPU_ReadDMA2CHCR()==NAM10_store_image_cases[k].dma[2],"readback DMA registers differ from original");
             ASSERT(!PE_GPU_ReadGP0(&value),"CPU stole pixels from an active readback DMA");

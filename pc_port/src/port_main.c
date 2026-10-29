@@ -21,6 +21,7 @@
 #include "pe_disc.h"
 #include "pe_guest_image.h"
 #include "pe_disc_check.h"
+#include "pe_drive_tray.h"
 #include "pe_route_pad.h"
 #include "pe_port_compat.h"
 #include "pe_guest_ram.h"
@@ -30,6 +31,13 @@
 #include <stdlib.h>
 #include <limits.h>
 #include <errno.h>
+#include <time.h>
+#include "pe_guest_decomp.h"
+#ifdef _WIN32
+#include <direct.h>
+#else
+#include <sys/stat.h>
+#endif
 
 extern void func_8001220C(void);
 extern int  func_8006E9A0(int);
@@ -49,6 +57,7 @@ static struct {
     const char *stop_after_event;
     int max_frames, max_main_iterations;
     const char *disc_image;
+    const char *disc2_image;
     int disc_load_test;
     int rng_oracle_dump;
     int lzcr_oracle_dump;
@@ -70,7 +79,7 @@ static struct {
     .screenshot = NULL, .vram_screenshot = NULL, .vram_raw = NULL,
     .trace_path = NULL,
     .hold_ms = 0, .scale = 2, .hold_until_close = 1, .debug_overlay = 0,
-    .window_title = "Parasite Eve Native Port",
+    .window_title = "Parasite Eve",
     .direct_clear_test = 0, .stop_after_event = NULL,
     .max_frames = 0, .max_main_iterations = 0,
     .disc_image = NULL, .disc_load_test = 0, .rng_oracle_dump = 0,
@@ -107,6 +116,67 @@ static unsigned g_pad_sequence_count;
 #include "route_rehearsal_pads.h"
 #include "route_reward_sewer_pilot.h"
 #include "route_ammo_trace.h"
+
+/* PE_ROUTE_AIDS_PAD_ONLY=1 only (g_route_aids_pad_only, set in main): one read-only log line per battle, from the
+ * battle flag D1A0 bit 2 rising to falling.  Aya's HP is read from the battle record *0x8009D278 (+12 current,
+ * +28 max; signed 16-bit as PE_AYA_TRACE reads it).  A death (HP <= 0) is logged the frame it is seen, because the
+ * route checker kills a failing run before the end-of-run flush.  No guest writes. */
+static struct {
+    int on, logged, have;
+    uint32_t tok;
+    int start_frame, start_hp, min_hp, min_frame;
+    unsigned max_hp;
+} g_pad_only_btl;
+
+static void RoutePadOnlyBattleLine(const char *how)
+{
+    char s[16], m[16];
+    if (g_pad_only_btl.have) {
+        snprintf(s, sizeof s, "%d", g_pad_only_btl.start_hp);
+        snprintf(m, sizeof m, "%d", g_pad_only_btl.min_hp);
+    } else { strcpy(s, "NA"); strcpy(m, "NA"); }
+    fprintf(stderr, "[ROUTE_AIDS] pad-only battle token=%08X start_frame=%d end_frame=%d start_hp=%s min_hp=%s "
+            "min_frame=%d max_hp=%u end=%s\n", (unsigned)g_pad_only_btl.tok, g_pad_only_btl.start_frame, g_frame,
+            s, m, g_pad_only_btl.min_frame, g_pad_only_btl.max_hp, how);
+    g_pad_only_btl.logged = 1;
+}
+
+static void RoutePadOnlyBattleLog(void)   /* once per presented frame, after g_frame++ */
+{
+    if (!g_route_aids_pad_only) return;
+    if (PE_LoadU32(0x8009D1A0u) & 2u) {
+        pe_addr_t rec = PE_LoadU32(0x8009D278u);
+        unsigned mx = rec ? PE_LoadU16(rec + 28u) : 0u;
+        if (!g_pad_only_btl.on) {
+            memset(&g_pad_only_btl, 0, sizeof g_pad_only_btl);
+            g_pad_only_btl.on = 1;
+            g_pad_only_btl.tok = (uint32_t)D_8009D280;
+            g_pad_only_btl.start_frame = g_frame;
+        }
+        if (rec && mx) {
+            int hp = (int)(int16_t)PE_LoadU16(rec + 12u);
+            if (!g_pad_only_btl.have) {
+                g_pad_only_btl.have = 1;
+                g_pad_only_btl.start_hp = g_pad_only_btl.min_hp = hp;
+                g_pad_only_btl.min_frame = g_frame;
+            } else if (hp < g_pad_only_btl.min_hp) {
+                g_pad_only_btl.min_hp = hp;
+                g_pad_only_btl.min_frame = g_frame;
+            }
+            g_pad_only_btl.max_hp = mx;
+            if (hp <= 0 && !g_pad_only_btl.logged) RoutePadOnlyBattleLine("dead");
+        }
+    } else if (g_pad_only_btl.on) {
+        if (!g_pad_only_btl.logged) RoutePadOnlyBattleLine("clear");
+        g_pad_only_btl.on = 0;
+    }
+}
+
+static void RoutePadOnlyBattleFlush(void)   /* end of run: a fight still open (no SIGTERM kill) */
+{
+    if (g_route_aids_pad_only && g_pad_only_btl.on && !g_pad_only_btl.logged)
+        RoutePadOnlyBattleLine("run_end");
+}
 
 /* m0004i module-4 type-4 task PC: the documented executed-route frontier
  * (same FRONTIER_PC the harness pins).  Matched on the task PC rather than
@@ -370,6 +440,9 @@ static int RoutePadClock(void)
     return g_frame - g_pad_offset;
 }
 
+#include "route_day3_pilot.h"
+#include "route_padonly_pilot.h"   /* PE_ROUTE_AIDS_PAD_ONLY=1 only: pad-driven healing + read-only trace */
+
 static uint16_t RoutePadSource(void)
 {
     uint16_t mask;
@@ -385,6 +458,13 @@ static uint16_t RoutePadSource(void)
             for (unsigned i = 0; i < g_script_pad_count &&
                  g_frame - g_hand_over_frame >= g_script_pad[i].frame; i++)
                 m = g_script_pad[i].mask;
+            m = RouteDay3Pilot(m);
+            /* PE_ROUTE_AIDS_PAD_ONLY=1 only: the same PE_ROUTE_PLAY_MOVIES
+             * guard as the route pad below (a held script button would skip
+             * the movie).  The player's raw pad is never masked. */
+            if (g_route_aids_pad_only && getenv("PE_ROUTE_PLAY_MOVIES") &&
+                PE_LoadU8(0x800B0DBAu) != 0u)
+                return 0xFFFFu;
             return m;
         }
         return HostWindow_PadRaw();
@@ -398,7 +478,7 @@ static uint16_t RoutePadSource(void)
      * the three sewer fights. Under the retail battle tick enemies act as in
      * retail and the autopilot can lose (bt-route 09-28: Aya died in M0032I at
      * 60250 after entering at 28 HP). The sewer pilot still moves/attacks. */
-    if (g_route_battle_shim && (PE_LoadU32(0x8009D1A0u) & 2u) &&
+    if (g_route_battle_shim && !g_route_aids_pad_only && (PE_LoadU32(0x8009D1A0u) & 2u) &&
         (D_8009D280 == 0xA80023C8u || D_8009D280 == 0xA8002448u || D_8009D280 == 0xA8003148u)) {
         pe_addr_t rec = PE_LoadU32(0x8009D278u);
         if (rec) {
@@ -441,6 +521,11 @@ static uint16_t RoutePadSource(void)
         (rf<g_pulse_end || rf>=g_pulse_resume) && (rf%g_route_pad.period)==3)
         mask&=g_route_pad.pulse;
     mask=RouteRewardSewerPilot(mask);
+    if (g_route_aids_pad_only) {   /* pad-only: heal from the field menu when hurt; opt-in keep-range fight policy */
+        mask=RoutePadOnlyFieldHeal(mask);
+        mask=RoutePadOnlyFight(mask);
+        mask=RoutePadOnlyM34(mask);
+    }
     if (getenv("PE_ROUTE_DEBUG") && (g_frame % 500) == 0)
         fprintf(stderr, "[ROUTE] padf=%d token=%08X story=%08X held=%08X pad=%04X\n",
                 g_frame, (unsigned)D_8009D280,
@@ -463,6 +548,25 @@ static uint16_t RoutePadSource(void)
     return mask;
 }
 
+/* Menus, help and toasts are laid out for the 320x240 frame, so the native
+ * frame is shown while one is up.  Otherwise the overlay (at most the CHEATS
+ * badge) is drawn on the presentation frame, so a used cheat or warp never
+ * turns the graphics options off.  At the defaults the presentation frame
+ * is the native one and this is the old blit. */
+static void BlitPresentationFrame(int with_overlay)
+{
+    const uint8_t *native = HostFB_GetPixels();
+    int width = PE_PORT_FB_WIDTH, height = PE_PORT_FB_HEIGHT;
+    const uint8_t *pixels = HostFB_GetPresentationPixels(&width, &height);
+    if (with_overlay) {
+        if (pixels != native && pe_plat_cheats_overlay_ui()) {
+            pixels = native; width = PE_PORT_FB_WIDTH; height = PE_PORT_FB_HEIGHT;
+        }
+        pixels = pe_plat_cheats_overlay(pixels, width, height);
+    }
+    HostWindow_Blit(pixels, width, height);
+}
+
 /* Phase 6E-PRS1 live-window present hook: blit the newest host pixels and
  * poll for close/Escape.  Host data only; never touches guest state.
  * Headless --route-pad also uses this hook so g_frame advances; without it
@@ -474,7 +578,7 @@ static void PresentHook_BlitWindow(void)
          * <dir>/p<present>.ppm every N presents (menu / load verification). */
         static const char *sdir = (const char *)1; static int sev;
         if (sdir == (const char *)1) { sdir = getenv("PE_SHOT_DIR"); sev = getenv("PE_SHOT_EVERY") ? atoi(getenv("PE_SHOT_EVERY")) : 60; }
-        if (sdir && sev > 0 && !g_opts.route_pad) {
+        if (sdir && sev > 0 && (!g_opts.route_pad || getenv("PE_ROUTE_SHOTS"))) {
             int presented = 0; HostFB_GetState(NULL, NULL, &presented, NULL);
             if (presented % sev == 0) {
                 char path[512]; snprintf(path, sizeof path, "%s/p%06d.ppm", sdir, presented);
@@ -495,6 +599,8 @@ static void PresentHook_BlitWindow(void)
         g_frame++;
         RecordSewerVictory();
         RouteAmmoTrace();
+        RoutePadOnlyBattleLog();
+        RoutePadOnlyTrace();   /* returns at its first line unless PE_ROUTE_AIDS_PAD_ONLY=1 */
         if (getenv("PE_GO_TRACE")) {
             /* Game Over phase trace: battle mode, mode-3 phase CE74, timer CE70, D1A0, token, VSync. */
             static uint32_t sig = 0xFFFFFFFFu;
@@ -564,6 +670,10 @@ static void PresentHook_BlitWindow(void)
                 char path[512];
                 snprintf(path, sizeof path, "%s/f%06d.ppm", rdir, g_frame);
                 (void)HostFB_WritePPM(path);
+                if (getenv("PE_ROUTE_PRESENTATION_SHOTS")) {
+                    snprintf(path, sizeof path, "%s/f%06d-presentation.ppm", rdir, g_frame);
+                    (void)HostFB_WritePresentationPPM(path);
+                }
             }
             PE_GPU_PrimLogFrame(g_frame);
         }
@@ -601,8 +711,7 @@ static void PresentHook_BlitWindow(void)
     if (g_opts.headless)
         return;
     if (HostWindow_Pace()) {PE_Port_RequestStop(PE_PORT_STOP_HOST_QUIT);return;}
-    HostWindow_Blit(pe_plat_cheats_overlay(HostFB_GetPixels(), PE_PORT_FB_WIDTH, PE_PORT_FB_HEIGHT),
-                    PE_PORT_FB_WIDTH, PE_PORT_FB_HEIGHT);
+    BlitPresentationFrame(1);
     (void)HostWindow_Poll();
 }
 
@@ -611,8 +720,7 @@ static void PresentHook_BlitWindow(void)
  * per-VBlank pacer, and nothing here counts as a present. */
 static void ScanoutHook_BlitWindow(void)
 {
-    HostWindow_Blit(pe_plat_cheats_overlay(HostFB_GetPixels(), PE_PORT_FB_WIDTH, PE_PORT_FB_HEIGHT),
-                    PE_PORT_FB_WIDTH, PE_PORT_FB_HEIGHT);
+    BlitPresentationFrame(1);
 }
 
 static int ParsePositiveLimit(const char *option, const char *value) {
@@ -661,6 +769,7 @@ static void ParseArgs(int argc, char **argv) {
         else if (i+1<argc && !strcmp(a, "--max-main-iterations"))
             g_opts.max_main_iterations = ParsePositiveLimit(a, argv[++i]);
         else if (i+1<argc && !strcmp(a, "--disc-image"))      g_opts.disc_image = argv[++i];
+        else if (i+1<argc && !strcmp(a, "--disc2-image"))     g_opts.disc2_image = argv[++i];
         else { fprintf(stderr, "Unknown: %s\n", a); exit(1); }
     }
     if (g_opts.hold_ms > 0) g_opts.hold_until_close = 0;
@@ -986,7 +1095,8 @@ static void WatchdogArm(void)
  *    A second signal, or 5 s without reaching exit, terminates at once.
  *  - SIGPIPE ignored: if tee goes away first, stderr writes fail with EPIPE
  *    instead of killing the game.
- *  - SIGSEGV/SIGBUS/SIGILL/SIGFPE: one line + backtrace, then the default
+ *  - SIGSEGV/SIGBUS/SIGILL/SIGFPE/SIGABRT (e.g. a FATAL guest address):
+ *    one line + backtrace, then the default
  *    action, so a crash is distinguishable from a kill in a user's log. */
 static volatile sig_atomic_t g_host_term_sig;
 
@@ -1000,6 +1110,7 @@ static const char *HostSigName(int sig)
     case SIGBUS:  return "SIGBUS";
     case SIGILL:  return "SIGILL";
     case SIGFPE:  return "SIGFPE";
+    case SIGABRT: return "SIGABRT";
     default:      return "signal";
     }
 }
@@ -1040,7 +1151,7 @@ static void HostSignalsInstall(void)
 {
     static char altstack[64 * 1024];
     static const int term[] = {SIGTERM, SIGINT, SIGHUP};
-    static const int crash[] = {SIGSEGV, SIGBUS, SIGILL, SIGFPE};
+    static const int crash[] = {SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT};
     struct sigaction sa;
     stack_t ss;
     void *warm[1];
@@ -1077,6 +1188,64 @@ static void HostSignalsExit(void) {}
 static int QuitPoll_Window(void) { return g_host_term_sig || HostWindow_Poll(); }
 static int QuitPoll_Signal(void) { return g_host_term_sig != 0; }
 
+/* A stop on missing native code ends the game.  In a windowed (player) run
+ * the reason is also written to a small text file the player can send:
+ *   $XDG_STATE_HOME/parasite-eve-port/last-stop.txt
+ *   (~/.local/state/parasite-eve-port/last-stop.txt when unset;
+ *    %APPDATA%\\parasite-eve-port\\last-stop.txt on Windows).
+ * Only unresolved-boundary and guest-trap stops write it; a normal quit does not. */
+static void port_write_stop_report(void)
+{
+    PEPortStopReason why = PE_Port_GetStopReason();
+    char dir[1024], path[1100];
+    const char *base;
+    FILE *f;
+    time_t now;
+    if (why != PE_PORT_STOP_UNRESOLVED_BOUNDARY && why != PE_PORT_STOP_GUEST_TRAP)
+        return;
+#ifdef _WIN32
+    base = getenv("APPDATA");
+    if (!base || !base[0]) return;
+    snprintf(dir, sizeof dir, "%s\\parasite-eve-port", base);
+    _mkdir(dir);
+    snprintf(path, sizeof path, "%s\\last-stop.txt", dir);
+#else
+    base = getenv("XDG_STATE_HOME");
+    if (base && base[0]) {
+        snprintf(dir, sizeof dir, "%s/parasite-eve-port", base);
+        mkdir(base, 0755);
+    } else {
+        const char *home = getenv("HOME");
+        if (!home || !home[0]) return;
+        snprintf(dir, sizeof dir, "%s/.local", home); mkdir(dir, 0755);
+        snprintf(dir, sizeof dir, "%s/.local/state", home); mkdir(dir, 0755);
+        snprintf(dir, sizeof dir, "%s/.local/state/parasite-eve-port", home);
+    }
+    mkdir(dir, 0755);
+    snprintf(path, sizeof path, "%s/last-stop.txt", dir);
+#endif
+    f = fopen(path, "w");
+    if (!f) {
+        fprintf(stderr, "[HOST] could not write the stop report %s\n", path);
+        return;
+    }
+    now = time(NULL);
+    fprintf(f, "Parasite Eve native port stopped on code it has no native C for yet.\n"
+               "Please send this file to the developer.\n\n");
+    fprintf(f, "time: %s", ctime(&now));
+    fprintf(f, "stop_reason: %s\n", PE_Port_StopReasonName(why));
+    fprintf(f, "detail: %s\n", PE_Decomp_StopDetail());
+    fprintf(f, "room token: %08X\nstory persist[74]: %08X\n",
+            (unsigned)PE_LoadU32(0x8009D280u), (unsigned)PE_LoadU32(0x800A7918u));
+    {
+        int vs_, ds_, pr_, mk_;
+        HostFB_GetState(&vs_, &ds_, &pr_, &mk_);
+        fprintf(f, "presents: %d\n", pr_);
+    }
+    fclose(f);
+    fprintf(stderr, "[HOST] stop report written to %s\n", path);
+}
+
 int main(int argc, char **argv) {
     HostSignalsInstall();
     WatchdogArm();
@@ -1090,6 +1259,7 @@ int main(int argc, char **argv) {
     PE_Callback_Init();
     Bootstrap_Init();
     HostFB_Init();
+    pe_enh_init();
     PE_Port_RunControlReset();
     PE_Port_SetFrameLimit(g_opts.max_frames);
     PE_Port_SetMainIterationLimit(g_opts.max_main_iterations);
@@ -1168,6 +1338,33 @@ int main(int argc, char **argv) {
         fprintf(stderr, "[DISC] boot executable loaded into guest RAM\n");
     }
 
+    /* Disc 2 (the user's own dump, read-only): held by the host drive tray
+     * as the spare disc for the retail disc-swap screen (func_80069B08). */
+    PE_Disc *disc2 = NULL;
+    PE_Tray_Reset();
+    if (g_opts.disc2_image) {
+        char err[256];
+        PE_DiscIdentity id2;
+        char why2[384];
+        if (!disc) {
+            fprintf(stderr, "--disc2-image requires --disc-image\n");
+            return 1;
+        }
+        disc2 = PE_Disc_Open(g_opts.disc2_image, err, sizeof(err));
+        if (!disc2) {
+            fprintf(stderr, "[DISC] failed to open disc 2 image: %s\n", err);
+            return 1;
+        }
+        if (PE_DiscCheck_Identify(disc2, 2u, &id2, why2, sizeof(why2)) != 0) {
+            fprintf(stderr, "[DISC] %s: %s\n", g_opts.disc2_image, why2);
+            PE_Disc_Close(disc2);
+            return 1;
+        }
+        PE_Tray_SetSpare(disc2, 2);
+        fprintf(stderr, "[DISC] disc 2 '%s' identified (%s); held in the tray for the disc swap\n",
+                g_opts.disc2_image, id2.known->serial);
+    }
+
     TraceEvent("native_executable_start");
 
     if (g_opts.lzcr_oracle_dump) {
@@ -1216,6 +1413,9 @@ int main(int argc, char **argv) {
             PE_Port_SetPresentHook(PresentHook_BlitWindow);
             HostFB_SetScanoutHook(ScanoutHook_BlitWindow);
             PE_Port_SetPadSource(HostWindow_PadRaw);
+            /* Opt-in ANALOG STICK; route-pad / PE_PAD_SCRIPT sources below
+             * replace the pad source and drop this, so they stay digital. */
+            PE_Port_SetPadAnalogSource(HostWindow_PadAnalog);
         }
     }
 
@@ -1246,7 +1446,16 @@ int main(int argc, char **argv) {
         RoutePadLoadSequence();
         g_route_m34_shim = !getenv("PE_ROUTE_M34_NO_SHIM");
         g_route_battle_shim = !getenv("PE_ROUTE_BATTLE_NO_SHIM");
-        if (g_route_m34_shim)
+        {   /* PE_ROUTE_AIDS_PAD_ONLY=1 (any value but empty/"0"), read once: the pilots keep their pad policies and
+             * skip their guest writes (the Aya HP locks).  Unset = behaviour unchanged. */
+            const char *po = getenv("PE_ROUTE_AIDS_PAD_ONLY");
+            g_route_aids_pad_only = po && po[0] && strcmp(po, "0") != 0;
+        }
+        if (g_route_aids_pad_only)
+            fprintf(stderr, "[ROUTE_SHIM] PE_ROUTE_AIDS_PAD_ONLY=1: the aids' Aya HP locks are skipped (no guest writes); "
+                            "the pad-only pilots (field heal, M34 policy, see route_padonly_pilot.h) add pad policies "
+                            "(m34 pilot=%d battle pilot=%d)\n", g_route_m34_shim, g_route_battle_shim);
+        if (g_route_m34_shim && !g_route_aids_pad_only)
             fprintf(stderr, "[ROUTE_SHIM] M34 HP lock + simple tail controller enabled "
                             "(PE_ROUTE_M34_NO_SHIM=1 disables; see DAY1_FIDELITY_GAPS.md)\n");
         /* PE_ROUTE_PLAY_MOVIES=1 (fmv2 harness aid) keeps this skip for
@@ -1319,7 +1528,7 @@ int main(int argc, char **argv) {
 
     if (use_window) {
         TraceEvent("window_blit");
-        HostWindow_Blit(HostFB_GetPixels(), PE_PORT_FB_WIDTH, PE_PORT_FB_HEIGHT);
+        BlitPresentationFrame(0);
         UpdateTitle("Black frame", "waiting");
         if (PE_Port_GetStopReason() != PE_PORT_STOP_NONE) {
             /* A quit request or explicit budget already ended execution. */
@@ -1336,7 +1545,18 @@ int main(int argc, char **argv) {
         HostWindow_Close();
     }
 
-    const char *sp = g_opts.screenshot ? g_opts.screenshot : "/tmp/pe-port-black.ppm";
+    /* Without --screenshot the shutdown frame goes to $TMPDIR (Windows: %TEMP%), so an
+     * isolated run never writes the shared /tmp; /tmp stays the last fallback. */
+    char spbuf[1024];
+    const char *sp = g_opts.screenshot;
+    if (!sp) {
+        const char *td = getenv("TMPDIR");
+#ifdef _WIN32
+        if (!td || !*td) td = getenv("TEMP");
+#endif
+        snprintf(spbuf, sizeof spbuf, "%s/pe-port-black.ppm", (td && *td) ? td : "/tmp");
+        sp = spbuf;
+    }
     if (HostFB_WritePPM(sp) == 0)
         fprintf(stderr, "[SCREENSHOT] %s (%dx%d)\n", sp, PE_PORT_FB_WIDTH, PE_PORT_FB_HEIGHT);
 
@@ -1370,6 +1590,9 @@ int main(int argc, char **argv) {
             PE_Port_StopReasonName(PE_Port_GetStopReason()));
     fprintf(stderr, "[HOST] final room token=%08X story persist[74]=%08X\n",
             (unsigned)PE_LoadU32(0x8009D280u), (unsigned)PE_LoadU32(0x800A7918u));
+    RoutePadOnlyBattleFlush();
+    if (!g_opts.headless)
+        port_write_stop_report();
     {
         PeGpuState gpu;
 
@@ -1429,7 +1652,9 @@ int main(int argc, char **argv) {
     }
 
     TraceEvent("shutdown_end"); TraceClose();
+    PE_Disc_SetActive(NULL);
     PE_Disc_Close(disc);
+    PE_Disc_Close(disc2);
     PE_RamDestroy();
     HostSignalsExit();
     return 0;

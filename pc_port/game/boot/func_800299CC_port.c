@@ -378,10 +378,13 @@ void func_800299CC_damage_entry_cut(void)
         if ((flags & 0x4000u) == 0u ||
             ((D_8009D1A0|PE_LoadU32(GA_D_8009D1A0)) & 0x100u) != 0u) {
             func_80021DE0();
+            if (PE_Port_ShouldStop()) return;
             update=2u;
         }
-        if (PE_LoadU8(GA_D_8009D294) != 0u)
+        if (PE_LoadU8(GA_D_8009D294) != 0u) {
             func_800236E8();
+            if (PE_Port_ShouldStop()) return;
+        }
     }
     func_8001D340(update);
     /* 2A504: walk D20C, jal 27D14 on non-Aya actors with a body. */
@@ -517,10 +520,13 @@ void func_800299CC(void)
         if ((int8_t)func_80021054() > 0) {
             if (!(PE_LoadU32(BT_REC() + 0x4Cu) & 0x4000u) || (D_8009D1A0 & 0x100u)) {
                 func_80021DE0();
+                if (PE_Port_ShouldStop()) return;
                 s = 2u;
             }
-            if (PE_LoadU8(GA_D_8009D294) != 0u)
+            if (PE_LoadU8(GA_D_8009D294) != 0u) {
                 func_800236E8();
+                if (PE_Port_ShouldStop()) return;
+            }
         }
         if (PE_LoadU32(0x8009D1ACu) & 0x300u)
             func_8003495C();
@@ -530,7 +536,9 @@ void func_800299CC(void)
         if (PE_Port_ShouldStop()) return;
         if (PE_LoadU8(0x8009D23Cu) != 0u) {
             (void)func_8006F6D4(PE_LoadU32(0x8009D2FCu), 0u, 1u, 0x800B8A90u, 0u, 0u);
+            if (PE_Port_ShouldStop()) return;
             (void)func_8006F6D4(PE_LoadU32(0x8009D2FCu), 0u, 0u, 1u, 0u, 0u);
+            if (PE_Port_ShouldStop()) return;
             PE_StoreU8(0x8009D23Cu, 0u);
         }
         if (PE_LoadU8(0x8009D235u) != 0u)

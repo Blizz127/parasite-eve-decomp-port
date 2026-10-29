@@ -2,10 +2,14 @@
 #include "pe_mmio.h"
 #include "pe_irq.h"
 #include "pe_gpu.h"
+#include "pe_mdec.h"
 #include "pe_timer1.h"
 #include "pe_rcnt2.h"
 #include "pe_sio0.h"
 #include "pe_spu_dma.h"
+#include "pe_spu.h"
+#include "pe_cdreg.h"
+#include "game_port.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -28,16 +32,14 @@ static int w_dpcr(uint32_t v) { PE_GPU_WriteDPCR(v); return 1; }
 static uint32_t r_dicr(void) { return PE_GPU_ReadDICR(); }
 static int w_dicr(uint32_t v) { PE_GPU_WriteDICR(v); return 1; }
 static uint32_t r_t1cnt(void) { return PE_Timer1_ReadCounter(); }
+static int w_t1cnt(uint32_t v) { PE_Timer1_WriteCounter((uint16_t)v); return 1; }
+static uint32_t r_t1tgt(void) { return PE_Timer1_ReadTarget(); }
+static int w_t1tgt(uint32_t v) { PE_Timer1_WriteTarget((uint16_t)v); return 1; }
 static uint32_t r_t1mode(void) { return PE_Timer1_ReadMode(); }
 static uint32_t p_t1mode(void) { return PE_Timer1_PeekMode(); }
-/* pe_timer1 models exactly the retail VBlank-counter program 0x107
- * (func_800743B4 -> 0x1F801114); any other RCNT1 mode is not modelled. */
 static int w_t1mode(uint32_t v)
 {
-    if ((v & 0xFFFFu) != 0x107u)
-        return 0;
-    PE_Timer1_InitializeVBlankCounter();
-    return 1;
+    return PE_Timer1_WriteMode((uint16_t)v);
 }
 static uint32_t r_t2cnt(void) { return PE_Rcnt2_ReadCounter(); }
 static int w_t2cnt(uint32_t v) { PE_Rcnt2_WriteCounter((uint16_t)v); return 1; }
@@ -69,8 +71,9 @@ static const PeMmioReg g_pe_mmio_regs[] = {
     {0x1F801074u, 2, "I_MASK",      r_imask,  r_imask,  w_imask},
     {0x1F8010F0u, 4, "DPCR",        r_dpcr,   r_dpcr,   w_dpcr},
     {0x1F8010F4u, 4, "DICR",        r_dicr,   r_dicr,   w_dicr},
-    {0x1F801110u, 2, "RCNT1 count", r_t1cnt,  r_t1cnt,  NULL},
+    {0x1F801110u, 2, "RCNT1 count", r_t1cnt,  r_t1cnt,  w_t1cnt},
     {0x1F801114u, 2, "RCNT1 mode",  r_t1mode, p_t1mode, w_t1mode},
+    {0x1F801118u, 2, "RCNT1 target",r_t1tgt,  r_t1tgt,  w_t1tgt},
     {0x1F801120u, 2, "RCNT2 count", r_t2cnt,  r_t2cnt,  w_t2cnt},
     {0x1F801124u, 2, "RCNT2 mode",  r_t2mode, p_t2mode, w_t2mode},
     {0x1F801128u, 2, "RCNT2 target",r_t2tgt,  r_t2tgt,  w_t2tgt},
@@ -93,8 +96,55 @@ static uint32_t canon(pe_addr_t a)
 {
     uint32_t seg = a & 0xE0000000u;
     if (seg == 0x80000000u || seg == 0xA0000000u)
-        return a & 0x1FFFFFFFu;
+        a &= 0x1FFFFFFFu;
+    /* The DMA controller decodes CHCR at both +8 and +Ch. Normalize
+     * before device dispatch, retaining each channel's width/coverage
+     * boundary and its single register/event authority. */
+    if(a>=0x1F801080u && a<=0x1F8010ECu && (a&15u)==12u) a-=4u;
     return a;
+}
+
+/* CD has byte registers. RDDATA also accepts a halfword: two consecutive
+ * bytes from the same FIFO port, not a data byte followed by IRQ status.
+ * Raw U32 CD shadow access remains an explicit pe_cdreg API, not CPU MMIO. */
+static int is_cd_byte(uint32_t a, size_t size)
+{
+    return size == 1 && a >= PE_CDREG_BASE && a < PE_CDREG_BASE + 4u;
+}
+
+static int is_cd_read(uint32_t a, size_t size)
+{
+    return is_cd_byte(a, size) || (a == PE_CDREG_BASE + 2u && size == 2);
+}
+
+static int is_cd_dma_word(uint32_t a, size_t size)
+{
+    return size == 4 && a >= PE_CDREG_DMA3 &&
+           a <= PE_CDREG_DMA3 + 8u && !(a & 3u);
+}
+
+static int is_gpu_word(uint32_t a, size_t size)
+{
+    return size == 4 && (a == 0x1F801810u || a == 0x1F801814u);
+}
+static int is_gpu_dma_word(uint32_t a,size_t size)
+{
+    return size==4 && !(a&3u) && a>=0x1F8010A0u && a<=0x1F8010A8u;
+}
+
+static int is_otc_dma_word(uint32_t a,size_t size)
+{
+    return size==4 && a>=0x1F8010E0u && a<=0x1F8010E8u && !(a&3u);
+}
+static int is_mdec_word(uint32_t a, size_t size)
+{
+    return size == 4 && (a == 0x1F801820u || a == 0x1F801824u);
+}
+static int is_mdec_dma_word(uint32_t a, size_t size)
+{
+    return size == 4 && !(a & 3u) &&
+        ((a >= 0x1F801080u && a <= 0x1F801088u) ||
+         (a >= 0x1F801090u && a <= 0x1F801098u));
 }
 
 /* SPU register file 0x1F801C00..0x1F801DFF (pe_spu_dma.h
@@ -108,6 +158,29 @@ static int is_spu(uint32_t a, size_t size)
     return a >= SPU_BASE && a - SPU_BASE < SPU_SIZE &&
            size <= SPU_SIZE - (a - SPU_BASE);
 }
+/* Current voice volumes are live sample-clock state, outside the ordinary
+ * register file. Value reads only: writes and mutable pointer aliases stay
+ * unsupported until their internal-register semantics are established. */
+static int is_spu_volume(uint32_t a, size_t size)
+{
+    return a >= 0x1F801E00u && a < 0x1F801E60u &&
+           size <= 0x1F801E60u - a &&
+           (size == 1 || (size == 2 && !(a & 1u)) ||
+            (size == 4 && !(a & 3u)));
+}
+
+static uint32_t spu_volume_load(uint32_t a, size_t size)
+{
+    uint16_t lo = 0, hi = 0;
+    uint32_t off = a - SPU_BASE;
+    /* Inactive synthesis has no live sweep state; read zero. */
+    PE_Spu_OnRegisterRead(off & ~1u, &lo);
+    if (size == 1) return (a & 1u) ? lo >> 8 : lo & 0xFFu;
+    if (size == 2) return lo;
+    PE_Spu_OnRegisterRead(off + 2u, &hi);
+    return lo | ((uint32_t)hi << 16);
+}
+
 static uint8_t g_spu_shadow[SPU_SIZE];
 static uint8_t g_spu_snapshot[SPU_SIZE];
 static int g_spu_shadow_live;
@@ -178,7 +251,8 @@ static const PeMmioReg *find_reg(uint32_t a, size_t size)
     for (size_t i = 0; i < PE_MMIO_NREGS; i++) {
         const PeMmioReg *r = &g_pe_mmio_regs[i];
         /* whole-register access, or a 32-bit access to a 16-bit register */
-        if (a == r->addr && (size == r->width || (size == 4 && r->width == 2)))
+        if (a == r->addr && (size == r->width || (size == 4 && r->width == 2) ||
+            (a == 0x1F801040u && (size == 2 || size == 4))))
             return r;
     }
     return NULL;
@@ -187,6 +261,8 @@ static const PeMmioReg *find_reg(uint32_t a, size_t size)
 int PE_MMIO_IsModelled(pe_addr_t address, size_t size)
 {
     uint32_t a = canon(address);
+    if (is_otc_dma_word(a,size) || is_gpu_dma_word(a,size) || is_mdec_dma_word(a, size) || is_mdec_word(a, size) || is_gpu_word(a, size) || is_cd_read(a, size) || is_cd_dma_word(a, size)) return 1;
+    if (is_spu_volume(a, size)) return 1;
     if (is_spu(a, size))
         return (size == 2 && !(a & 1u)) || (size == 4 && !(a & 3u)) || size == 1;
     return find_reg(a, size) != NULL;
@@ -206,6 +282,56 @@ int PE_MMIO_InShadowBlock(pe_addr_t address, size_t size)
 
 uint32_t PE_MMIO_Load(pe_addr_t address, size_t size)
 {
+    if(is_otc_dma_word(canon(address),size)) {
+        PE_MMIO_Commit();
+        return PE_GPU_ReadDMA6Register(canon(address)-0x1F8010E0u);
+    }
+    if(canon(address)==0x1F801040u && (size==2 || size==4)) {
+        PE_MMIO_Commit();
+        return PE_Sio0_ReadDataWide((unsigned)size);
+    }
+    if(is_gpu_dma_word(canon(address),size)) {
+        PE_MMIO_Commit();
+        switch(canon(address)-0x1F8010A0u) {
+        case 0: return PE_GPU_ReadDMA2MADR();
+        case 4: return PE_GPU_ReadDMA2BCR();
+        default: return PE_GPU_ReadDMA2CHCR();
+        }
+    }
+    if (is_mdec_dma_word(canon(address), size)) {
+        PE_MMIO_Commit();
+        return canon(address)<0x1F801090u
+            ? PE_MDEC_ReadDMA0(canon(address)-0x1F801080u)
+            : PE_MDEC_ReadDMA1(canon(address)-0x1F801090u);
+    }
+    if (canon(address) == 0x1F801820u && size == 4) {
+        PE_MMIO_Commit();
+        uint32_t value=0;
+        (void)PE_MDEC_ReadData(&value);
+        return value; /* unsuccessful reads request an explicit port stop */
+    }
+    if (is_gpu_word(canon(address), size)) {
+        PE_MMIO_Commit();
+        if (canon(address) == 0x1F801814u) return PE_GPU_ReadStatus();
+        uint32_t value;
+        if (!PE_GPU_ReadGP0(&value))
+            mmio_fatal("load (GPU read port unavailable)", address, size);
+        return value;
+    }
+    if (is_cd_dma_word(canon(address), size)) {
+        PE_MMIO_Commit();
+        return PE_CdReg_ReadU32(canon(address));
+    }
+    if (is_cd_read(canon(address), size)) {
+        PE_MMIO_Commit();
+        uint32_t lo = PE_CdReg_ReadU8(canon(address));
+        if (size == 1 || PE_Port_ShouldStop()) return lo;
+        return lo | ((uint32_t)PE_CdReg_ReadU8(canon(address)) << 8);
+    }
+    if (is_spu_volume(canon(address), size)) {
+        PE_MMIO_Commit();
+        return spu_volume_load(canon(address), size);
+    }
     if (is_spu(canon(address), size)) {
         uint32_t v;
         PE_MMIO_Commit();
@@ -224,6 +350,47 @@ uint32_t PE_MMIO_Load(pe_addr_t address, size_t size)
 
 void PE_MMIO_Store(pe_addr_t address, size_t size, uint32_t value)
 {
+    if(is_otc_dma_word(canon(address),size)) {
+        PE_MMIO_Commit();
+        if(!PE_GPU_WriteDMA6Register(canon(address)-0x1F8010E0u,value))
+            mmio_fatal("store (DMA6 setup not modelled)",address,size);
+        return;
+    }
+    if(is_gpu_dma_word(canon(address),size)) {
+        PE_MMIO_Commit();
+        if(!PE_GPU_WriteDMA2Register(canon(address)-0x1F8010A0u,value))
+            mmio_fatal("store (GPU DMA2 setup not modelled)",address,size);
+        return;
+    }
+    if (is_mdec_dma_word(canon(address), size)) {
+        PE_MMIO_Commit();
+        if(canon(address)<0x1F801090u) PE_MDEC_WriteDMA0(canon(address)-0x1F801080u,value);
+        else PE_MDEC_WriteDMA1(canon(address)-0x1F801090u,value);
+        return;
+    }
+    if (is_mdec_word(canon(address), size)) {
+        PE_MMIO_Commit();
+        if (canon(address) == 0x1F801824u) PE_MDEC_WriteControl(value);
+        else (void)PE_MDEC_WriteCommandData(value);
+        return;
+    }
+    if (is_gpu_word(canon(address), size)) {
+        PE_MMIO_Commit();
+        int accepted = canon(address) == 0x1F801810u
+            ? PE_GPU_WriteGP0(value) : PE_GPU_WriteGP1(value);
+        if (!accepted) mmio_fatal("store (GPU command not modelled)", address, size);
+        return;
+    }
+    if (is_cd_dma_word(canon(address), size)) {
+        PE_MMIO_Commit();
+        PE_CdReg_WriteU32(canon(address), value);
+        return;
+    }
+    if (is_cd_byte(canon(address), size)) {
+        PE_MMIO_Commit();
+        PE_CdReg_WriteU8(canon(address), (uint8_t)value);
+        return;
+    }
     if (is_spu(canon(address), size)) {
         PE_MMIO_Commit();
         if (!spu_store(canon(address), size, value))

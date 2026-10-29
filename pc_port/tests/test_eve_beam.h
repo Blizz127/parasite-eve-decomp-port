@@ -1,4 +1,5 @@
 #include "retail_eve_beam_cases.h"
+#include "test_m0005i_code.h"
 
 static pe_addr_t ATK29_beam_address(uint32_t offset)
 { return offset<0x400u?0x1F800000u+offset:0x80000000u+offset; }
@@ -52,6 +53,7 @@ static void test_ATK29_retail_eve_beam(void)
             PE_StoreU32(ATK29_beam_address(ATK29_beam_common[i][0]),ATK29_beam_common[i][1]);
         for (i=ATK29_beam_cases[k].first;i<ATK29_beam_cases[k].end;i++)
             PE_StoreU32(ATK29_beam_address(ATK29_beam_patches[i][0]),ATK29_beam_patches[i][1]);
+        ASSERT(load_m0005i_code()==0,"ATK29: m0005i code from PE.IMG");
         PE_GTE_LoadRT33(0x80148000u);g_pe_gte.ofx=160*65536;g_pe_gte.ofy=112*65536;
         g_pe_gte.h=256;g_pe_gte.dqa=(int16_t)ATK29_beam_cases[k].dqa;
         g_pe_gte.dqb=(int32_t)ATK29_beam_cases[k].dqb;g_pe_gte.zsf3=0x155;

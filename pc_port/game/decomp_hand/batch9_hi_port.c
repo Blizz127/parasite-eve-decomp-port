@@ -5,6 +5,7 @@
 #include "pe_guest_decomp.h"
 #include "pe_sdk.h"
 #include "hand_hi_protos.h"
+#include "game_port.h"
 
 extern unsigned int func_80071A54(void);
 extern int func_8006E6A8(int lba, pe_addr_t dest, int sectors);
@@ -152,25 +153,32 @@ int func_8006BD68(void)
     const pe_addr_t g = 0x800B0CD8u;
     int r;
 
+    if (PE_Port_ShouldStop()) return 0;
     if ((signed char)PE_LoadU8(g + 8u) == (signed char)PE_LoadU8(g + 9u))
         return 0;
     (void)func_80074DC0(0);
+    if (PE_Port_ShouldStop()) return 0;
     for (;;) {
         do {
             int idx = ((signed char)PE_LoadU8(g + 8u) + 0x2B) * 2;
             int lo = PE_LoadU16(0x800930D8u + (uint32_t)idx);
             int hi = PE_LoadU16(0x800930D8u + 2u + (uint32_t)idx);
 
+            if (PE_Port_ShouldStop()) return 0;
             r = func_8006E6A8((int)PE_LoadU32(g + 0x100u) + lo,
                               PE_LoadU32(g + 0x194u), hi - lo);
         } while (r == -1);
+        if (PE_Port_ShouldStop()) return 0;
         do {
+            if (PE_Port_ShouldStop()) return 0;
             r = func_8006E7E8();
         } while (r != 0 && r != -1);
+        if (PE_Port_ShouldStop()) return 0;
         if (r == 0)
             break;
     }
     (void)func_800718D0(PE_LoadU32(g + 0x194u));
+    if (PE_Port_ShouldStop()) return 0;
     PE_StoreU8(g + 9u, PE_LoadU8(g + 8u));
     return 0;
 }

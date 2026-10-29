@@ -39,6 +39,7 @@
 #include "pe_guest_image.h"
 #include "pe_route_pad.h"
 #include "pe_memcard.h"
+#include "pe_guestcode.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -82,6 +83,8 @@ static uint32_t   g_last_story = 0xDEADBEEFu;
 static uint32_t   g_last_tok;
 static uint32_t   g_last_flags24;
 static int        g_first_story_frame = -1;
+static int        g_first_death_frame = -1, g_first_death_rf;
+static uint32_t   g_first_death_token;
 static int        g_milestone_hits;
 static unsigned   g_sewer_enemy_peak[3], g_sewer_victories, g_supply_observations;
 
@@ -194,6 +197,9 @@ static void PadConfigFromEnv(void)
         }
     }
     fprintf(stderr,"route: Cross pulse end=%d resume=%d\n",g_pulse_end,g_pulse_resume);
+    fprintf(stderr,"route: pad clock %s\n",getenv("PE_ROUTE_NO_ANCHOR")
+            ? "absolute host frames (PE_ROUTE_NO_ANCHOR set)"
+            : "event-anchored (mirrors port_main.c RoutePadClock)");
     s = getenv("PE_ROUTE_PAD_SEQUENCE");
     if (!s) s=kDay1RoutePads;
     while (s && s[0]) {
@@ -232,16 +238,114 @@ bad_sequence:
 
 #include "route_reward_sewer_pilot.h"
 
+/* Event-anchored pad clock — mirrors RoutePadClock() in pc_port/src/port_main.c
+ * (the interactive --route-pad autopilot); diff the two before changing either.
+ *
+ * The recorded pads (kDay1RoutePads, the exact battle windows, the pulse gating)
+ * were captured on one build's timing.  9dd1bd1c made func_800144FC (the
+ * field-VM battle-entry state machine) its retail-matched TU, which moves every
+ * battle entry 2-3 frames, and port_main.c records the m0013i fight ending ~184
+ * frames early under the matched battle tick.  The room anchor table has the
+ * m0012i re-entry (nth=1) at route-clock 19404; the absolute-clock harness
+ * re-entered it at host frame 19198 (206 frames early), replayed the door walk
+ * out of phase and parked in m0012i for the remaining 42000 frames.  The
+ * autopilot therefore replays the table on a route clock rf = g_frame -
+ * g_pad_offset that is re-anchored at each recorded room entry, battle start and
+ * battle end.  Without the same clock this harness feeds the identical pad table
+ * at the wrong game times.
+ *
+ * This changes INPUT TIMING ONLY.  It reads guest memory (token, D_8009D1A0) and
+ * never writes it, so the harness stays pad-only (R9).  The anchor tables are the
+ * autopilot's own headers in pc_port/src (shared source of truth, no copy).
+ * PE_ROUTE_NO_ANCHOR=1 restores the old absolute host-frame clock (same switch as
+ * the autopilot).  g_frame stays the host frame count for the trace, the hook and
+ * the opt-in reward pilot, exactly as in port_main.c. */
+static const struct { uint32_t token; int frame; } kRouteBattleAnchors[] = {
+#include "route_battle_anchors.h"
+};
+static const struct { uint32_t token; int nth; int frame; } kRouteRoomAnchors[] = {
+#include "route_room_anchors.h"
+};
+static const struct { uint32_t token; int nth; int frame; } kRouteBattleEndAnchors[] = {
+#include "route_battle_end_anchors.h"
+};
+static int g_pad_offset;
+static int RoutePadClock(void)
+{
+    static int init = -1;
+    static uint32_t last_b;
+    static unsigned used;          /* bitmask of consumed anchors */
+    uint32_t b;
+    if (init < 0) init = !getenv("PE_ROUTE_NO_ANCHOR");
+    if (init) {
+        static uint32_t last_tok;
+        static struct { uint32_t tok; int n; } cnt[64]; static unsigned ncnt;
+        uint32_t tok = (uint32_t)D_8009D280;
+        if (tok != last_tok) {
+            unsigned k; int nth = 0;
+            last_tok = tok;
+            for (k = 0; k < ncnt && cnt[k].tok != tok; k++) {}
+            if (k == ncnt && ncnt < 64u) { cnt[ncnt].tok = tok; cnt[ncnt].n = 0; ncnt++; }
+            if (k < ncnt) nth = cnt[k].n++;
+            for (unsigned i = 0; i < sizeof(kRouteRoomAnchors)/sizeof(kRouteRoomAnchors[0]); i++) {
+                if (kRouteRoomAnchors[i].token == tok && kRouteRoomAnchors[i].nth == nth &&
+                    abs(g_frame - kRouteRoomAnchors[i].frame - g_pad_offset) < 900) {
+                    int o = g_frame - kRouteRoomAnchors[i].frame;
+                    if (o != g_pad_offset)
+                        fprintf(stderr, "[ROUTE] anchor room token=%08X nth=%d recorded=%d actual=%d offset=%d\n",
+                                (unsigned)tok, nth, kRouteRoomAnchors[i].frame, g_frame, o);
+                    g_pad_offset = o;
+                    break;
+                }
+            }
+        }
+    }
+    b = PE_LoadU32(0x8009D1A0u) & 0x2u;
+    if (init && b && !last_b) {
+        uint32_t tok = (uint32_t)D_8009D280;
+        for (unsigned i = 0; i < sizeof(kRouteBattleAnchors)/sizeof(kRouteBattleAnchors[0]) && i < 32u; i++) {
+            if (!(used & (1u << i)) && kRouteBattleAnchors[i].token == tok &&
+                abs(g_frame - kRouteBattleAnchors[i].frame - g_pad_offset) < 600) {
+                used |= 1u << i;
+                g_pad_offset = g_frame - kRouteBattleAnchors[i].frame;
+                fprintf(stderr, "[ROUTE] anchor battle token=%08X recorded=%d actual=%d offset=%d\n",
+                        (unsigned)tok, kRouteBattleAnchors[i].frame, g_frame, g_pad_offset);
+                break;
+            }
+        }
+    }
+    if (init && !b && last_b) {
+        static struct { uint32_t tok; int n; } ec[32]; static unsigned nec;
+        uint32_t tok = (uint32_t)D_8009D280; unsigned k; int nth = 0;
+        for (k = 0; k < nec && ec[k].tok != tok; k++) {}
+        if (k == nec && nec < 32u) { ec[nec].tok = tok; ec[nec].n = 0; nec++; }
+        if (k < nec) nth = ec[k].n++;
+        for (unsigned i = 0; i < sizeof(kRouteBattleEndAnchors)/sizeof(kRouteBattleEndAnchors[0]); i++) {
+            if (kRouteBattleEndAnchors[i].token == tok && kRouteBattleEndAnchors[i].nth == nth &&
+                abs(g_frame - kRouteBattleEndAnchors[i].frame - g_pad_offset) < 900) {
+                int o = g_frame - kRouteBattleEndAnchors[i].frame;
+                fprintf(stderr, "[ROUTE] anchor battle-end token=%08X nth=%d recorded=%d actual=%d offset=%d\n",
+                        (unsigned)tok, nth, kRouteBattleEndAnchors[i].frame, g_frame, o);
+                g_pad_offset = o;
+                break;
+            }
+        }
+    }
+    last_b = b;
+    return g_frame - g_pad_offset;
+}
+
 static uint16_t RoutePadSource(void)
 {
-    uint16_t mask=PeRoutePad_Mask(&g_pad,g_frame);
-    for (unsigned i=0;i<g_pad_sequence_count && g_frame>=g_pad_sequence[i].frame;i++)
+    int rf=RoutePadClock();   /* route clock; g_frame is the host frame */
+    uint16_t mask=PeRoutePad_Mask(&g_pad,rf);
+    for (unsigned i=0;i<g_pad_sequence_count && rf>=g_pad_sequence[i].frame;i++)
         mask=g_pad_sequence[i].mask;
-    if (!(g_frame>=g_exact_pad_begin && g_frame<g_exact_pad_end) &&
-        !(g_frame>=g_sewer_pad_begin && g_frame<g_sewer_pad_end) &&
-        !(g_frame>=g_second_sewer_pad_begin && g_frame<g_second_sewer_pad_end) &&
-        !(g_frame>=g_supply_pad_begin && g_frame<g_supply_pad_end) &&
-        (g_frame<g_pulse_end || g_frame>=g_pulse_resume) && (g_frame%g_pad.period)==3) mask&=g_pad.pulse;
+    if (!(rf>=g_exact_pad_begin && rf<g_exact_pad_end) &&
+        !(rf>=g_sewer_pad_begin && rf<g_sewer_pad_end) &&
+        !(rf>=g_second_sewer_pad_begin && rf<g_second_sewer_pad_end) &&
+        !(rf>=g_supply_pad_begin && rf<g_supply_pad_end) &&
+        (rf<g_pulse_end || rf>=g_pulse_resume) && (rf%g_pad.period)==3) mask&=g_pad.pulse;
     if (getenv("PE_ROUTE_REWARD_PILOT")) mask=RouteRewardSewerPilot(mask);
     return mask;
 }
@@ -470,6 +574,21 @@ static void RouteHook(void)
     BattleTraceSample();
     RecordSewerVictory();
     RecordSupplies();
+    /* Observation only: name the first battle death (Aya HP 0 in battle mode 3).
+     * The route is pad-only and never prevents it; the game's own Game Over path
+     * then returns to the title token and the pad table replays the opening, so
+     * the trace rows after this point are not progress. */
+    if (g_first_death_frame < 0 && (PE_LoadU32(0x8009D1A0u) & 2u) &&
+        PE_LoadU32(0x8009D28Cu) == 3u) {
+        pe_addr_t rec = PE_LoadU32(0x8009D278u);
+        if (rec != 0u && PE_RangeIsRam(rec, 32u) && PE_LoadU16(rec + 12u) == 0u) {
+            g_first_death_frame = g_frame;
+            g_first_death_rf    = g_frame - g_pad_offset;
+            g_first_death_token = GA_TOKEN;
+            fprintf(stderr, "route: Aya died (battle mode 3, HP 0) f=%d route-clock=%d token=%08X\n",
+                    g_first_death_frame, g_first_death_rf, (unsigned)g_first_death_token);
+        }
+    }
     {
         static int item_trace = -1;
         if (item_trace < 0) item_trace = getenv("PE_ROUTE_ITEM_TRACE") ? 1 : 0;
@@ -601,6 +720,7 @@ static PEPortStopReason RunRoute(int frame_limit)
     PE_Disc *disc;
     char err[256];
     PE_RamInit();
+    PE_GuestCode_InstallGenerated();   /* guest-code dispatch registry */
     PE_Callback_Init();
     Bootstrap_Init();
     PE_Port_RunControlReset();
@@ -621,6 +741,7 @@ static PEPortStopReason RunRoute(int frame_limit)
     g_last_tok = 0u;
     g_last_flags24 = 0xDEADBEEFu;
     g_first_story_frame = -1;
+    g_first_death_frame = -1;
     g_milestone_hits = 0;
     g_sewer_enemy_peak[0]=g_sewer_enemy_peak[1]=g_sewer_enemy_peak[2]=g_sewer_victories=0u;
     err[0] = 0;
@@ -957,6 +1078,12 @@ int main(void)
     printf("route: frames=%d stop=%s story=0x%08X persist1=0x%08X token=0x%08X\n",
            g_frame, PE_Port_StopReasonName(reason),
            PE_LoadU32(GA_PERSIST74), PE_LoadU32(GA_PERSIST1), GA_TOKEN);
+    printf("route: pad clock=%s final offset=%d (route frame = host frame - offset)\n",
+           getenv("PE_ROUTE_NO_ANCHOR") ? "absolute" : "event-anchored", g_pad_offset);
+    if (g_first_death_frame >= 0)
+        printf("route: first Aya death f=%d route-clock=%d token=0x%08X (battle mode 3, HP 0): "
+               "pad-only replay lost this fight; later trace rows are the game's Game Over -> title restart\n",
+               g_first_death_frame, g_first_death_rf, (unsigned)g_first_death_token);
 
     for (i = 0; i < g_trace_count; i++) {
         const RouteTrace *t = &g_trace[i];

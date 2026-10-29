@@ -61,6 +61,10 @@ int pe_plat_audio_transfer_write(uint32_t address, const void *data, size_t len)
     if (!ram || (!data && len)) return 0;
     for (i = 0; i < len; i++)
         ram[(address + i) & (PE_PLAT_AUDIO_SAMPLE_RAM - 1u)] = src[i];
+    /* A full traversal necessarily visits IRQA; clamp the notification
+     * length before narrowing size_t while retaining the complete copy. */
+    PE_Spu_NotifyRamTransfer(address, len >= PE_PLAT_AUDIO_SAMPLE_RAM
+        ? PE_PLAT_AUDIO_SAMPLE_RAM : (uint32_t)len);
     return 1;
 }
 
@@ -72,6 +76,8 @@ int pe_plat_audio_transfer_read(uint32_t address, void *out, size_t len)
     if (!ram || (!out && len)) return 0;
     for (i = 0; i < len; i++)
         dst[i] = ram[(address + i) & (PE_PLAT_AUDIO_SAMPLE_RAM - 1u)];
+    PE_Spu_NotifyRamTransfer(address, len >= PE_PLAT_AUDIO_SAMPLE_RAM
+        ? PE_PLAT_AUDIO_SAMPLE_RAM : (uint32_t)len);
     return 1;
 }
 
@@ -81,6 +87,11 @@ void pe_plat_audio_cd_push(const int16_t *stereo, int frames)
 }
 
 void pe_plat_audio_cd_stop(void) { PE_Spu_CdInputStop(); }
+void pe_plat_audio_set_cd_gain(int percent) { PE_Spu_SetCdGain(percent); }
+void pe_plat_audio_set_voice_gains(int music_percent, int sfx_percent)
+{
+    PE_Spu_SetVoiceGains(music_percent, sfx_percent);
+}
 
 void pe_plat_audio_mix(int16_t *stereo_out, int frames)
 {

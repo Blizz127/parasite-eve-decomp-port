@@ -129,7 +129,7 @@ segments:
       - [0x57E0, c, func_801947C8]
       - [0x57E8, c, func_801947D0]
       - [0x5938, c, func_80194920]
-      - [0x5A6C, asm]
+      - [0x5A6C, c, func_80194A54]
       - [0x5E2C, c, func_80194E14]
       - [0x5E48, c, func_80194E30]
       - [0x5E50, c, func_80194E38]

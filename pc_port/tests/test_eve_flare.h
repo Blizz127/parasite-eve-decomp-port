@@ -1,4 +1,5 @@
 #include "retail_eve_flare_cases.h"
+#include "test_m0005i_code.h"
 
 static uint64_t ATK26_flare_hash(void)
 {
@@ -48,6 +49,7 @@ static void test_ATK26_retail_eve_flare(void)
             PE_StoreU32(0x80000000u+ATK26_flare_common[i][0],ATK26_flare_common[i][1]);
         for (i=ATK26_flare_cases[k].first;i<ATK26_flare_cases[k].end;i++)
             PE_StoreU32(0x80000000u+ATK26_flare_patches[i][0],ATK26_flare_patches[i][1]);
+        ASSERT(load_m0005i_code()==0,"ATK26: m0005i code from PE.IMG");
         PE_GTE_LoadRT33(0x80148000u);g_pe_gte.ofx=160*65536;g_pe_gte.ofy=112*65536;
         g_pe_gte.h=256;g_pe_gte.dqa=-0x1062;g_pe_gte.dqb=0x1400000;g_pe_gte.zsf3=0x155;
         switch (ATK26_flare_cases[k].entry) {

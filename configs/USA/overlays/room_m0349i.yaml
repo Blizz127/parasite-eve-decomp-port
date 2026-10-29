@@ -32,7 +32,8 @@ segments:
     vram: 0x8018EFE8
     subsegments:
       - [0x0, bin]
-      - [0x28, asm]
+      - [0x28, c, func_8018F010]
+      - [0x7DC, c, func_8018F7C4]
       - [0x10E8, c, func_801900D0]
       - [0x1150, bin]
   - [0x3A000]

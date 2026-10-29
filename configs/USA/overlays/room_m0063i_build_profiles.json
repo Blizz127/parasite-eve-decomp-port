@@ -6,6 +6,9 @@
   "assignments": {
     "room_m0063i_dispatch_8018EFF4": [
       "func_8018F0D0"
+    ],
+    "era_o2_g0_expand_div": [
+      "func_8018F320"
     ]
   },
   "local_profiles": {

@@ -59,6 +59,10 @@ int32_t func_8006FC18(uint32_t index, pe_addr_t owner, uint32_t force)
         unsigned epoch=PE_Port_StopEpoch();
         result=PE_GuestCall("func_8006FC18",fn,3u,slot,code,force,0u);
         if (PE_Port_StopEpoch()!=epoch) return result;
+    } else if (PE_Decomp_BoundaryStopEnabled()) {
+        /* Native-only: an unported destroy callback is a CPU_BOUNDARY/REFUSED
+         * STOP under the port binary's stop policy (skip = record-only). */
+        return PE_GuestCall("func_8006FC18",fn,3u,slot,code,force,0u);
     } else {
         if (g_pe_strict_effect_stack) {
             (void)Bootstrap_ReturnInt4Indirect("effect_destroy_callback", "func_8006FC18",
@@ -84,27 +88,58 @@ int32_t func_8006FC18(uint32_t index, pe_addr_t owner, uint32_t force)
     return result;
 }
 
-/* func_80070064: ported from the matching decomp -- generated TU pc_port/game/decomp/func_80070064_port.c (src/func_80070064.c); hand port retired (audit batch, port3). */
-
-/* 6FE14 releases every effect owned by an actor, across both pools. The
- * second clear is present in retail even when 6FC18 ignored a dormant slot. */
-/* func_8006FE14: ported from the matching decomp -- generated TU pc_port/game/decomp/func_8006FE14_port.c (src/func_8006FE14.c); hand port retired (port3 switch-over C). */
-
-/* 702DC and 701B4: release each complete pool, including dormant headers. */
-static int32_t clear_effect_pool(unsigned first)
+/* Native game cleanup adapters retain the retail second slot clear, while
+ * refusing to continue it after a callback has stopped. */
+int32_t func_80070064(void)
 {
-    unsigned i;
-    for (i=first;i<first+11u;i++) {
-        int32_t result=func_8006FC18(i,0u,1u);
-        if (result) return result;
+    if (PE_Port_ShouldStop()) return 0;
+    for (unsigned i=0; i<11u; ++i) {
+        pe_addr_t slot=effect_slot(i);
+        uint32_t code=PE_LoadU8(slot+1u);
+        int32_t result;
+        if (code>=8u && code-0x55u>=0x1Eu) continue;
+        result=func_8006FC18(i,PE_LoadU32(0x8009D254u),1u);
+        if (PE_Port_ShouldStop() || result) return result;
         clear_effect_slot(effect_slot(i));
     }
     return 0;
 }
 
-/* func_800702DC: ported from the matching decomp -- generated TU pc_port/game/decomp/func_800702DC_port.c (src/func_800702DC.c); hand port retired after differential verification (docs/evidence/portverify/REPORT.md, round 6). */
+int32_t func_8006FE14(pe_addr_t owner)
+{
+    if (PE_Port_ShouldStop()) return 0;
+    if (!owner) return -25;
+    for (unsigned i=0; i<22u; ++i) {
+        if (PE_LoadU32(effect_slot(i)+8u)==owner) {
+            int32_t result=func_8006FC18(i,owner,1u);
+            if (PE_Port_ShouldStop() || result) return result;
+            clear_effect_slot(effect_slot(i));
+        }
+    }
+    return 0;
+}
+
+/* 702DC and 701B4: release each complete pool, including dormant headers. */
+static int32_t clear_effect_pool(unsigned first)
+{
+    unsigned i;
+    if (PE_Port_ShouldStop()) return 0;
+    for (i=first;i<first+11u;i++) {
+        int32_t result=func_8006FC18(i,0u,1u);
+        if (PE_Port_ShouldStop() || result) return result;
+        clear_effect_slot(effect_slot(i));
+    }
+    return 0;
+}
+
+int32_t func_800702DC(void) { return clear_effect_pool(0u); }
 int32_t func_800701B4(void) { return clear_effect_pool(11u); }
-/* func_800703F4: ported from the matching decomp -- generated TU pc_port/game/decomp/func_800703F4_port.c (src/func_800703F4.c); hand port retired after differential verification (docs/evidence/portverify/REPORT.md). */
+void func_800703F4(void)
+{
+    (void)func_800702DC();
+    if (PE_Port_ShouldStop()) return;
+    (void)func_800701B4();
+}
 
 /* Script 98: find the selected live actor, release its effects and continue.
  * This is used by Eve's first-hit scene before the next animation/dialogue. */
@@ -134,7 +169,9 @@ void func_80020F18(void)
 {
     pe_addr_t record, weapon;
     unsigned i;
+    if (PE_Port_ShouldStop()) return;
     (void)func_80070064();
+    if (PE_Port_ShouldStop()) return;
     PE_StoreU32(0x8009D200u,0xFFFFFFFFu);
     PE_StoreU32(0x8009D2FCu,0xFFFFFFFFu);
     PE_StoreU32(0x8009D258u,0xFFFFFFFFu);
@@ -150,8 +187,10 @@ void func_80020F18(void)
     PE_StoreU8(0x8009D1DCu,(uint8_t)(PE_LoadU32(weapon+0x10u)&15u));
     for (i=0;i<4;i++) PE_StoreU8(0x8009CE38u+i,PE_LoadU8(weapon+0x14u+i));
     func_800374E8();
+    if (PE_Port_ShouldStop()) return;
     PE_StoreU8(0x8009D1CEu,0u);
     PE_StoreU32(0x8009D1ACu,PE_LoadU32(0x8009D1ACu)&~0x300u);
     func_80026FD0();
+    if (PE_Port_ShouldStop()) return;
     PE_StoreU8(0x8009CE60u,0u);
 }

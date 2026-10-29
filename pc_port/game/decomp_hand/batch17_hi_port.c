@@ -2,10 +2,11 @@
  * Hand adapters — batch 17 (>= 0x80060000).  Bodies follow the matched
  * leaves src/func_XXXXXXXX.c; pointers are guest addresses; retail stack
  * locals handed to guest-address callees live at PE_HAND_HI_STACK.
- * Renderers with no pc_port implementation (func_800D27FC)
- * stay loud boundaries.
+ * The glow-point renderer func_800D27FC is generated from its matched C
+ * (gen_decomp_ports --e21).
  */
 #include "pe_guest_decomp.h"
+void func_800D27FC(int32_t a_x, uint32_t a_ang, uint32_t a_col, int32_t a_bright);   /* generated (gen_decomp_ports --e21) */
 #include "pe_sdk.h"
 #include "hand_hi_protos.h"
 
@@ -31,7 +32,8 @@ static int s7_div(int num, int den)
 
 /* src/func_800D5898.c: a1[0] = a1[1] * cos((f << 10) / a1[3]) / 0x1000,
  * finished at f >= a1[3]; draw via func_800D27FC(a1[0], a1[2], colour
- * D_800C22C0, sin / 64 + 0x40, 1) — boundary. */
+ * D_800C22C0, sin / 64 + 0x40, 1); func_800D27FC takes four (the fifth is
+ * unread) and is generated from its matched C. */
 int func_800D5898(int a0, pe_addr_t a1)
 {
     int r;
@@ -46,9 +48,8 @@ int func_800D5898(int a0, pe_addr_t a1)
         break;
     case 2:
         r = func_80077DC4(s7_div(s7_frame() << 10, (int16_t)PE_LoadU16(a1 + 6u)));
-        PE_D_COMP_BOUNDARY4("func_800D27FC", 0x800D27FCu,
-                            (int16_t)PE_LoadU16(a1 + 0u), (int16_t)PE_LoadU16(a1 + 4u),
-                            S7_C, r / 64 + 0x40);
+        func_800D27FC((int16_t)PE_LoadU16(a1 + 0u),
+                      (uint32_t)(int32_t)(int16_t)PE_LoadU16(a1 + 4u), S7_C, r / 64 + 0x40);
         break;
     }
     return 0;

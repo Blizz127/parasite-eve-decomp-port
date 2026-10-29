@@ -58,17 +58,28 @@ void PE_CdReg_Reset(void);
  * disc. Timing advances only via ServiceDevice; no SDK RAM is written here. */
 int PE_CdReg_DeviceEnabled(void);
 int PE_CdReg_EnableDevice(uint8_t interrupt_mask);
+/* Mid-game detach keeps the CD audio mix and ADPMUTE latches. */
+void PE_CdReg_DetachDevice(void);
+/* At the validated single-track image end, stop and issue INT4 DataEnd.
+ * In-range image I/O failures remain unresolved device boundaries. */
 void PE_CdReg_ServiceDevice(uint32_t elapsed_cycles);
+/* Positive host-time slice ending at the next scheduled CD event. Overdue
+ * events blocked on acknowledgment cannot impose a zero-length spin. */
+uint32_t PE_CdReg_TimeSlice(uint32_t budget);
 void PE_CdReg_ServiceDMA3(void);
 typedef struct {
     uint32_t enabled,commands,responses;
     uint32_t next_lba,sectors,data_remaining;
     uint8_t reading;
     uint8_t mode,muted,command_log[16],response_log[16];
+    uint8_t motor_off;          /* after Stop (08h), until a spin-up command */
+    uint32_t xa_sectors;        /* audio+realtime sectors routed to the SPU */
 } PeCdDeviceState;
 void PE_CdReg_GetDeviceState(PeCdDeviceState *out);
 /* Applied ATV0..3: L->L, L->R, R->R, R->L. Register state, not audio mixing. */
 void PE_CdReg_GetAudioVolumes(uint8_t out[4]);
+/* ADPCTL bit0 only; command Mute/Demute is separate device state. */
+int PE_CdReg_XaMuted(void);
 /* Bounded device-response ingress. Rejects pending/unread responses; does
  * not issue a disc command, produce sector data or assert a CPU interrupt. */
 int PE_CdReg_PushResponse(uint8_t tag, const uint8_t *bytes, uint32_t count);

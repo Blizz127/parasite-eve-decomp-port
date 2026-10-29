@@ -7,9 +7,11 @@ static void MdecPixelTables(void)
     PE_StoreU32(0x80140000u,0x40000001u);
     for(unsigned i=0;i<128u;i++) PE_StoreU8(0x80140004u+i,16u);
     (void)PE_MDEC_SubmitInputTable(0x80140000u,32u);
+    (void)PE_MDEC_Service();  /* tables load at DMA0 service (e4a6e7766) */
     PE_StoreU32(0x80140000u,0x60000000u);
     for(unsigned i=0;i<64u;i++) PE_StoreU16(0x80140004u+i*2u,(i/8u==i%8u)?16384u:0u);
     (void)PE_MDEC_SubmitInputTable(0x80140000u,32u);
+    (void)PE_MDEC_Service();  /* tables load at DMA0 service (e4a6e7766) */
 }
 static void test_DAY2_mdec_pixels(void)
 {
@@ -68,6 +70,7 @@ static void test_DAY2_mdec_pixels(void)
             PE_StoreU32(0x8010DA90u+i*4u,MDECPIX_scale[i]);
         }
         func_8010BE3C(0);
+        (void)PE_MDEC_Service();  /* tables load at DMA0 service (e4a6e7766) */
         PE_StoreU32(0x80144000u,0x28000001u);
         PE_StoreU16(0x80144004u,(uint16_t)((8u<<10u)|((unsigned)dc&1023u)));PE_StoreU16(0x80144006u,0xFE00u);
         ASSERT(PE_MDEC_BeginDecode(0x80144000u) && PE_MDEC_ReadPixels(0x80150000u,64u),"retail-table DC decode");
@@ -99,6 +102,6 @@ static void test_DAY2_mdec_pixels(void)
     }
     ResetTestState();MdecPixelTables();PE_StoreU32(0x80144000u,0x28000001u);
     PE_StoreU32(0x80144004u,0u);ASSERT(PE_MDEC_BeginDecode(0x80144000u),"MDEC malformed submission");
-    ASSERT(!PE_MDEC_ReadPixels(0x80150000u,64u) && PE_Port_ShouldStop() && CountOrderLog("MDEC_unterminated_block")==1 && !PE_LoadU32(0x80150000u),"MDEC malformed block fabricated output");
+    ASSERT(!PE_MDEC_ReadPixels(0x80150000u,64u) && PE_Port_ShouldStop() && CountOrderLog("MDEC_output_short")==1 /* preflight refuses first (977a237b0) */ && !PE_LoadU32(0x80150000u),"MDEC malformed block fabricated output");
     PASS();
 }

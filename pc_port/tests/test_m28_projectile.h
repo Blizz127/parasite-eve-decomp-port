@@ -4,6 +4,7 @@ static void test_DAY1_m28_projectile(void)
 {
     unsigned k,i,j;
     TEST_RETAIL_DISC1("DAY1_m28_projectile"); TEST_RETAIL_FIXUPS(RETAILFIX_m28_projectile);
+    char why[256];ASSERT(PE_TestReadM28Bodies(why,sizeof why),why);
     for (k=0;k<sizeof(DAY1_m28_projectile_cases)/sizeof(DAY1_m28_projectile_cases[0]);k++) {
         const uint32_t *a=DAY1_m28_projectile_cases[k].args;
         uint32_t result=0;uint64_t hash;
@@ -12,6 +13,7 @@ static void test_DAY1_m28_projectile(void)
             PE_StoreU32(0x80000000u+DAY1_m28_projectile_common[i][0],DAY1_m28_projectile_common[i][1]);
         for (i=DAY1_m28_projectile_cases[k].first;i<DAY1_m28_projectile_cases[k].end;i++)
             PE_StoreU32(0x80000000u+DAY1_m28_projectile_patches[i][0],DAY1_m28_projectile_patches[i][1]);
+        PE_TestRestoreM28Bodies();
         PE_GTE_LoadRT33(0x80148000u);g_pe_gte.ofx=160*65536;g_pe_gte.ofy=112*65536;
         g_pe_gte.h=256;g_pe_gte.dqa=-0x1062;g_pe_gte.dqb=0x1400000;
         switch (DAY1_m28_projectile_cases[k].entry) {

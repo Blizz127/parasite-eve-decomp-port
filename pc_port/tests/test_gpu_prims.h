@@ -211,10 +211,50 @@ static void test_GFX1_gp0_fill_transfer_and_environment(void)
     PASS();
 }
 
+/* psx-spx: GP0(04h..1Eh,E0h,E7h..EFh) mirror the NOP; in command groups 4-6
+ * (80h..9Fh copy, A0h..BFh CPU->VRAM, C0h..DFh VRAM->CPU) "the remaining 29
+ * bits are ignored".  GP0(03h), GP0(1Fh) (IRQ1) and F0h..FFh stay refused. */
+static void test_GFX1_gp0_mirrors_and_copy(void)
+{
+    static const uint32_t nops[] = {0x04000000u, 0x1E00ABCDu, 0xE0000000u, 0xE7FFFFFFu, 0xEF000001u};
+    uint16_t src[2] = {0x1234u, 0x5678u};
+    uint32_t stream[5] = {0xA5000000u, 950u, (1u<<16)|2u, 0x0BAD0BADu, 0u};
+    unsigned i;
+    TEST("GFX1_gp0_mirrors_and_copy");
+    ResetTestState(); PE_GPU_Init();
+    for (i = 0; i < 5u; i++)
+        ASSERT(PE_GPU_GP0_PacketWords(nops[i]) == 1u && PE_GPU_WriteGP0(nops[i]) && GFX1_Idle(),
+               "NOP mirror is one word and leaves the parser idle");
+    ASSERT(PE_GPU_GP0_PacketWords(0x80000000u) == 4u && PE_GPU_GP0_PacketWords(0x9F123456u) == 4u,
+           "command 4 is four words whatever its low bits");
+    ASSERT(B54KR_UploadPixels(900u, 0u, 2u, 1u, src), "seed pixels");
+    ASSERT(PE_GPU_WriteGP0(0x81234567u) && PE_GPU_WriteGP0(900u) &&
+           PE_GPU_WriteGP0((7u<<16)|900u) && GFX1_Words((const uint32_t[]){(1u<<16)|2u}, 1u) &&
+           GFX1_Idle(), "GP0 81h copy accepted, parser idle");
+    ASSERT(GFX1_Pixel(900u, 7u) == 0x1234u && GFX1_Pixel(901u, 7u) == 0x5678u,
+           "81h copies like the MoveImage packet");
+    ASSERT(PE_GPU_GP0_StreamPacketWords(stream, 5u) == 4u, "A5h stream: 3 words + 1 pixel pair");
+    ASSERT(GFX1_Words(stream, 4u) && GFX1_Idle(), "A5h upload accepted");
+    ASSERT(GFX1_Pixel(950u, 0u) == 0x0BADu && GFX1_Pixel(951u, 0u) == 0x0BADu,
+           "A5h loads like A0h");
+    ASSERT(PE_GPU_GP0_PacketWords(0x03000000u) == 0u && !PE_GPU_WriteGP0(0x03000000u),
+           "GP0(03h) still refused");
+    PE_GPU_Init();
+    /* GP0(1Fh) is the psx-spx IRQ1 request, modelled since 96c69bd62. */
+    ASSERT(PE_GPU_GP0_PacketWords(0x1F000000u) == 1u && PE_GPU_WriteGP0(0x1F000000u) &&
+           (PE_GPU_ReadStatus() & 0x01000000u) != 0u,
+           "GP0(1Fh) IRQ1 sets GPUSTAT.24");
+    PE_GPU_Init();
+    ASSERT(PE_GPU_GP0_PacketWords(0xF0000000u) == 0u && !PE_GPU_WriteGP0(0xF0000000u),
+           "GP0(F0h) still refused");
+    PASS();
+}
+
 static void test_GFX1_gp0_primitives(void)
 {
     test_GFX1_gp0_polygons();
     test_GFX1_gp0_lines_and_polylines();
     test_GFX1_gp0_rectangles();
     test_GFX1_gp0_fill_transfer_and_environment();
+    test_GFX1_gp0_mirrors_and_copy();
 }

@@ -3,6 +3,9 @@
  */
 #include "pe_bootstrap.h"
 #include "stub_registry.h"
+#include "game_port.h"
+#include "pe_guest_ram.h"
+void PE_Decomp_NoteStopDetail(const char *text); /* pe_guest_decomp.c */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -270,4 +273,21 @@ int Bootstrap_InvocationCount(void)
 void Bootstrap_PrintSummary(void)
 {
     Stub_PrintSummary();
+}
+
+void PE_Port_DiscSwapBoundary(int disc)
+{
+    fprintf(stderr,
+            "CPU_BOUNDARY/REFUSED func_80069B08 disc swap (insert disc %d; "
+            "story persist[74]=0x%X, D_800B0DCD=0x%X) called from func_8001220C "
+            "(native only: no C port for the disc-swap screen; not emulated)\n",
+            disc, (unsigned)PE_LoadU32(0x800A7918u),
+            (unsigned)PE_LoadU8(0x800B0DCDu));
+    {
+        char msg[200];
+        snprintf(msg, sizeof msg, "CPU_BOUNDARY/REFUSED func_80069B08 disc swap: insert disc %d "
+                 "(launch with the Disc %d image configured)", disc, disc);
+        PE_Decomp_NoteStopDetail(msg);
+    }
+    PE_Port_RequestStop(PE_PORT_STOP_UNRESOLVED_BOUNDARY);
 }

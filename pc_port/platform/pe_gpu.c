@@ -11,6 +11,8 @@
 #include "pe_gpu.h"
 #include "pe_audio_driver.h"
 #include "pe_timer1.h"
+#include "game_port.h"
+#include "pe_bootstrap.h"
 
 #include <stddef.h>
 #include <stdio.h>
@@ -69,8 +71,13 @@ void PE_GPU_PrimLogFrame(int frame)
 
 typedef struct {
     PeGpuState state;
+    uint32_t read_latch; /* GPUREAD info result / last VRAM data word */
     uint64_t order_counter;
     uint64_t event_serial;
+    int dma2_port; /* 0 helper snapshot, 1 raw readback/list, 2 raw GP0 stream */
+    int dma2_failed;
+    int dma6_failed;
+    uint8_t dma2_list_seen[PE_RAM_SIZE / 32u]; /* one bit per header word */
     uint32_t rectangle_command;
     uint32_t rectangle_position;
     uint32_t rectangle_uv_clut;
@@ -78,6 +85,7 @@ typedef struct {
     uint32_t fill_position;
     uint32_t mono_rectangle_command;
     uint32_t mono_rectangle_position;
+    uint32_t copy_source, copy_destination;   /* GP0(80h..9Fh) parameters */
     uint32_t polygon_words[12];
     /* GP0 polyline (48h..5Fh with bit 27) stream state. */
     int polyline, polyline_expect_color;
@@ -85,15 +93,75 @@ typedef struct {
     uint32_t polyline_xy, polyline_vertices;
     uint32_t polygon_received;
     uint32_t polygon_expected;
+    uint16_t clut[256];
+    uint16_t clut_key;
+    unsigned clut_count; /* 0 invalid, 16 or 256 retained palette entries */
     uint16_t vram[PE_GPU_VRAM_PIXELS];
 } PeGpuAuthority;
 
 static PeGpuAuthority g_gpu = {
     .state = {
         .status = PE_GPU_STATUS_READY_GP0,
-        .dma2_chcr = PE_GPU_DMA2_CHCR_IDLE
+        .dma2_chcr = PE_GPU_DMA2_CHCR_IDLE,
+        .dma6_chcr = 2u
     }
 };
+
+/* Presentation-only surface. Native VRAM and hardware telemetry remain the
+ * authority for guest reads and texture sampling, at every render scale. */
+static uint16_t *g_shadow;
+static int g_render_scale = 1;
+static uint64_t g_render_generation;
+static int g_texture_filter;
+
+static void ShadowSeedPixel(uint32_t x, uint32_t y, uint16_t pixel)
+{
+    if (!g_shadow) return;
+    unsigned int sy, sx, scale = (unsigned int)g_render_scale;
+    for (sy = 0; sy < scale; sy++) {
+        uint16_t *dst = g_shadow + ((size_t)y * scale + sy) *
+                        PE_GPU_VRAM_WIDTH * scale + x * scale;
+        for (sx = 0; sx < scale; sx++) dst[sx] = pixel;
+    }
+}
+
+void PE_GPU_SetRenderScale(int scale)
+{
+    uint16_t *next;
+    uint32_t x, y;
+    if (scale < 1 || scale > 4) scale = 1;
+    if (scale == g_render_scale) return;
+    next = scale > 1 ? malloc((size_t)PE_GPU_VRAM_PIXELS * scale * scale * sizeof(*next)) : NULL;
+    if (scale > 1 && !next) scale = 1;
+    free(g_shadow);
+    g_shadow = next;
+    g_render_scale = scale;
+    g_render_generation++;
+    if (g_shadow)
+        for (y = 0; y < PE_GPU_VRAM_HEIGHT; y++)
+            for (x = 0; x < PE_GPU_VRAM_WIDTH; x++)
+                ShadowSeedPixel(x, y, g_gpu.vram[y * PE_GPU_VRAM_WIDTH + x]);
+}
+
+void PE_GPU_SetTextureFilter(int filter) { g_texture_filter = filter == 1; }
+int PE_GPU_GetTextureFilter(void) { return g_texture_filter; }
+/* Shadow-surface dithering: 0 retail (the native 4x4 pattern, magnified),
+ * 1 fine (the same pattern at shadow-pixel resolution), 2 off.  Native VRAM
+ * always dithers as retail. */
+static int g_shadow_dither;
+void PE_GPU_SetShadowDither(int mode) { g_shadow_dither = mode >= 0 && mode <= 2 ? mode : 0; }
+int PE_GPU_GetShadowDither(void) { return g_shadow_dither; }
+int PE_GPU_GetRenderScale(void) { return g_render_scale; }
+uint64_t PE_GPU_GetRenderGeneration(void) { return g_render_generation; }
+
+int PE_GPU_ReadRenderPixel(uint32_t x, uint32_t y, uint16_t *pixel)
+{
+    unsigned int scale = (unsigned int)g_render_scale;
+    if (!pixel || x >= PE_GPU_VRAM_WIDTH * scale || y >= PE_GPU_VRAM_HEIGHT * scale) return 0;
+    *pixel = g_shadow ? g_shadow[(size_t)y * PE_GPU_VRAM_WIDTH * scale + x] :
+                       g_gpu.vram[y * PE_GPU_VRAM_WIDTH + x];
+    return 1;
+}
 
 static int DICRMasterFlag(uint32_t stored)
 {
@@ -154,6 +222,12 @@ static void ResetHardwareState(void)
     uint64_t event_serial = g_gpu.event_serial;
 
     memset(&g_gpu.state, 0, sizeof(g_gpu.state));
+    g_gpu.state.dma6_chcr=2u;
+    g_gpu.dma6_failed=0;
+    g_gpu.read_latch=0;
+    g_gpu.clut_count=0;
+    g_gpu.dma2_port=0;
+    g_gpu.dma2_failed=0;
     g_gpu.order_counter = 0;
     g_gpu.event_serial = event_serial;
     g_gpu.state.status = PE_GPU_STATUS_READY_GP0;
@@ -165,7 +239,9 @@ static void ResetHardwareState(void)
 
 void PE_GPU_Init(void)
 {
+    g_render_generation++;
     memset(g_gpu.vram, 0, sizeof(g_gpu.vram));
+    if (g_shadow) memset(g_shadow, 0, (size_t)PE_GPU_VRAM_PIXELS * g_render_scale * g_render_scale * sizeof(*g_shadow));
     ResetHardwareState();
 }
 
@@ -184,9 +260,54 @@ static void UpdateDrawingStatus(void)
         ((g_gpu.state.mask_setting&3u)<<11u);
 }
 
+/* GP1 reset includes the six drawing-environment writes. Nonzero write
+ * counts activate clipping even when the reset rectangle is just (0,0). */
+static void ResetDrawingRegisters(void)
+{
+    g_gpu.state.draw_mode=0xE1000000u;g_gpu.state.draw_mode_count++;
+    g_gpu.state.texture_window=0xE2000000u;g_gpu.state.texture_window_count++;
+    g_gpu.state.drawing_area_top_left=0xE3000000u;g_gpu.state.drawing_area_top_left_count++;
+    g_gpu.state.drawing_area_bottom_right=0xE4000000u;g_gpu.state.drawing_area_bottom_right_count++;
+    g_gpu.state.drawing_offset=0xE5000000u;g_gpu.state.drawing_offset_count++;
+    g_gpu.state.mask_setting=0xE6000000u;g_gpu.state.mask_setting_count++;
+    UpdateDrawingStatus();
+}
+
 uint32_t PE_GPU_ReadStatus(void)
 {
-    return g_gpu.state.status;
+    uint32_t status = g_gpu.state.status &
+        ~(PE_GPU_STATUS_READY_GP0 | PE_GPU_STATUS_READY_DMA | PE_GPU_STATUS_DMA_REQUEST);
+    /* v2 GPUSTAT bit13 is fixed high outside interlace mode. Interlaced
+     * field/scanline timing is still outside this synchronous model. */
+    if(!(status&0x00400000u)) status|=0x00002000u;
+    int accepts_word = (g_gpu.state.status & PE_GPU_STATUS_READY_GP0) != 0u &&
+        g_gpu.state.gp0_state != PE_GPU_GP0_READ_DATA;
+
+    /* The native port consumes accepted words synchronously; no timed FIFO
+     * is simulated. Keep the host acceptance gate separate from GPUSTAT's
+     * command-ready bit, which is low while a packet needs parameters.
+     * Polygon/line packets lower write-ready as soon as their opcode arrives.
+     * Other synchronous commands have no observable execution-busy interval. */
+    if (accepts_word) {
+        if (g_gpu.state.gp0_state == PE_GPU_GP0_IDLE)
+            status |= PE_GPU_STATUS_READY_GP0;
+        if (g_gpu.state.gp0_state != PE_GPU_GP0_POLYGON_DATA &&
+            g_gpu.state.gp0_state != PE_GPU_GP0_LINE_DATA)
+            status |= PE_GPU_STATUS_READY_DMA;
+    }
+    switch (g_gpu.state.gp1_dma_direction) {
+    case 1:
+        if (accepts_word) status |= PE_GPU_STATUS_DMA_REQUEST;
+        break;
+    case 2:
+        if (status & PE_GPU_STATUS_READY_DMA) status |= PE_GPU_STATUS_DMA_REQUEST;
+        break;
+    case 3:
+        if (status & PE_GPU_STATUS_READY_READ) status |= PE_GPU_STATUS_DMA_REQUEST;
+        break;
+    default: break;
+    }
+    return status;
 }
 
 void PE_GPU_SetReady(int ready)
@@ -231,15 +352,22 @@ static void WriteImagePixel(uint16_t pixel)
         (PE_GPU_VRAM_WIDTH - 1u);
     y = (g_gpu.state.image_y + ordinal / g_gpu.state.image_width) &
         (PE_GPU_VRAM_HEIGHT - 1u);
-    WatchInit();
-    if ((long)x == g_watch_x && (long)y == g_watch_y)
-    {
-        fprintf(stderr, "[GPU_WATCH] A0 image (%u,%u) %ux%u sets %04X (dma2=%d src=%08X)\n",
-                g_gpu.state.image_x, g_gpu.state.image_y, g_gpu.state.image_width,
-                g_gpu.state.image_height, pixel, g_gpu.state.dma2_active, (unsigned)g_gpu.state.dma2_source);
-        if (getenv("PE_GPU_WATCH_BT")) { void *bt[24]; int n = backtrace(bt, 24); backtrace_symbols_fd(bt, n, 2); }
+    /* E6 applies per halfword to CPU uploads as well as VRAM copies.
+     * Rejected pixels still consume their place in the transfer stream. */
+    if (!(g_gpu.state.mask_setting & 2u) ||
+        !(g_gpu.vram[y * PE_GPU_VRAM_WIDTH + x] & 0x8000u)) {
+        WatchInit();
+        if ((long)x == g_watch_x && (long)y == g_watch_y)
+        {
+            fprintf(stderr, "[GPU_WATCH] A0 image (%u,%u) %ux%u sets %04X (dma2=%d src=%08X)\n",
+                    g_gpu.state.image_x, g_gpu.state.image_y, g_gpu.state.image_width,
+                    g_gpu.state.image_height, pixel, g_gpu.state.dma2_active, (unsigned)g_gpu.state.dma2_source);
+            if (getenv("PE_GPU_WATCH_BT")) { void *bt[24]; int n = backtrace(bt, 24); backtrace_symbols_fd(bt, n, 2); }
+        }
+        pixel |= (uint16_t)((g_gpu.state.mask_setting & 1u) << 15);
+        g_gpu.vram[y * PE_GPU_VRAM_WIDTH + x] = pixel;
+        ShadowSeedPixel(x, y, pixel);
     }
-    g_gpu.vram[y * PE_GPU_VRAM_WIDTH + x] = pixel;
     g_gpu.state.image_current_pixel++;
     g_gpu.state.image_remaining_pixels--;
     if (g_gpu.state.image_remaining_pixels == 0) {
@@ -271,13 +399,15 @@ static uint16_t ReadImagePixel(void)
 static uint32_t ReadImageWord(void)
 {
     uint32_t low=ReadImagePixel();
-    return low|((uint32_t)ReadImagePixel()<<16u);
+    g_gpu.read_latch=low|((uint32_t)ReadImagePixel()<<16u);
+    return g_gpu.read_latch;
 }
 
 int PE_GPU_ReadGP0(uint32_t *value)
 {
-    if (!value || g_gpu.state.dma2_active || g_gpu.state.gp0_state!=PE_GPU_GP0_READ_DATA) return 0;
-    *value=ReadImageWord();return 1;
+    if (!value || g_gpu.state.dma2_active) return 0;
+    *value=g_gpu.state.gp0_state==PE_GPU_GP0_READ_DATA?ReadImageWord():g_gpu.read_latch;
+    return 1;
 }
 
 static int32_t SignExtend11(uint32_t value)
@@ -297,6 +427,22 @@ static uint32_t ApplyTextureWindow(uint32_t coordinate, int horizontal)
 
     mask <<= 3;
     return ((coordinate & ~mask) | ((offset << 3) & mask)) & 0xFFu;
+}
+
+/* Palette reads are latched at the draw command, not fetched anew for
+ * each pixel. VRAM writes leave this cache intact. A larger indexed depth
+ * requires a complete reload; a 256-entry palette can serve 4-bit draws. */
+static void PrepareClut(uint32_t clut)
+{
+    unsigned depth=(g_gpu.state.draw_mode>>7)&3u;
+    if(depth>=2u) return;
+    unsigned count=depth?256u:16u;
+    uint16_t key=(uint16_t)(clut&0x7fffu); /* this backend has 1 MiB VRAM */
+    if(g_gpu.clut_count>=count && g_gpu.clut_key==key) return;
+    unsigned x=(key&63u)*16u,y=key>>6;
+    for(unsigned i=0;i<count;i++)
+        g_gpu.clut[i]=g_gpu.vram[y*PE_GPU_VRAM_WIDTH+((x+i)&1023u)];
+    g_gpu.clut_key=key;g_gpu.clut_count=count;
 }
 
 static uint16_t ModulateTextureColor(uint16_t texture, uint32_t command)
@@ -324,7 +470,7 @@ static uint32_t MonoRectangleFixedSize(uint32_t command);
  * The E2h..E6h
  * environment is applied only after the corresponding command has actually
  * been observed; this preserves the pre-PutDrawEnv physical-clip behavior. */
-static void DrawTexturedRectangle(uint32_t size)
+static void ShadowTexturedRectangle(uint32_t size)
 {
     uint32_t draw_mode = g_gpu.state.draw_mode;
     uint32_t width = size & 0x3FFu;
@@ -333,9 +479,6 @@ static void DrawTexturedRectangle(uint32_t size)
     int32_t origin_y = SignExtend11(g_gpu.rectangle_position >> 16);
     uint32_t origin_u = g_gpu.rectangle_uv_clut & 0xFFu;
     uint32_t origin_v = (g_gpu.rectangle_uv_clut >> 8) & 0xFFu;
-    uint32_t clut = g_gpu.rectangle_uv_clut >> 16;
-    uint32_t clut_x = (clut & 0x3Fu) * 16u;
-    uint32_t clut_y = (clut >> 6) & (PE_GPU_VRAM_HEIGHT - 1u);
     uint32_t texture_x = (draw_mode & 0xFu) * 64u;
     uint32_t texture_y = ((draw_mode >> 4) & 1u) * 256u;
     int flip_x = (draw_mode & 0x1000u) != 0u;
@@ -343,8 +486,133 @@ static void DrawTexturedRectangle(uint32_t size)
     uint32_t row;
 
     if (g_gpu.state.drawing_offset_count != 0u) {
-        origin_x += SignExtend11(g_gpu.state.drawing_offset);
-        origin_y += SignExtend11(g_gpu.state.drawing_offset >> 11);
+        /* Rectangle origins wrap to signed 11-bit after adding E5. The
+         * width/height are then clipped, not wrapped pixel by pixel. */
+        origin_x = SignExtend11((uint32_t)(origin_x +
+            SignExtend11(g_gpu.state.drawing_offset)));
+        origin_y = SignExtend11((uint32_t)(origin_y +
+            SignExtend11(g_gpu.state.drawing_offset >> 11)));
+    }
+
+    for (row = 0u; row < height; row++) {
+        int32_t destination_y = origin_y + (int32_t)row;
+        uint32_t texture_v = (origin_v +
+            (flip_y ? (0u - row) : row)) & 0xFFu;
+        uint32_t column;
+
+        if (g_gpu.state.texture_window_count != 0u)
+            texture_v = ApplyTextureWindow(texture_v, 0);
+        if (destination_y < 0 || destination_y >=
+            (int32_t)PE_GPU_VRAM_HEIGHT) {
+            continue;
+        }
+        if (g_gpu.state.drawing_area_top_left_count != 0u &&
+            g_gpu.state.drawing_area_bottom_right_count != 0u &&
+            ((uint32_t)destination_y <
+                 ((g_gpu.state.drawing_area_top_left >> 10) & 0x1FFu) ||
+             (uint32_t)destination_y >
+                 ((g_gpu.state.drawing_area_bottom_right >> 10) & 0x1FFu)))
+            continue;
+        for (column = 0u; column < width; column++) {
+            int32_t destination_x = origin_x + (int32_t)column;
+            uint32_t texture_u;
+            uint16_t packed;
+            uint32_t palette_index;
+            uint16_t texture_color;
+
+            if (destination_x < 0 || destination_x >=
+                (int32_t)PE_GPU_VRAM_WIDTH) {
+                continue;
+            }
+            if (g_gpu.state.drawing_area_top_left_count != 0u &&
+                g_gpu.state.drawing_area_bottom_right_count != 0u &&
+                ((uint32_t)destination_x <
+                     (g_gpu.state.drawing_area_top_left & 0x3FFu) ||
+                 (uint32_t)destination_x >
+                     (g_gpu.state.drawing_area_bottom_right & 0x3FFu)))
+                continue;
+            texture_u = (origin_u +
+                (flip_x ? (0u - column) : column)) & 0xFFu;
+            if (g_gpu.state.texture_window_count != 0u)
+                texture_u = ApplyTextureWindow(texture_u, 1);
+            if (((draw_mode >> 7) & 3u) >= 2u) {
+                /* 15bpp direct (depth 3 "reserved" behaves as 15bpp). */
+                texture_color = g_gpu.vram[
+                    ((texture_y + texture_v) &
+                     (PE_GPU_VRAM_HEIGHT - 1u)) * PE_GPU_VRAM_WIDTH +
+                    ((texture_x + texture_u) &
+                     (PE_GPU_VRAM_WIDTH - 1u))];
+                goto have_texel;
+            } else if (((draw_mode >> 7) & 3u) == 1u) {
+                packed = g_gpu.vram[
+                    ((texture_y + texture_v) &
+                     (PE_GPU_VRAM_HEIGHT - 1u)) * PE_GPU_VRAM_WIDTH +
+                    ((texture_x + texture_u / 2u) &
+                     (PE_GPU_VRAM_WIDTH - 1u))];
+                palette_index =
+                    (packed >> ((texture_u & 1u) * 8u)) & 0xFFu;
+            } else {
+                packed = g_gpu.vram[
+                    ((texture_y + texture_v) &
+                     (PE_GPU_VRAM_HEIGHT - 1u)) * PE_GPU_VRAM_WIDTH +
+                    ((texture_x + texture_u / 4u) &
+                     (PE_GPU_VRAM_WIDTH - 1u))];
+                palette_index =
+                    (packed >> ((texture_u & 3u) * 4u)) & 0xFu;
+            }
+            texture_color = g_gpu.clut[palette_index];
+        have_texel:
+            if (texture_color == 0u)
+                continue;
+            for (int sy = 0; sy < g_render_scale; sy++)
+            for (int sx = 0; sx < g_render_scale; sx++) {
+                uint16_t *destination = &g_shadow[
+                    ((size_t)destination_y * g_render_scale + sy) * PE_GPU_VRAM_WIDTH * g_render_scale +
+                    (uint32_t)destination_x * g_render_scale + sx];
+                uint16_t result;
+
+                if (g_gpu.state.mask_setting_count != 0u &&
+                    (g_gpu.state.mask_setting & 2u) != 0u &&
+                    (*destination & 0x8000u) != 0u)
+                    continue;
+                uint16_t sample = texture_color;
+                result = (g_gpu.rectangle_command & 0x01000000u) ?
+                    sample : ModulateTextureColor(sample, g_gpu.rectangle_command);
+                if ((g_gpu.rectangle_command & 0x02000000u) && (texture_color & 0x8000u))
+                    result = BlendSemiTransparent(*destination, result) | (texture_color & 0x8000u);
+                if (g_gpu.state.mask_setting_count != 0u &&
+                    (g_gpu.state.mask_setting & 1u) != 0u)
+                    result |= 0x8000u;
+                *destination = result;
+            }
+        }
+    }
+}
+
+static void DrawTexturedRectangle(uint32_t size)
+{
+    PrepareClut(g_gpu.rectangle_uv_clut>>16);
+    if (g_shadow) ShadowTexturedRectangle(size);
+    uint32_t draw_mode = g_gpu.state.draw_mode;
+    uint32_t width = size & 0x3FFu;
+    uint32_t height = (size >> 16) & 0x1FFu;
+    int32_t origin_x = SignExtend11(g_gpu.rectangle_position);
+    int32_t origin_y = SignExtend11(g_gpu.rectangle_position >> 16);
+    uint32_t origin_u = g_gpu.rectangle_uv_clut & 0xFFu;
+    uint32_t origin_v = (g_gpu.rectangle_uv_clut >> 8) & 0xFFu;
+    uint32_t texture_x = (draw_mode & 0xFu) * 64u;
+    uint32_t texture_y = ((draw_mode >> 4) & 1u) * 256u;
+    int flip_x = (draw_mode & 0x1000u) != 0u;
+    int flip_y = (draw_mode & 0x2000u) != 0u;
+    uint32_t row;
+
+    if (g_gpu.state.drawing_offset_count != 0u) {
+        /* Rectangle origins wrap to signed 11-bit after adding E5. The
+         * width/height are then clipped, not wrapped pixel by pixel. */
+        origin_x = SignExtend11((uint32_t)(origin_x +
+            SignExtend11(g_gpu.state.drawing_offset)));
+        origin_y = SignExtend11((uint32_t)(origin_y +
+            SignExtend11(g_gpu.state.drawing_offset >> 11)));
     }
     if (PrimLogOn())
         fprintf(g_prim_log, "S %08X (%d,%d) uvclut=%08X %ux%u mode=%04X\n",
@@ -417,10 +685,7 @@ static void DrawTexturedRectangle(uint32_t size)
                 palette_index =
                     (packed >> ((texture_u & 3u) * 4u)) & 0xFu;
             }
-            texture_color = g_gpu.vram[
-                clut_y * PE_GPU_VRAM_WIDTH +
-                ((clut_x + palette_index) &
-                 (PE_GPU_VRAM_WIDTH - 1u))];
+            texture_color = g_gpu.clut[palette_index];
         have_texel:
             if (texture_color == 0u)
                 continue;
@@ -490,6 +755,7 @@ static void DrawFillRectangle(uint32_t size)
 
             g_gpu.vram[destination_y * PE_GPU_VRAM_WIDTH +
                        destination_x] = pixel;
+            ShadowSeedPixel(destination_x, destination_y, pixel);
         }
     }
 }
@@ -498,8 +764,8 @@ static void DrawFillRectangle(uint32_t size)
  * against the framebuffer with the GP0(E1h) ABR mode (bits 5-6):
  *   0: B/2 + F/2    1: B + F    2: B - F    3: B + F/4
  * evaluated per 5-bit channel with saturation, as the hardware does.
- * The result keeps the destination's mask bit untouched; the caller
- * decides whether GP0(E6h) forces it. */
+ * Mode 0 retains the half-unit carry when both inputs are odd; truncate
+ * only after adding. The caller supplies texture STP / GP0(E6h) mask bits. */
 static uint16_t BlendSemiTransparent(uint16_t back, uint16_t front)
 {
     uint32_t abr = (g_gpu.state.draw_mode >> 5) & 3u;
@@ -512,7 +778,7 @@ static uint16_t BlendSemiTransparent(uint16_t back, uint16_t front)
         int32_t v;
 
         switch (abr) {
-        case 0u:  v = b / 2 + f / 2; break;
+        case 0u:  v = (b + f) / 2;   break;
         case 1u:  v = b + f;         break;
         case 2u:  v = b - f;         break;
         default:  v = b + f / 4;     break;
@@ -564,7 +830,7 @@ static uint32_t MonoRectangleFixedSize(uint32_t command)
     }
 }
 
-static void DrawMonoRectangle(uint32_t size)
+static void ShadowMonoRectangle(uint32_t size)
 {
     uint32_t command = g_gpu.mono_rectangle_command;
     uint16_t color = Color24To15(command);
@@ -580,8 +846,64 @@ static void DrawMonoRectangle(uint32_t size)
     uint32_t row;
 
     if (g_gpu.state.drawing_offset_count != 0u) {
-        origin_x += SignExtend11(g_gpu.state.drawing_offset);
-        origin_y += SignExtend11(g_gpu.state.drawing_offset >> 11);
+        /* Rectangle origins wrap to signed 11-bit after adding E5. The
+         * width/height are then clipped, not wrapped pixel by pixel. */
+        origin_x = SignExtend11((uint32_t)(origin_x +
+            SignExtend11(g_gpu.state.drawing_offset)));
+        origin_y = SignExtend11((uint32_t)(origin_y +
+            SignExtend11(g_gpu.state.drawing_offset >> 11)));
+    }
+
+    for (row = 0u; row < height; row++) {
+        int32_t y = origin_y + (int32_t)row;
+        uint32_t column;
+
+        for (column = 0u; column < width; column++) {
+            int32_t x = origin_x + (int32_t)column;
+            uint16_t *destination;
+            uint16_t result;
+
+            if (!PixelInDrawingArea(x, y))
+                continue;
+            for (int sy = 0; sy < g_render_scale; sy++)
+            for (int sx = 0; sx < g_render_scale; sx++) {
+            destination = &g_shadow[((size_t)y * g_render_scale + sy) * PE_GPU_VRAM_WIDTH * g_render_scale +
+                                    (uint32_t)x * g_render_scale + sx];
+            if (check_mask && (*destination & 0x8000u) != 0u)
+                continue;
+            result = semi_transparent ?
+                BlendSemiTransparent(*destination, color) : color;
+            if (set_mask)
+                result |= 0x8000u;
+            *destination = result;
+            }
+        }
+    }
+}
+
+static void DrawMonoRectangle(uint32_t size)
+{
+    if (g_shadow) ShadowMonoRectangle(size);
+    uint32_t command = g_gpu.mono_rectangle_command;
+    uint16_t color = Color24To15(command);
+    int semi_transparent = (command & 0x02000000u) != 0u;
+    uint32_t width = size & 0x3FFu;
+    uint32_t height = (size >> 16) & 0x1FFu;
+    int32_t origin_x = SignExtend11(g_gpu.mono_rectangle_position);
+    int32_t origin_y = SignExtend11(g_gpu.mono_rectangle_position >> 16);
+    int check_mask = g_gpu.state.mask_setting_count != 0u &&
+                     (g_gpu.state.mask_setting & 2u) != 0u;
+    int set_mask = g_gpu.state.mask_setting_count != 0u &&
+                   (g_gpu.state.mask_setting & 1u) != 0u;
+    uint32_t row;
+
+    if (g_gpu.state.drawing_offset_count != 0u) {
+        /* Rectangle origins wrap to signed 11-bit after adding E5. The
+         * width/height are then clipped, not wrapped pixel by pixel. */
+        origin_x = SignExtend11((uint32_t)(origin_x +
+            SignExtend11(g_gpu.state.drawing_offset)));
+        origin_y = SignExtend11((uint32_t)(origin_y +
+            SignExtend11(g_gpu.state.drawing_offset >> 11)));
     }
     if (PrimLogOn())
         fprintf(g_prim_log, "T %08X (%d,%d) %ux%u mode=%04X\n", command, origin_x, origin_y,
@@ -621,6 +943,7 @@ static void DrawMonoRectangle(uint32_t size)
 typedef struct {
     int32_t x, y, u, v;
     int32_t color[3];
+    int32_t fx, fy;     /* sub-pixel fraction (1/256 px), shadow surface only */
 } PePolygonVertex;
 
 static int64_t PolygonEdge(const PePolygonVertex *a, const PePolygonVertex *b, int32_t x, int32_t y)
@@ -635,6 +958,7 @@ static int PolygonTopLeft(const PePolygonVertex *a, const PePolygonVertex *b)
 
 static uint16_t PolygonTexel(uint32_t u, uint32_t v, uint32_t clut)
 {
+    (void)clut; /* already latched by DrawPolygon */
     uint32_t mode = g_gpu.state.draw_mode;
     uint32_t depth = (mode >> 7) & 3u;
     uint32_t tx = (mode & 15u) * 64u, ty = ((mode >> 4) & 1u) * 256u;
@@ -646,7 +970,7 @@ static uint16_t PolygonTexel(uint32_t u, uint32_t v, uint32_t clut)
     if (depth >= 2u) return g_gpu.vram[ty * 1024u + ((tx + u) & 1023u)];
     packed = g_gpu.vram[ty * 1024u + ((tx + (u >> (depth ? 1u : 2u))) & 1023u)];
     index = depth ? (packed >> ((u & 1u) * 8u)) & 255u : (packed >> ((u & 3u) * 4u)) & 15u;
-    return g_gpu.vram[((clut >> 6) & 511u) * 1024u + (((clut & 63u) * 16u + index) & 1023u)];
+    return g_gpu.clut[index];
 }
 
 static void DrawPolygonTriangle(PePolygonVertex a, PePolygonVertex b, PePolygonVertex c,
@@ -715,19 +1039,129 @@ static void DrawPolygonTriangle(PePolygonVertex a, PePolygonVertex b, PePolygonV
     }
 }
 
+/* Conservative post-CLUT bilinear sampling. Nearest determines coverage
+ * and STP; transparent or opposite-STP taps cannot color the chosen class.
+ * Fractional UV is 8-bit fixed point, drawn only into the shadow surface. */
+static uint16_t ShadowFilteredTexel(int64_t un, int64_t vn, int64_t area, uint32_t clut)
+{
+    uint32_t nearest_u = (uint32_t)((un + area / 2) / area);
+    uint32_t nearest_v = (uint32_t)((vn + area / 2) / area);
+    uint16_t anchor = PolygonTexel(nearest_u, nearest_v, clut);
+    if (!anchor) return 0;
+    uint32_t uf = (uint32_t)(un * 256 / area), vf = (uint32_t)(vn * 256 / area);
+    uint32_t u = uf >> 8, v = vf >> 8, fu = uf & 255u, fv = vf & 255u;
+    uint32_t weights[4] = {(256u-fu)*(256u-fv), fu*(256u-fv), (256u-fu)*fv, fu*fv};
+    uint16_t taps[4] = {PolygonTexel(u,v,clut), PolygonTexel(u+1u,v,clut),
+                        PolygonTexel(u,v+1u,clut), PolygonTexel(u+1u,v+1u,clut)};
+    uint32_t total = 0, sums[3] = {0,0,0};
+    for (unsigned int i = 0; i < 4; i++) {
+        if (!taps[i] || ((taps[i] ^ anchor) & 0x8000u)) continue;
+        total += weights[i];
+        for (unsigned int ch = 0; ch < 3; ch++)
+            sums[ch] += ((taps[i] >> (5u*ch)) & 31u) * weights[i];
+    }
+    if (!total) return anchor;
+    uint16_t result = anchor & 0x8000u;
+    for (unsigned int ch = 0; ch < 3; ch++)
+        result |= (uint16_t)(((sums[ch] + total / 2u) / total) << (5u*ch));
+    /* A nonzero opaque texel must not become transparent through rounding. */
+    return result ? result : anchor;
+}
+
+static void ShadowPolygonTriangle(PePolygonVertex a, PePolygonVertex b, PePolygonVertex c,
+                                uint32_t command, uint32_t clut)
+{
+    static const int8_t dither[4][4] = {{-4,0,-3,1},{2,-2,3,-1},{-3,1,-4,0},{3,-1,2,-2}};
+    const int scale = g_render_scale;
+    /* A sub-pixel fraction rounds to the nearest shadow pixel of its native
+     * pixel (0 for the integer path, so the shape is unchanged then). */
+    a.x = a.x * scale + ((a.fx * scale + 128) >> 8); a.y = a.y * scale + ((a.fy * scale + 128) >> 8);
+    b.x = b.x * scale + ((b.fx * scale + 128) >> 8); b.y = b.y * scale + ((b.fy * scale + 128) >> 8);
+    c.x = c.x * scale + ((c.fx * scale + 128) >> 8); c.y = c.y * scale + ((c.fy * scale + 128) >> 8);
+    int64_t area = PolygonEdge(&a,&b,c.x,c.y), half;
+    int32_t minx, maxx, miny, maxy, x, y;
+    int textured = (command & 0x04000000u) != 0u;
+    int raw = textured && (command & 0x01000000u);
+    int dithering = (g_gpu.state.draw_mode & 0x200u) && !raw &&
+                    (textured || (command & 0x10000000u));
+    if (!area) return;
+    if (area < 0) { PePolygonVertex temp = b; b = c; c = temp; area = -area; }
+    /* Interpolated UV and RGB round to nearest (half-unit bias on the planar
+     * value), not truncate: the hardware-researched rasterizers add
+     * 1 << (frac-1) to the attribute base (Mednafen/DuckStation convention),
+     * and the emulator oracle's first room agrees (gfx2 lane: 95.87% ->
+     * 98.90% identical pixels vs oracle VSync 9713, with the model packets
+     * and GTE colour tables already bit-identical).  Inside the triangle every
+     * edge weight is >= 0, so the numerators are non-negative. */
+    half = area / 2;
+    minx = a.x < b.x ? a.x : b.x; if (c.x < minx) minx = c.x;
+    maxx = a.x > b.x ? a.x : b.x; if (c.x > maxx) maxx = c.x;
+    miny = a.y < b.y ? a.y : b.y; if (c.y < miny) miny = c.y;
+    maxy = a.y > b.y ? a.y : b.y; if (c.y > maxy) maxy = c.y;
+    if (maxx-minx >= 1024 * scale || maxy-miny >= 512 * scale) return;
+    if (minx < 0) minx = 0;
+    if (maxx >= 1024 * scale) maxx = 1024 * scale - 1;
+    if (miny < 0) miny = 0;
+    if (maxy >= 512 * scale) maxy = 512 * scale - 1;
+    for (y = miny; y <= maxy; y++) {
+        for (x = minx; x <= maxx; x++) {
+            int64_t w0 = PolygonEdge(&b,&c,x,y), w1 = PolygonEdge(&c,&a,x,y), w2 = PolygonEdge(&a,&b,x,y);
+            uint16_t texture = 0u, color = 0u, *pixel;
+            unsigned int channel;
+            if (w0 < 0 || (w0 == 0 && !PolygonTopLeft(&b,&c)) ||
+                w1 < 0 || (w1 == 0 && !PolygonTopLeft(&c,&a)) ||
+                w2 < 0 || (w2 == 0 && !PolygonTopLeft(&a,&b)) || !PixelInDrawingArea(x / scale,y / scale)) continue;
+            pixel = &g_shadow[(size_t)y * 1024u * scale + (uint32_t)x];
+            if ((g_gpu.state.mask_setting & 2u) && (*pixel & 0x8000u)) continue;
+            if (textured) {
+                uint32_t u = (uint32_t)((w0*a.u + w1*b.u + w2*c.u + half) / area);
+                uint32_t v = (uint32_t)((w0*a.v + w1*b.v + w2*c.v + half) / area);
+                texture = g_texture_filter ?
+                    ShadowFilteredTexel(w0*a.u + w1*b.u + w2*c.u,
+                                        w0*a.v + w1*b.v + w2*c.v, area, clut) :
+                    PolygonTexel(u,v,clut);
+                if (texture == 0u) continue;
+            }
+            if (raw) color = texture;
+            else {
+                for (channel = 0u; channel < 3u; channel++) {
+                    int value = (int)((w0*a.color[channel] + w1*b.color[channel] + w2*c.color[channel] + half) / area);
+                    if (textured) value = (int)(((texture >> (channel*5u)) & 31u) * (unsigned int)value) >> 4;
+                    if (dithering && g_shadow_dither != 2)
+                        value += g_shadow_dither ? dither[y & 3][x & 3] : dither[(y / scale) & 3][(x / scale) & 3];
+                    if (value < 0) value = 0;
+                    if (value > 255) value = 255;
+                    color |= (uint16_t)((unsigned int)(value >> 3) << (channel*5u));
+                }
+                color |= texture & 0x8000u;
+            }
+            if ((command & 0x02000000u) && (!textured || (texture & 0x8000u)))
+                color = BlendSemiTransparent(*pixel,color) | (texture & 0x8000u);
+            if (g_gpu.state.mask_setting & 1u) color |= 0x8000u;
+            *pixel = color;
+
+        }
+    }
+}
+
+/* Sub-pixel geometry (shadow only): the GTE sidecar lookup, NULL when off. */
+static int (*g_subpixel_lookup)(uint32_t xy, uint32_t *frac);
+void PE_GPU_SetSubpixelLookup(int (*lookup)(uint32_t xy, uint32_t *frac)) { g_subpixel_lookup = lookup; }
+
 static void DrawPolygon(void)
 {
     PePolygonVertex vertices[4];
-    uint32_t command = g_gpu.polygon_words[0], clut = 0u;
+    uint32_t command = g_gpu.polygon_words[0], clut = 0u, words[4];
     uint32_t color = command;
     unsigned int i, ch, cursor = 1u, count = (command & 0x08000000u) ? 4u : 3u;
     for (i = 0; i < count; i++) {
         uint32_t xy, uv;
         if (i && (command & 0x10000000u)) color = g_gpu.polygon_words[cursor++];
-        xy = g_gpu.polygon_words[cursor++];
+        xy = words[i] = g_gpu.polygon_words[cursor++];
         vertices[i].x = SignExtend11(xy) + SignExtend11(g_gpu.state.drawing_offset);
         vertices[i].y = SignExtend11(xy >> 16) + SignExtend11(g_gpu.state.drawing_offset >> 11);
         vertices[i].u = vertices[i].v = 0;
+        vertices[i].fx = vertices[i].fy = 0;
         for (ch=0; ch<3u; ch++) vertices[i].color[ch] = (color >> (ch*8u)) & 255u;
         if (command & 0x04000000u) {
             uv = g_gpu.polygon_words[cursor++];
@@ -739,6 +1173,7 @@ static void DrawPolygon(void)
             }
         }
     }
+    if (command & 0x04000000u) PrepareClut(clut);
     if (PrimLogOn()) {
         fprintf(g_prim_log, "P %08X mode=%04X clut=%04X", command,
                 (unsigned)(g_gpu.state.draw_mode & 0xFFFFu), (unsigned)clut);
@@ -747,6 +1182,22 @@ static void DrawPolygon(void)
                     vertices[i].u, vertices[i].v, (unsigned)vertices[i].color[0],
                     (unsigned)vertices[i].color[1], (unsigned)vertices[i].color[2]);
         fputc('\n', g_prim_log);
+    }
+    /* Sub-pixel geometry refines a polygon only when the GTE recorded every
+     * one of its vertex words: 2D primitives (menus, text boxes) built from
+     * CPU coordinates keep the integer shape even if one corner happens to
+     * equal a projected vertex.  Native VRAM always uses the integer path. */
+    if (g_shadow && g_subpixel_lookup) {
+        uint32_t frac[4];
+        for (i = 0; i < count && g_subpixel_lookup(words[i], &frac[i]); i++) {}
+        if (i == count)
+            for (i = 0; i < count; i++) {
+                vertices[i].fx = (int32_t)(frac[i] & 255u); vertices[i].fy = (int32_t)((frac[i] >> 8) & 255u);
+            }
+    }
+    if (g_shadow) {
+        ShadowPolygonTriangle(vertices[0],vertices[1],vertices[2],command,clut);
+        if (count == 4u) ShadowPolygonTriangle(vertices[1],vertices[2],vertices[3],command,clut);
     }
     DrawPolygonTriangle(vertices[0],vertices[1],vertices[2],command,clut);
     if (count == 4u) DrawPolygonTriangle(vertices[1],vertices[2],vertices[3],command,clut);
@@ -759,8 +1210,77 @@ static void DrawPolygon(void)
  * Fixed-point coverage conventions (32 fractional coordinate bits, 12
  * color bits, directional tie bias) cross-checked against DuckStation's
  * gpu_sw_rasterizer.inl. This native DDA uses no host graphics API. */
+static void ShadowLine(void)
+{
+    static const int8_t dither[4][4]={{-4,0,-3,1},{2,-2,3,-1},{-3,1,-4,0},{3,-1,2,-2}};
+    const int64_t unit=INT64_C(4294967296);
+    uint32_t command=g_gpu.polygon_words[0];
+    uint32_t colors[2]={command,command};
+    uint32_t xy[2]={g_gpu.polygon_words[1],g_gpu.polygon_words[2]};
+    int32_t ends[2][2], delta[2], span, axis, step, ch;
+    int64_t origin[2], increment[2];
+    int32_t rgb[3], rgb_step[3];
+    if (command&0x10000000u) {
+        colors[1]=g_gpu.polygon_words[2]; xy[1]=g_gpu.polygon_words[3];
+    }
+    for (axis=0;axis<2;axis++) {
+        int32_t offset=SignExtend11(g_gpu.state.drawing_offset>>(axis*11));
+        ends[0][axis]=SignExtend11(xy[0]>>(axis*16))+offset;
+        ends[1][axis]=SignExtend11(xy[1]>>(axis*16))+offset;
+        delta[axis]=ends[1][axis]-ends[0][axis];
+        if (delta[axis]<0) delta[axis]=-delta[axis];
+    }
+
+    if (delta[0]>=1024 || delta[1]>=512) return;
+    span=delta[0]>delta[1]?delta[0]:delta[1];
+    if (span && ends[0][0]>=ends[1][0]) {
+        uint32_t color=colors[0]; colors[0]=colors[1]; colors[1]=color;
+        for (axis=0;axis<2;axis++) {
+            int32_t coord=ends[0][axis]; ends[0][axis]=ends[1][axis]; ends[1][axis]=coord;
+        }
+    }
+    for (axis=0;axis<2;axis++) {
+        int32_t distance=ends[1][axis]-ends[0][axis];
+        int64_t numerator=(int64_t)distance*unit;
+        if (span && distance) numerator+=distance>0?span-1:1-span;
+        increment[axis]=span?numerator/span:0;
+        origin[axis]=(int64_t)ends[0][axis]*unit+unit/2;
+        if (axis==0 || increment[axis]<0) origin[axis]-=1024;
+    }
+    for (ch=0;ch<3;ch++) {
+        int32_t first=(colors[0]>>(ch*8))&255u, last=(colors[1]>>(ch*8))&255u;
+        rgb[ch]=first*4096+2048; rgb_step[ch]=span?(last-first)*4096/span:0;
+    }
+    for (step=0;step<=span;step++) {
+        int32_t x=SignExtend11((uint32_t)(origin[0]>>32));
+        int32_t y=SignExtend11((uint32_t)(origin[1]>>32));
+        if (PixelInDrawingArea(x,y)) {
+            for (int sy = 0; sy < g_render_scale; sy++)
+            for (int sx = 0; sx < g_render_scale; sx++) {
+            uint16_t *pixel=&g_shadow[((size_t)y*g_render_scale+sy)*1024u*g_render_scale+(uint32_t)x*g_render_scale+sx], color=0;
+            if (!(g_gpu.state.mask_setting&2u) || !(*pixel&0x8000u)) {
+                for (ch=0;ch<3;ch++) {
+                    int32_t value=rgb[ch]>>12;
+                    if ((g_gpu.state.draw_mode&0x200u) && g_shadow_dither!=2)
+                        value+=g_shadow_dither?dither[(y*g_render_scale+sy)&3][(x*g_render_scale+sx)&3]:dither[y&3][x&3];
+                    if (value<0) value=0;
+                    if (value>255) value=255;
+                    color|=(uint16_t)((uint32_t)(value>>3)<<(ch*5));
+                }
+                if (command&0x02000000u) color=BlendSemiTransparent(*pixel,color);
+                if (g_gpu.state.mask_setting&1u) color|=0x8000u;
+                *pixel=color;
+            }
+        }
+        }
+        for (axis=0;axis<2;axis++) origin[axis]+=increment[axis];
+        for (ch=0;ch<3;ch++) rgb[ch]+=rgb_step[ch];
+    }
+}
+
 static void DrawLine(void)
 {
+    if (g_shadow) ShadowLine();
     static const int8_t dither[4][4]={{-4,0,-3,1},{2,-2,3,-1},{-3,1,-4,0},{3,-1,2,-2}};
     const int64_t unit=INT64_C(4294967296);
     uint32_t command=g_gpu.polygon_words[0];
@@ -826,14 +1346,29 @@ static void DrawLine(void)
     }
 }
 
+/* psx-spx GPU: "GP0(04h..1Eh,E0h,E7h..EFh) - Mirrors of GP0(00h) - NOP".
+ * GP0(03h) ("Unknown? ... apparently not a NOP") and F0h..FFh
+ * (not documented) stay unsized; 1Fh is the separate IRQ command. */
+static int Gp0NopMirror(uint32_t opcode)
+{
+    return (opcode >= 0x04u && opcode <= 0x1Eu) || opcode == 0xE0u ||
+           (opcode >= 0xE7u && opcode <= 0xEFu);
+}
+
 uint32_t PE_GPU_GP0_PacketWords(uint32_t command)
 {
     uint32_t opcode = command >> 24;
 
-    if (command == 0u)
+    if (opcode == 0u || opcode == 1u || opcode == 0x1Fu)
+        return 1u;
+    if (Gp0NopMirror(opcode))
         return 1u;
     if (opcode >= 0xE1u && opcode <= 0xE6u)
         return 1u;
+    /* Command 4 (80h..9Fh): command, source, destination, width+height; for
+     * groups 4-6 "the remaining 29 bits are ignored" (psx-spx). */
+    if ((opcode & 0xE0u) == 0x80u)
+        return 4u;
     if (opcode == 0x02u)
         return 3u;
     if ((opcode & 0xE0u) == 0x20u) {
@@ -863,13 +1398,25 @@ uint32_t PE_GPU_GP0_StreamPacketWords(const uint32_t *words, uint32_t avail)
 
     if (!avail) return 0u;
     command = words[0];
+    if ((command & 0xE0000000u) == 0xA0000000u) {
+        /* Command 5 (A0h..BFh): command, destination, width+height, then the
+         * halfword pixels two per word -- the same bounds GP0WriteInner's
+         * EXPECT_SIZE state accepts. */
+        uint32_t w, h, n;
+        if (avail < 3u) return 0u;
+        w = (((words[2] & 0xFFFFu) - 1u) & (PE_GPU_VRAM_WIDTH - 1u)) + 1u;
+        h = (((words[2] >> 16) - 1u) & (PE_GPU_VRAM_HEIGHT - 1u)) + 1u;
+        n = 3u + (w * h + 1u) / 2u;
+        return n <= avail ? n : 0u;
+    }
     if ((command & 0xE8000000u) != 0x48000000u) {
         uint32_t n = PE_GPU_GP0_PacketWords(command);
         return n <= avail ? n : 0u;
     }
     gouraud = (command & 0x10000000u) != 0u;
     for (i = 1u; i < avail; i++) {
-        if (vertices >= 2u && (words[i] & 0xF000F000u) == 0x50005000u)
+        if (vertices >= 2u && (!gouraud || expect_color) &&
+            (words[i] & 0xF000F000u) == 0x50005000u)
             return i + 1u;
         if (expect_color) { expect_color = 0u; continue; }
         vertices++;
@@ -878,7 +1425,8 @@ uint32_t PE_GPU_GP0_StreamPacketWords(const uint32_t *words, uint32_t avail)
     return 0u;
 }
 
-static int GP0WriteInner(uint32_t value);
+static int GP0WriteInner(uint32_t value,int from_dma);
+static int GpuVramCopy(uint32_t source, uint32_t destination, uint32_t size);
 
 /* PE_GPU_WATCH=x,y: debug aid, report each GP0 word that changes that VRAM pixel. */
 int PE_GPU_WriteGP0(uint32_t value)
@@ -887,10 +1435,10 @@ int PE_GPU_WriteGP0(uint32_t value)
     uint16_t before = 0; int r;
     if (!init) { const char *e = getenv("PE_GPU_WATCH"); init = 1;
         if (e) { char *end; wx = strtol(e, &end, 10); if (*end == ',') wy = strtol(end + 1, 0, 10); } }
-    if (wy < 0) return GP0WriteInner(value);
+    if (wy < 0) return GP0WriteInner(value,0);
     if (g_gpu.state.gp0_state == PE_GPU_GP0_IDLE) last_cmd = value;
     before = g_gpu.vram[wy * PE_GPU_VRAM_WIDTH + wx];
-    r = GP0WriteInner(value);
+    r = GP0WriteInner(value,0);
     if (g_gpu.vram[wy * PE_GPU_VRAM_WIDTH + wx] != before)
         fprintf(stderr, "[GPU_WATCH] (%ld,%ld) %04X->%04X cmd=%08X word=%08X mode=%04X off=%08X\n", wx, wy, before,
                 g_gpu.vram[wy * PE_GPU_VRAM_WIDTH + wx], last_cmd, value,
@@ -898,9 +1446,14 @@ int PE_GPU_WriteGP0(uint32_t value)
     return r;
 }
 
-static int GP0WriteInner(uint32_t value)
+static int GP0WriteInner(uint32_t value,int from_dma)
 {
-    uint64_t pixels;
+    /* Raw GPU->RAM DMA waits on the read port. While it has no request,
+     * CPU GP0 writes can provide the read command (or finish prior work).
+     * Other DMA owners retain their existing exclusive-write contract. */
+    int raw_readback=g_gpu.dma2_port &&
+        (g_gpu.state.dma2_chcr&~0x10000002u)==PE_GPU_DMA2_CHCR_STORE;
+    int dma_blocked=g_gpu.state.dma2_active && !from_dma && !raw_readback;
 
     if ((g_gpu.state.status & PE_GPU_STATUS_READY_GP0) == 0) return 0;
 
@@ -910,8 +1463,11 @@ static int GP0WriteInner(uint32_t value)
         if (g_gpu.polyline) {
             /* psx-spx: the terminator is any word with
              * (w & F000F000h) == 50005000h, recognised once two
-             * vertices have been received. */
+             * vertices have been received, at the first word of the next
+             * vertex (color for Gouraud, coordinate for flat polylines). */
             if (g_gpu.polyline_vertices >= 2u &&
+                (!(g_gpu.polyline_command & 0x10000000u) ||
+                 g_gpu.polyline_expect_color) &&
                 (value & 0xF000F000u) == 0x50005000u) {
                 g_gpu.polyline = 0;
                 g_gpu.state.gp0_state = PE_GPU_GP0_IDLE;
@@ -948,7 +1504,7 @@ static int GP0WriteInner(uint32_t value)
         return 1;
     case PE_GPU_GP0_IDLE:
         if ((value & 0xE8000000u) == 0x48000000u) {
-            if (g_gpu.state.dma2_active) return 0;
+            if (dma_blocked) return 0;
             g_gpu.polyline = 1;
             g_gpu.polyline_command = value;
             g_gpu.polyline_color = value & 0xFFFFFFu;
@@ -959,7 +1515,7 @@ static int GP0WriteInner(uint32_t value)
         }
         if ((value & 0xE0000000u) == 0x20000000u ||
             (value & 0xE8000000u) == 0x40000000u) {
-            if (g_gpu.state.dma2_active) return 0;
+            if (dma_blocked) return 0;
             g_gpu.polygon_words[0] = value;
             g_gpu.polygon_received = 1u;
             g_gpu.polygon_expected = PE_GPU_GP0_PacketWords(value);
@@ -967,59 +1523,83 @@ static int GP0WriteInner(uint32_t value)
                 PE_GPU_GP0_LINE_DATA : PE_GPU_GP0_POLYGON_DATA;
             return 1;
         }
-        if (value == 0u) {
-            if (g_gpu.state.dma2_active) return 0;
+        if ((value >> 24) == 0x1Fu) {
+            if (dma_blocked) return 0;
+            /* I_STAT is edge-triggered. Repeated requests while GPUSTAT
+             * IRQ is high do not reassert an acknowledged CPU latch. */
+            if (!(g_gpu.state.status & PE_GPU_STATUS_IRQ)) {
+                g_gpu.state.status |= PE_GPU_STATUS_IRQ;
+                PE_IRQ_AssertSources(1u << 1);
+            }
+            return 1;
+        }
+        if ((value >> 24) == 0u) {
+            if (dma_blocked) return 0;
             g_gpu.state.nop_count++;
             return 1;
         }
-        if (value == 0x01000000u) {
-            if (g_gpu.state.dma2_active) return 0;
+        if ((value >> 24) == 1u) {
+            if (dma_blocked) return 0;
+            /* Palette cache invalidation; texture data is still fetched
+             * directly. Low bits carry no data. */
+            g_gpu.clut_count=0;
             ResetParser();
             return 1;
         }
-        if (value == 0xA0000000u) {
-            if (g_gpu.state.dma2_active) return 0;
+        if (Gp0NopMirror(value >> 24)) {
+            if (dma_blocked) return 0;
+            g_gpu.state.nop_count++;
+            return 1;
+        }
+        if ((value & 0xE0000000u) == 0xA0000000u) {
+            /* A0h..BFh: the low 29 bits are ignored (psx-spx). */
+            if (dma_blocked) return 0;
             g_gpu.state.gp0_state = PE_GPU_GP0_EXPECT_POSITION;
             return 1;
         }
+        if ((value & 0xE0000000u) == 0x80000000u) {
+            if (dma_blocked) return 0;
+            g_gpu.state.gp0_state = PE_GPU_GP0_COPY_EXPECT_SOURCE;
+            return 1;
+        }
         if ((value&0xE0000000u)==0xC0000000u) {
-            if (g_gpu.state.dma2_active) return 0;
+            if (dma_blocked) return 0;
             g_gpu.state.gp0_state=PE_GPU_GP0_READ_EXPECT_POSITION;
             return 1;
         }
         if ((value & 0xFF000000u) == 0xE1000000u) {
-            if (g_gpu.state.dma2_active) return 0;
+            if (dma_blocked) return 0;
             g_gpu.state.draw_mode = value;
             UpdateDrawingStatus();
             g_gpu.state.draw_mode_count++;
             return 1;
         }
         if ((value & 0xFF000000u) == 0xE2000000u) {
-            if (g_gpu.state.dma2_active) return 0;
+            if (dma_blocked) return 0;
             g_gpu.state.texture_window = value;
             g_gpu.state.texture_window_count++;
             return 1;
         }
         if ((value & 0xFF000000u) == 0xE3000000u) {
-            if (g_gpu.state.dma2_active) return 0;
+            if (dma_blocked) return 0;
             g_gpu.state.drawing_area_top_left = value;
             g_gpu.state.drawing_area_top_left_count++;
             return 1;
         }
         if ((value & 0xFF000000u) == 0xE4000000u) {
-            if (g_gpu.state.dma2_active) return 0;
+            if (dma_blocked) return 0;
             g_gpu.state.drawing_area_bottom_right = value;
             g_gpu.state.drawing_area_bottom_right_count++;
             return 1;
         }
         if ((value & 0xFF000000u) == 0xE5000000u) {
-            if (g_gpu.state.dma2_active) return 0;
+            if (dma_blocked) return 0;
             g_gpu.state.drawing_offset = value;
             g_gpu.state.drawing_offset_count++;
             return 1;
         }
         if ((value & 0xFF000000u) == 0xE6000000u) {
-            if (g_gpu.state.dma2_active) return 0;
+            if (dma_blocked) return 0;
             g_gpu.state.mask_setting = value;
             UpdateDrawingStatus();
             g_gpu.state.mask_setting_count++;
@@ -1027,7 +1607,7 @@ static int GP0WriteInner(uint32_t value)
         }
         if ((value & 0xE4000000u) == 0x64000000u) {
             /* textured rectangle, any size class (64h..7Fh, bit 26 set) */
-            if (g_gpu.state.dma2_active ||
+            if (dma_blocked ||
                 !TexturedRectangleIndexedModeSupported()) {
                 return 0;
             }
@@ -1036,19 +1616,34 @@ static int GP0WriteInner(uint32_t value)
             return 1;
         }
         if ((value & 0xFF000000u) == 0x02000000u) {
-            if (g_gpu.state.dma2_active) return 0;
+            if (dma_blocked) return 0;
             g_gpu.fill_command = value;
             g_gpu.state.gp0_state = PE_GPU_GP0_FILL_EXPECT_POSITION;
             return 1;
         }
         if ((value & 0xE4000000u) == 0x60000000u) {
-            if (g_gpu.state.dma2_active) return 0;
+            if (dma_blocked) return 0;
             g_gpu.mono_rectangle_command = value;
             g_gpu.state.gp0_state = PE_GPU_GP0_MONO_RECT_EXPECT_POSITION;
             return 1;
         }
         if (PrimLogOn()) fprintf(g_prim_log, "X %08X rejected\n", value);
         return 0;
+
+    case PE_GPU_GP0_COPY_EXPECT_SOURCE:
+        g_gpu.copy_source = value;
+        g_gpu.state.gp0_state = PE_GPU_GP0_COPY_EXPECT_DESTINATION;
+        return 1;
+    case PE_GPU_GP0_COPY_EXPECT_DESTINATION:
+        g_gpu.copy_destination = value;
+        g_gpu.state.gp0_state = PE_GPU_GP0_COPY_EXPECT_SIZE;
+        return 1;
+    case PE_GPU_GP0_COPY_EXPECT_SIZE:
+        /* The same copy PE_GPU_MoveImage performs for the 80000000h
+         * MoveImage packet; the parser returns to idle either way. */
+        g_gpu.state.gp0_state = PE_GPU_GP0_IDLE;
+        XferLog("80", g_gpu.copy_source, g_gpu.copy_destination, value);
+        return GpuVramCopy(g_gpu.copy_source, g_gpu.copy_destination, value);
 
     case PE_GPU_GP0_READ_EXPECT_POSITION:
         g_gpu.state.image_x=value&(PE_GPU_VRAM_WIDTH-1u);
@@ -1065,40 +1660,29 @@ static int GP0WriteInner(uint32_t value)
         return 1;
     case PE_GPU_GP0_READ_DATA:return 0;
     case PE_GPU_GP0_EXPECT_POSITION:
-        g_gpu.state.image_x = value & 0xFFFFu;
-        g_gpu.state.image_y = value >> 16;
+        g_gpu.state.image_x = value & (PE_GPU_VRAM_WIDTH - 1u);
+        g_gpu.state.image_y = (value >> 16) & (PE_GPU_VRAM_HEIGHT - 1u);
         g_gpu.state.gp0_state = PE_GPU_GP0_EXPECT_SIZE;
         return 1;
 
     case PE_GPU_GP0_EXPECT_SIZE:
-        g_gpu.state.image_width = value & 0xFFFFu;
-        g_gpu.state.image_height = value >> 16;
+        /* COPY dimensions wrap, with zero encoding the maximum extent.
+         * Match C0 readback, 80 copy, and packet preflight (psx-spx). */
+        g_gpu.state.image_width = (((value & 0xFFFFu) - 1u) & (PE_GPU_VRAM_WIDTH - 1u)) + 1u;
+        g_gpu.state.image_height = (((value >> 16) - 1u) & (PE_GPU_VRAM_HEIGHT - 1u)) + 1u;
         XferLog("A0", g_gpu.state.image_x | (g_gpu.state.image_y << 16), value, 0u);
-        if (g_gpu.state.image_width == 0 ||
-            g_gpu.state.image_width > PE_GPU_VRAM_WIDTH ||
-            g_gpu.state.image_height == 0 ||
-            g_gpu.state.image_height > PE_GPU_VRAM_HEIGHT) {
-            ResetParser();
-            return 0;
-        }
-        pixels = (uint64_t)g_gpu.state.image_width *
-                 (uint64_t)g_gpu.state.image_height;
-        if (pixels > UINT32_MAX) {
-            ResetParser();
-            return 0;
-        }
         g_gpu.state.image_current_pixel = 0;
-        g_gpu.state.image_remaining_pixels = (uint32_t)pixels;
+        g_gpu.state.image_remaining_pixels = g_gpu.state.image_width * g_gpu.state.image_height;
         g_gpu.state.gp0_state = PE_GPU_GP0_IMAGE_DATA;
         return 1;
 
     case PE_GPU_GP0_IMAGE_DATA:
-        if (g_gpu.state.dma2_active) return 0;
+        if (dma_blocked) return 0;
         WriteImageWord(value);
         return 1;
 
     case PE_GPU_GP0_RECT_EXPECT_POSITION:
-        if (g_gpu.state.dma2_active) return 0;
+        if (dma_blocked) return 0;
         g_gpu.rectangle_position = value;
         g_gpu.state.gp0_state = PE_GPU_GP0_RECT_EXPECT_UV_CLUT;
         return 1;
@@ -1106,7 +1690,7 @@ static int GP0WriteInner(uint32_t value)
     case PE_GPU_GP0_RECT_EXPECT_UV_CLUT: {
         uint32_t opcode;
 
-        if (g_gpu.state.dma2_active) return 0;
+        if (dma_blocked) return 0;
         g_gpu.rectangle_uv_clut = value;
         opcode = TexturedRectangleFixedSize(g_gpu.rectangle_command);
         if (opcode != 0u) {
@@ -1124,7 +1708,7 @@ static int GP0WriteInner(uint32_t value)
     }
 
     case PE_GPU_GP0_RECT_EXPECT_SIZE:
-        if (g_gpu.state.dma2_active) return 0;
+        if (dma_blocked) return 0;
         DrawTexturedRectangle(value);
         g_gpu.state.rectangle_command = g_gpu.rectangle_command;
         g_gpu.state.rectangle_position = g_gpu.rectangle_position;
@@ -1135,13 +1719,13 @@ static int GP0WriteInner(uint32_t value)
         return 1;
 
     case PE_GPU_GP0_FILL_EXPECT_POSITION:
-        if (g_gpu.state.dma2_active) return 0;
+        if (dma_blocked) return 0;
         g_gpu.fill_position = value;
         g_gpu.state.gp0_state = PE_GPU_GP0_FILL_EXPECT_SIZE;
         return 1;
 
     case PE_GPU_GP0_FILL_EXPECT_SIZE:
-        if (g_gpu.state.dma2_active) return 0;
+        if (dma_blocked) return 0;
         DrawFillRectangle(value);
         g_gpu.state.fill_command = g_gpu.fill_command;
         g_gpu.state.fill_position = g_gpu.fill_position;
@@ -1153,7 +1737,7 @@ static int GP0WriteInner(uint32_t value)
     case PE_GPU_GP0_MONO_RECT_EXPECT_POSITION: {
         uint32_t fixed;
 
-        if (g_gpu.state.dma2_active) return 0;
+        if (dma_blocked) return 0;
         g_gpu.mono_rectangle_position = value;
         fixed = MonoRectangleFixedSize(g_gpu.mono_rectangle_command);
         if (fixed == 0u) {
@@ -1166,7 +1750,7 @@ static int GP0WriteInner(uint32_t value)
     }
 
     case PE_GPU_GP0_MONO_RECT_EXPECT_SIZE:
-        if (g_gpu.state.dma2_active) return 0;
+        if (dma_blocked) return 0;
         DrawMonoRectangle(value);
         ResetParser();
         return 1;
@@ -1177,7 +1761,38 @@ static int GP0WriteInner(uint32_t value)
 
 int PE_GPU_WriteGP1(uint32_t value)
 {
+    /* GP1 command bits 6..7 are mirrors of 00h..3Fh (psx-spx).
+     * Normalize before dispatch, including the reset switch below. */
+    value &= 0x3FFFFFFFu;
     unsigned op=value>>24;
+    if(op>=0x10u && op<=0x1Fu) {
+        /* v2 info indices are mirrored modulo 16. Unsupported selectors
+         * leave the read latch intact, not an invented zero response. */
+        switch(value&15u) {
+        case 2:g_gpu.read_latch=g_gpu.state.texture_window&0xFFFFFu;break;
+        case 3:g_gpu.read_latch=g_gpu.state.drawing_area_top_left&0xFFFFFu;break;
+        case 4:g_gpu.read_latch=g_gpu.state.drawing_area_bottom_right&0xFFFFFu;break;
+        case 5:g_gpu.read_latch=g_gpu.state.drawing_offset&0x3FFFFFu;break;
+        case 7:g_gpu.read_latch=2u;break;
+        case 8:g_gpu.read_latch=0u;break;
+        default:break;
+        }
+        return 1;
+    }
+    if(op==2u) {
+        /* GPU acknowledgement never clears the CPU's I_STAT latch. */
+        g_gpu.state.status &= ~PE_GPU_STATUS_IRQ;
+        return 1;
+    }
+    if(op==3u) {
+        g_gpu.state.status=(g_gpu.state.status&~0x00800000u)|((value&1u)<<23);
+        return 1;
+    }
+    if(op==4u) {
+        g_gpu.state.gp1_dma_direction=value&3u;
+        g_gpu.state.status=(g_gpu.state.status&~0x60000000u)|((value&3u)<<29);
+        return 1;
+    }
     if(op>=5 && op<=8) {
         if(g_gpu.state.display_command_count<4)
             g_gpu.state.display_commands[g_gpu.state.display_command_count]=value;
@@ -1192,29 +1807,28 @@ int PE_GPU_WriteGP1(uint32_t value)
         }
         return 1;
     }
+    if(op<=1u) value=op<<24; /* reset commands ignore their low bits */
     switch (value) {
     case 0x00000000u: /* reset GPU: represented subset */
-        if (g_gpu.state.dma2_active) return 0;
+        /* GP1 is independent of GP0 and the DMA controller. A raw DMA
+         * keeps its registers/event; reset drops GPU work and DREQ instead.
+         * The high-level snapshot helper retains its atomic-operation guard. */
+        if (g_gpu.state.dma2_active && !g_gpu.dma2_port) return 0;
         ResetDisplayRegisters();
+        g_gpu.clut_count=0;
+        ResetDrawingRegisters();
         ResetParser();
+        g_gpu.state.status &= ~PE_GPU_STATUS_IRQ;
+        g_gpu.state.status |= 0x00800000u; /* display disabled */
         g_gpu.state.gp1_dma_direction = 0;
+        g_gpu.state.status &= ~0x60000000u;
         g_gpu.state.status |= PE_GPU_STATUS_READY_GP0;
         return 1;
     case 0x01000000u: /* reset command buffer only */
-        if (g_gpu.state.dma2_active) return 0;
+        if (g_gpu.state.dma2_active && !g_gpu.dma2_port) return 0;
+        g_gpu.clut_count=0;
         ResetParser();
         g_gpu.state.status |= PE_GPU_STATUS_READY_GP0;
-        return 1;
-    case 0x02000000u: /* acknowledge GPU IRQ; no GPU IRQ state represented */
-        return 1;
-    case 0x04000000u: /* DMA direction off */
-        g_gpu.state.gp1_dma_direction = 0;
-        return 1;
-    case 0x04000002u: /* DMA CPU -> GP0 */
-        g_gpu.state.gp1_dma_direction = 2;
-        return 1;
-    case 0x04000003u: /* DMA GPUREAD -> CPU */
-        g_gpu.state.gp1_dma_direction = 3;
         return 1;
     default:
         return 0;
@@ -1226,6 +1840,14 @@ int PE_GPU_WriteGP1(uint32_t value)
  * That horizontal overlap direction is hardware-tested by DuckStation's
  * software backend.  Rows advance top-to-bottom.  Split both axes at VRAM
  * wrap boundaries so every inner span has ordinary array bounds. */
+static void CopyVramPixel(uint16_t *destination,uint16_t pixel,uint32_t x,uint32_t y)
+{
+    if ((g_gpu.state.mask_setting & 2u) && (*destination & 0x8000u)) return;
+    pixel |= (uint16_t)((g_gpu.state.mask_setting & 1u) << 15);
+    *destination=pixel;
+    ShadowSeedPixel(x,y,pixel);
+}
+
 static void CopyVramSpan(uint32_t source_x, uint32_t source_y,
                          uint32_t destination_x, uint32_t destination_y,
                          uint32_t width, uint32_t height)
@@ -1243,7 +1865,7 @@ static void CopyVramSpan(uint32_t source_x, uint32_t source_y,
 
             while (column != 0u) {
                 column--;
-                destination[column] = source[column];
+                CopyVramPixel(&destination[column],source[column],destination_x+column,destination_y+row);
             }
         }
     } else {
@@ -1256,7 +1878,7 @@ static void CopyVramSpan(uint32_t source_x, uint32_t source_y,
                             destination_x];
 
             for (column = 0u; column < width; column++) {
-                destination[column] = source[column];
+                CopyVramPixel(&destination[column],source[column],destination_x+column,destination_y+row);
             }
         }
     }
@@ -1271,6 +1893,22 @@ int PE_GPU_MoveImage(uint32_t source, uint32_t destination, uint32_t size)
         g_watch_y >= (long)((destination >> 16) & 0x1FFu) &&
         g_watch_y < (long)((destination >> 16) & 0x1FFu) + (long)(size >> 16))
         fprintf(stderr, "[GPU_WATCH] 80 move src=%08X dst=%08X size=%08X\n", source, destination, size);
+
+    if ((g_gpu.state.status & PE_GPU_STATUS_READY_GP0) == 0u ||
+        g_gpu.state.gp0_state != PE_GPU_GP0_IDLE ||
+        g_gpu.state.dma2_active ||
+        g_gpu.state.gp1_dma_direction != 2u) {
+        return 0;
+    }
+    return GpuVramCopy(source, destination, size);
+}
+
+/* The GP0(80h..9Fh) VRAM-to-VRAM copy itself (psx-spx "VRAM to VRAM
+ * blitting"): both MoveImage and a copy command written to the GP0 port end
+ * here.  Only the MoveImage entry needs the GP1(04h)=2 DMA setup its
+ * packet path programs. */
+static int GpuVramCopy(uint32_t source, uint32_t destination, uint32_t size)
+{
     uint32_t source_x;
     uint32_t source_y;
     uint32_t destination_x;
@@ -1280,13 +1918,6 @@ int PE_GPU_MoveImage(uint32_t source, uint32_t destination, uint32_t size)
     uint32_t rows_remaining;
     uint32_t current_source_y;
     uint32_t current_destination_y;
-
-    if ((g_gpu.state.status & PE_GPU_STATUS_READY_GP0) == 0u ||
-        g_gpu.state.gp0_state != PE_GPU_GP0_IDLE ||
-        g_gpu.state.dma2_active ||
-        g_gpu.state.gp1_dma_direction != 2u) {
-        return 0;
-    }
 
     source_x = source & (PE_GPU_VRAM_WIDTH - 1u);
     source_y = (source >> 16) & (PE_GPU_VRAM_HEIGHT - 1u);
@@ -1362,34 +1993,86 @@ int PE_GPU_CanBeginImageLoad(int needs_dma)
 
 static uint32_t g_dma2_snapshot[PE_GPU_VRAM_PIXELS / 2u + 16u];
 
-int PE_GPU_DMA2Issue(pe_addr_t madr, uint32_t bcr, uint32_t chcr)
+static int DMA2Parameters(pe_addr_t madr,uint32_t bcr,uint32_t chcr,uint32_t *count)
 {
     uint32_t blocks;
+    uint32_t block_words = bcr & 0xFFFFu;
     uint32_t words;
     uint64_t bytes;
     uint32_t required_words;
     int readback=chcr==PE_GPU_DMA2_CHCR_STORE;
 
-    if (g_gpu.state.dma2_active ||
-        g_gpu.state.gp0_state != (readback?PE_GPU_GP0_READ_DATA:PE_GPU_GP0_IMAGE_DATA) ||
-        g_gpu.state.gp1_dma_direction != (readback?3u:2u) ||
-        (g_gpu.state.dpcr & PE_GPU_DMA2_DPCR_ENABLE) == 0 ||
+    if (g_gpu.state.gp0_state != (readback?PE_GPU_GP0_READ_DATA:PE_GPU_GP0_IMAGE_DATA) ||
         (!readback && chcr != PE_GPU_DMA2_CHCR_LOAD) ||
         (madr & 3u) != 0 ||
-        (bcr & 0xFFFFu) != 0x10u) {
+        (block_words == 0u || block_words > 16u)) {
         return 0;
     }
 
+    /* SyncMode1 counts blocks of 1..16 words (the GPU FIFO capacity).
+     * BA zero encodes 65536 blocks, not an empty transfer. Larger BS,
+     * including zero's 65536-word encoding, cannot fit that FIFO. */
     blocks = bcr >> 16;
-    if (blocks == 0) return 0;
-    words = blocks * 16u;
+    if (blocks == 0) blocks = 65536u;
+    words = blocks * block_words;
     bytes = (uint64_t)words * 4u;
     required_words = (g_gpu.state.image_remaining_pixels + 1u) / 2u;
     if (words != required_words ||
         bytes > SIZE_MAX ||
-        !PE_RangeIsRam(madr, (size_t)bytes)) {
+        !PE_RangeIsRam(PE_RamCanonical(madr, (size_t)bytes), (size_t)bytes)) {
         return 0;
     }
+    *count=words;return 1;
+}
+
+/* Request-mode packets are a GP0 word stream, not necessarily an image.
+ * Keep image helpers separate; raw command mode services at most one block
+ * (1..16 words) per opportunity and leaves parser state between blocks. */
+static int DMA2RawParameters(uint32_t madr,uint32_t bcr,uint32_t chcr,uint32_t *count)
+{
+    uint32_t bs=bcr&0xFFFFu,ba=bcr>>16;
+    uint32_t control=chcr&~0x10000002u,address=madr&0xFFFFFCu;
+    int readback=control==PE_GPU_DMA2_CHCR_STORE;
+    if(!bs || bs>16u || (!readback && control!=PE_GPU_DMA2_CHCR_LOAD) ||
+       (!readback && g_gpu.state.gp0_state==PE_GPU_GP0_READ_DATA)) return 0;
+    if(!ba) ba=65536u;
+    uint32_t words=bs*ba;
+    if(readback && g_gpu.state.gp0_state==PE_GPU_GP0_READ_DATA &&
+       words>(g_gpu.state.image_remaining_pixels+1u)/2u) return 0;
+    /* Raw DMA addresses are 24-bit word locations. Validate the entire
+     * forward/backward span before any GPU or RAM side effect. */
+    if(address>=PE_RAM_SIZE || ((chcr&2u) ? (words-1u)*4u>address
+                                         : words*4u>PE_RAM_SIZE-address)) return 0;
+    *count=words;return 1;
+}
+
+static void DMA2Record(pe_addr_t source,uint32_t madr,uint32_t bcr,uint32_t chcr,
+                       uint32_t words,int port)
+{
+    g_gpu.state.dma2_madr=madr&0xFFFFFFu;
+    g_gpu.state.dma2_bcr=bcr;
+    g_gpu.state.dma2_chcr=chcr;
+    g_gpu.state.dma2_active=1;
+    g_gpu.state.dma2_source=source;
+    g_gpu.state.dma2_word_count=words;
+    g_gpu.dma2_port=port;
+    g_gpu.dma2_failed=0;
+    if(chcr==PE_GPU_DMA2_CHCR_LIST)
+        memset(g_gpu.dma2_list_seen,0,sizeof g_gpu.dma2_list_seen);
+    g_gpu.event_serial++;
+    if(!g_gpu.event_serial) g_gpu.event_serial++;
+    g_gpu.state.dma2_event_token=g_gpu.event_serial;
+    g_gpu.state.dma_data_order=g_gpu.state.dma_completion_order=0;
+}
+
+int PE_GPU_DMA2Issue(pe_addr_t madr, uint32_t bcr, uint32_t chcr)
+{
+    uint32_t words;
+    int readback=chcr==PE_GPU_DMA2_CHCR_STORE;
+    if(g_gpu.state.dma2_active ||
+       g_gpu.state.gp1_dma_direction!=(readback?3u:2u) ||
+       !(g_gpu.state.dpcr&PE_GPU_DMA2_DPCR_ENABLE) ||
+       !DMA2Parameters(madr,bcr,chcr,&words)) return 0;
 
     /* psx-spx "DMA": the CPU is halted while a (non-chopped) DMA runs, so
      * a CPU->VRAM block transfer reads its source at issue time.  The
@@ -1400,17 +2083,33 @@ int PE_GPU_DMA2Issue(pe_addr_t madr, uint32_t bcr, uint32_t chcr)
         uint32_t k;
         for (k = 0; k < words; k++) g_dma2_snapshot[k] = PE_LoadU32(madr + k * 4u);
     }
-    g_gpu.state.dma2_madr = madr;
-    g_gpu.state.dma2_bcr = bcr;
-    g_gpu.state.dma2_chcr = chcr;
-    g_gpu.state.dma2_active = 1;
-    g_gpu.state.dma2_source = madr;
-    g_gpu.state.dma2_word_count = words;
-    g_gpu.event_serial++;
-    if (g_gpu.event_serial == 0) g_gpu.event_serial++;
-    g_gpu.state.dma2_event_token = g_gpu.event_serial;
-    g_gpu.state.dma_data_order = 0;
-    g_gpu.state.dma_completion_order = 0;
+    DMA2Record(madr,madr,bcr,chcr,words,0);
+    return 1;
+}
+
+int PE_GPU_WriteDMA2Register(uint32_t offset,uint32_t value)
+{
+    if(g_gpu.state.dma2_active) {
+        if(offset==8u && !(value&PE_GPU_DMA2_CHCR_BUSY)) {
+            g_gpu.state.dma2_active=0;g_gpu.state.dma2_chcr=value;
+            g_gpu.state.dma2_event_token=0;g_gpu.state.dma2_word_count=0;
+            g_gpu.dma2_port=0;return 1;
+        }
+        return offset==8u && value==g_gpu.state.dma2_chcr;
+    }
+    if(offset==0u) {g_gpu.state.dma2_madr=value&0xFFFFFFu;return 1;}
+    if(offset==4u) {g_gpu.state.dma2_bcr=value;return 1;}
+    if(offset!=8u) return 0;
+    if(!(value&PE_GPU_DMA2_CHCR_BUSY)) {g_gpu.state.dma2_chcr=value;return 1;}
+    uint32_t madr=g_gpu.state.dma2_madr,words;
+    pe_addr_t source=PE_RAM_BASE+(madr&0xFFFFFCu);
+    int port=1;
+    if(value==PE_GPU_DMA2_CHCR_LIST) words=0;
+    else {
+        if(!DMA2RawParameters(madr,g_gpu.state.dma2_bcr,value,&words)) return 0;
+        if((value&~0x10000002u)==PE_GPU_DMA2_CHCR_LOAD) port=2;
+    }
+    DMA2Record(source,madr,g_gpu.state.dma2_bcr,value,words,port);
     return 1;
 }
 
@@ -1449,28 +2148,136 @@ uint64_t PE_GPU_DMA2EventToken(void)
     return g_gpu.state.dma2_event_token;
 }
 
+/* A malformed/unsupported stream or list is a native coverage boundary, not a
+ * fabricated successful DMA or a hardware bus-error approximation. Retain
+ * the busy transfer for diagnostics; repeated service cannot replay it. */
+static int DMA2Boundary(const char *name,uint32_t value)
+{
+    g_gpu.dma2_failed=1;
+    Bootstrap_ReturnVoid1(name,"GPU_DMA2",value);
+    PE_Port_RequestStop(PE_PORT_STOP_UNRESOLVED_BOUNDARY);
+    return 0;
+}
+
+/* One node per explicit service opportunity (at most 255 GP0 words).
+ * Parser state persists across node boundaries, including image payloads.
+ * This is bounded native scheduling, not DMA/raster cycle timing. */
+static int DMA2ServiceListNode(void)
+{
+    uint32_t address=g_gpu.state.dma2_madr;
+    if(g_gpu.dma2_failed) return 0;
+    if(address==0xFFFFFFu) return 1;
+    if(!(g_gpu.state.status&PE_GPU_STATUS_READY_GP0)) return 0;
+    uint32_t offset=address&0xFFFFFCu;
+    if(offset>=PE_RAM_SIZE) return DMA2Boundary("GPU_DMA2_list_header_range",address);
+    uint32_t bit=offset/4u;
+    if(g_gpu.dma2_list_seen[bit/8u]&(1u<<(bit%8u)))
+        return DMA2Boundary("GPU_DMA2_list_cycle",address);
+    uint32_t header=PE_LoadU32(PE_RAM_BASE+offset),words=header>>24;
+    if((words+1u)*4u>PE_RAM_SIZE-offset)
+        return DMA2Boundary("GPU_DMA2_list_data_range",address);
+    g_gpu.dma2_list_seen[bit/8u]|=(uint8_t)(1u<<(bit%8u));
+    for(uint32_t i=0;i<words;i++) {
+        uint32_t word=PE_LoadU32(PE_RAM_BASE+offset+4u+i*4u);
+        if(!GP0WriteInner(word,1)) return DMA2Boundary("GPU_DMA2_list_GP0",word);
+        g_gpu.state.dma2_word_count++;
+    }
+    g_gpu.state.dma2_madr=header&0xFFFFFFu;
+    /* Optional per-node interrupt uses the same masked DICR authority. */
+    if(g_gpu.state.dicr&(1u<<2)) (void)PE_GPU_LatchDMACompletionFlag(2);
+    return g_gpu.state.dma2_madr==0xFFFFFFu;
+}
+
+static int DMA2FinishBlock(void)
+{
+    uint32_t bs=g_gpu.state.dma2_bcr&0xFFFFu,ba=g_gpu.state.dma2_bcr>>16;
+    if(!ba) ba=65536u;
+    uint32_t delta=(g_gpu.state.dma2_chcr&2u)?0u-bs*4u:bs*4u;
+    g_gpu.state.dma2_madr=(g_gpu.state.dma2_madr+delta)&0xFFFFFCu;
+    g_gpu.state.dma2_bcr=((ba-1u)<<16)|bs;
+    if(g_gpu.state.dicr&(1u<<2)) (void)PE_GPU_LatchDMACompletionFlag(2);
+    return ba==1u;
+}
+
+static int DMA2ServiceStreamBlock(void)
+{
+    if(g_gpu.dma2_failed) return 0;
+    uint32_t bs=g_gpu.state.dma2_bcr&0xFFFFu;
+    pe_addr_t source=PE_RAM_BASE+(g_gpu.state.dma2_madr&0xFFFFFCu);
+    for(uint32_t i=0;i<bs;i++) {
+        uint32_t delta=(g_gpu.state.dma2_chcr&2u)?0u-i*4u:i*4u;
+        uint32_t word=PE_LoadU32(source+delta);
+        if(!GP0WriteInner(word,1)) return DMA2Boundary("GPU_DMA2_stream_GP0",word);
+    }
+    return DMA2FinishBlock();
+}
+
+/* Raw readback has the same request-mode block boundary as GP0 writes.
+ * Keep the high-level snapshot helper's single completion contract separate. */
+static int DMA2ServiceReadbackBlock(void)
+{
+    uint32_t bs=g_gpu.state.dma2_bcr&0xFFFFu;
+    pe_addr_t source=PE_RAM_BASE+(g_gpu.state.dma2_madr&0xFFFFFCu);
+    for(uint32_t i=0;i<bs;i++) {
+        uint32_t delta=(g_gpu.state.dma2_chcr&2u)?0u-i*4u:i*4u;
+        PE_StoreU32(source+delta,ReadImageWord());
+    }
+    return DMA2FinishBlock();
+}
+
 int PE_GPU_ServiceDMA2Completion(uint64_t event_token)
 {
     uint32_t i;
     pe_addr_t source;
 
-    if (!g_gpu.state.dma2_active || event_token == 0 ||
+    if (!g_gpu.state.dma2_active || g_gpu.dma2_failed || event_token == 0 ||
         event_token != g_gpu.state.dma2_event_token) {
         return 0;
     }
-
-    source = g_gpu.state.dma2_source;
-    for (i = 0; i < g_gpu.state.dma2_word_count; i++) {
-        if (g_gpu.state.dma2_chcr==PE_GPU_DMA2_CHCR_STORE)
-            PE_StoreU32(source+i*4u,ReadImageWord());
-        else WriteImageWord(g_dma2_snapshot[i]);
+    if(g_gpu.dma2_port) {
+        uint32_t direction=g_gpu.state.gp1_dma_direction;
+        int readback=(g_gpu.state.dma2_chcr&~0x10000002u)==PE_GPU_DMA2_CHCR_STORE;
+        int forced=(g_gpu.state.dma2_chcr&0x10000000u)!=0u;
+        if(!(g_gpu.state.dpcr&PE_GPU_DMA2_DPCR_ENABLE) ||
+           (!forced && ((readback ? direction!=3u : (direction!=1u && direction!=2u)) ||
+                        !(PE_GPU_ReadStatus()&PE_GPU_STATUS_DMA_REQUEST)))) return 0;
+        if(readback) {
+            uint32_t blocks=g_gpu.state.dma2_bcr>>16u;
+            uint32_t words=(blocks?blocks:65536u)*(g_gpu.state.dma2_bcr&0xFFFFu);
+            /* A channel may be armed before GP0(C0h) arrives. Admit its RAM
+             * span at issue, then validate this model's whole-image bound
+             * when data becomes available. Never manufacture an empty or
+             * undersized read, including force-start after a GPU reset. */
+            if(g_gpu.state.gp0_state!=PE_GPU_GP0_READ_DATA ||
+               words>(g_gpu.state.image_remaining_pixels+1u)/2u)
+                return DMA2Boundary("GPU_DMA2_readback_shape",g_gpu.state.dma2_bcr);
+        }
+        /* Bit28 forces the first request-mode block without DREQ. It clears
+         * when that block starts, not when armed or when the transfer ends. */
+        g_gpu.state.dma2_chcr&=~0x10000000u;
     }
-    if (g_gpu.state.image_remaining_pixels != 0) {
-        return 0;
-    }
 
+    if(g_gpu.dma2_port==2) {
+        if(!DMA2ServiceStreamBlock()) return 0;
+    } else if(g_gpu.state.dma2_chcr==PE_GPU_DMA2_CHCR_LIST) {
+        if(!DMA2ServiceListNode()) return 0;
+        /* SyncMode2 leaves BCR alone and MADR at the end marker. */
+    } else if(g_gpu.dma2_port) {
+        if(!DMA2ServiceReadbackBlock()) return 0;
+    } else {
+        source = g_gpu.state.dma2_source;
+        for (i = 0; i < g_gpu.state.dma2_word_count; i++) {
+            if (g_gpu.state.dma2_chcr==PE_GPU_DMA2_CHCR_STORE)
+                PE_StoreU32(source+i*4u,ReadImageWord());
+            else WriteImageWord(g_dma2_snapshot[i]);
+        }
+        if (g_gpu.state.image_remaining_pixels != 0) return 0;
+        g_gpu.state.dma2_madr = (g_gpu.state.dma2_madr + g_gpu.state.dma2_word_count * 4u) & 0x00FFFFFCu;
+        g_gpu.state.dma2_bcr &= 0xFFFFu;
+    }
     g_gpu.state.dma_data_order = ++g_gpu.order_counter;
     g_gpu.state.dma2_active = 0;
+    g_gpu.dma2_port=0;
     g_gpu.state.dma2_chcr &= ~PE_GPU_DMA2_CHCR_BUSY;
     if ((g_gpu.state.dicr &
          (PE_GPU_DICR_MASTER | PE_GPU_DMA2_DICR_ENABLE)) ==
@@ -1487,9 +2294,54 @@ uint32_t PE_GPU_ReadDPCR(void)
     return g_gpu.state.dpcr;
 }
 
+/* Native DMA-controller behavior, independent of SDK OT construction.
+ * Burst work is synchronous and bounded by the 16-bit count encoding. */
+static void DMA6TryBurst(void)
+{
+    uint32_t chcr=g_gpu.state.dma6_chcr;
+    if(g_gpu.dma6_failed || (chcr&0x11000000u)!=0x11000000u ||
+       !(g_gpu.state.dpcr&0x08000000u)) return;
+    uint32_t address=g_gpu.state.dma6_madr&0xFFFFFCu;
+    uint32_t words=g_gpu.state.dma6_bcr&0xFFFFu;
+    if(!words) words=65536u;
+    if((chcr&0x40000000u) || address>=PE_RAM_SIZE ||
+       (words-1u)*4u>address) {
+        g_gpu.dma6_failed=1;
+        Bootstrap_ReturnVoid1("DMA6_OTC_boundary","DMA6",address);
+        PE_Port_RequestStop(PE_PORT_STOP_UNRESOLVED_BOUNDARY);
+        return;
+    }
+    for(uint32_t i=0;i<words;i++,address-=4u)
+        PE_StoreU32(PE_RAM_BASE+address,i+1u==words?0xFFFFFFu:address-4u);
+    g_gpu.state.dma6_chcr&=~0x11000000u;
+    g_gpu.state.dma6_event_count++;
+    (void)PE_GPU_LatchDMACompletionFlag(6u);
+}
+
+uint32_t PE_GPU_ReadDMA6Register(uint32_t offset)
+{
+    if(offset==0u) return g_gpu.state.dma6_madr;
+    if(offset==4u) return g_gpu.state.dma6_bcr;
+    return g_gpu.state.dma6_chcr;
+}
+
+int PE_GPU_WriteDMA6Register(uint32_t offset,uint32_t value)
+{
+    if(offset==8u) {
+        g_gpu.state.dma6_chcr=(value&0x51000000u)|2u;
+        if(!(value&0x01000000u)) g_gpu.dma6_failed=0;
+        DMA6TryBurst();return 1;
+    }
+    if(g_gpu.state.dma6_chcr&0x01000000u) return 0;
+    if(offset==0u) {g_gpu.state.dma6_madr=value&0xFFFFFFu;return 1;}
+    if(offset==4u) {g_gpu.state.dma6_bcr=value;return 1;}
+    return 0;
+}
+
 void PE_GPU_WriteDPCR(uint32_t value)
 {
     g_gpu.state.dpcr = value;
+    DMA6TryBurst();
 }
 
 void PE_GPU_EnableDMA2(void)
@@ -1584,7 +2436,7 @@ int PE_GPU_SetHBlank(int level,PeIrqGeneration generation)
     uint8_t next=level!=0;
     if(next && !g_gpu.state.hblank_level) {
         g_gpu.state.hblank_edge_count++;
-        (void)PE_Timer1_HBlankEdge(generation);
+        (void)PE_Timer1_HBlankEdge(g_gpu.state.vblank_level,generation);
     }
     g_gpu.state.hblank_level=next;
     return 1;
@@ -1612,6 +2464,7 @@ void PE_GPU_GetState(PeGpuState *out)
 {
     if (out) {
         *out = g_gpu.state;
+        out->status = PE_GPU_ReadStatus();
         out->dicr = PE_GPU_ReadDICR();
     }
 }

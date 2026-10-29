@@ -1,5 +1,10 @@
 # Windows 10/11 native build and run guide
 
+> **Superseded.** The tested Windows build is the zig cc (MinGW-w64/UCRT) cross build in
+> [`docs/port/WINDOWS.md`](../../docs/port/WINDOWS.md). MSVC is not supported (weak symbols, GCC builtins),
+> and Windows builds rely on the POSIX compatibility prelude `platform/pe_posix_win32.h`. The MSVC and
+> "no POSIX calls" statements below are kept only as history.
+
 The native port compiles and runs on 64-bit Windows 10/11 with no third-party
 dependencies. The only platform-specific file is the window backend:
 `platform/host_window_win32.c` (Win32 GDI) replaces `platform/host_window.c`

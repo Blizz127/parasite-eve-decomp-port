@@ -283,7 +283,7 @@ void func_8003D834(pe_addr_t dest, pe_addr_t clip, int a2, pe_addr_t bea40)
     }
     func_8003A088_mode0_walk_cut(dest);
     func_8003DFD8(GA_B1638, dest + 52u, 1);
-    func_8003B97C_lighting_cut(dest, bea40);
+    func_8003B97C(dest, bea40);
     half = (int16_t)PE_LoadU16(GA_9CDDC);
     func_8003BCE0(dest, 1, (int)half);
     word = PE_LoadU32(GA_9CDDC) ^ 1u;

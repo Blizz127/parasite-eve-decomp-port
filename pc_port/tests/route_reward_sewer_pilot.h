@@ -53,17 +53,39 @@ static uint16_t RoutePilotAimPadT(int dx, int dz)
 static int g_route_m34_shim;
 static int g_m34s_vx[4], g_m34s_vz[4], g_m34s_init;   /* Up,Right,Down,Left */
 static const uint16_t kM34sPad[4]={0xFFEFu,0xFFDFu,0xFFBFu,0xFF7Fu};
+/* PE_ROUTE_AIDS_PAD_ONLY=1 (port_main reads it once, under --route-pad; the harness leaves it 0): the aids keep every
+ * pad policy but skip their guest writes, i.e. the Aya HP locks here and in port_main's RoutePadSource. 0 = unchanged. */
+static int g_route_aids_pad_only;
+/* Pad-only in-fight heal gate of the non-M34 sewer rooms: the original constants (25 HP, 9000 ATB) unless
+ * PE_PADONLY_HEAL_HP / PE_PADONLY_HEAL_ATB override them under PE_ROUTE_AIDS_PAD_ONLY=1 (route_padonly_pilot.h reads
+ * the environment only under the switch, so with the switch unset these stay 25 / 9000). */
+static unsigned g_po_heal_hp=25u, g_po_heal_atb=9000u;
 
 static uint16_t RouteM34ShimMove(int ax, int az, int wx, int wz, int stop2)
 {
-    static int last_dir=-1, hold=0, px, pz;
+    static int last_dir=-1, hold=0, px, pz, seed_frame=-1000;
     int c=(int16_t)PE_LoadU16(0x800BD000u),sn=(int16_t)PE_LoadU16(0x800BD004u);
     int best=-1; long long bd=0;
     {
         /* M34's arena camera changes angle as Aya moves (m34d: stuck holding a
          * stale Up at (-734,768)), so re-derive the map from the live matrix
          * whenever it changes. */
-        static int lc=0x7FFFFFFF, lsn=0x7FFFFFFF;
+        static int lc=0x7FFFFFFF, lsn=0x7FFFFFFF, lbattle=-1;
+        /* What the walker learns in a battle is dropped when it ends: hits and
+         * knockback move Aya against the held pad (Day 5 m0167i: Down learned as
+         * (-251,748) mid-fight, and after the fight the walker pinned her at
+         * (0,404) pressing into the wall; the game itself had control back).
+         * The pre-battle map is restored when the fight ends. */
+        int battle=(PE_LoadU32(0x8009D1A0u)&0x802u)!=0;
+        static int svx[4], svz[4], sinit;
+        /* Day 5 on (story >= 0x220) only: the Day 1-4 gate routes were tuned with the
+         * fight-learned map carried over (m0132i at 0x1EE depends on it). */
+        if (PE_LoadU32(0x800A7918u) < 0x220u) battle=0;
+        if (battle!=lbattle) {
+            if (battle) { memcpy(svx,g_m34s_vx,sizeof svx); memcpy(svz,g_m34s_vz,sizeof svz); sinit=g_m34s_init; }
+            else if (lbattle>=0) { memcpy(g_m34s_vx,svx,sizeof svx); memcpy(g_m34s_vz,svz,sizeof svz); g_m34s_init=sinit; }
+            lbattle=battle;
+        }
         if (GA_TOKEN==0xA8003248u && (c!=lc || sn!=lsn)) {
             if (lc!=0x7FFFFFFF) g_m34s_init=0;
             lc=c; lsn=sn;
@@ -83,6 +105,10 @@ static uint16_t RouteM34ShimMove(int ax, int az, int wx, int wz, int stop2)
             g_m34s_vx[i]=g_m34s_vx[i]*1000/n; g_m34s_vz[i]=g_m34s_vz[i]*1000/n;
         }
         g_m34s_init=1;
+        /* A reseed (new room) also restarts the learning window: the old
+         * room's last position vs. the new spawn is not a pad displacement
+         * (Day 3 m0100i after the m0115i vision: it flipped Up to south). */
+        last_dir=-1; hold=0; px=ax; pz=az; seed_frame=g_frame;
         fprintf(stderr,"M34_SHIM_MAP_SEED c=%d sn=%d U=(%d,%d) R=(%d,%d) D=(%d,%d) L=(%d,%d)\n",
                 c,sn,g_m34s_vx[0],g_m34s_vz[0],g_m34s_vx[1],g_m34s_vz[1],
                 g_m34s_vx[2],g_m34s_vz[2],g_m34s_vx[3],g_m34s_vz[3]);
@@ -90,7 +116,11 @@ static uint16_t RouteM34ShimMove(int ax, int az, int wx, int wz, int stop2)
     /* Learn: after 12 frames of the same single direction, the net
      * displacement over the last window is that pad's world direction. */
     /* Learning off in M34: knockback from the head corrupts it (m34c flipped Left). */
-    if (last_dir>=0 && hold>=12 && GA_TOKEN!=0xA8003248u) {
+    /* Day 5 museum (story >= 0x260): no learning in the first 60 frames of a room.
+     * The scripted walk-in moves Aya against the held pad (m0237i second entry:
+     * Up learned as (-559,-440) at +23 frames, then pinned at (-3,-346)). */
+    if (PE_LoadU32(0x800A7918u) >= 0x260u && g_frame-seed_frame<60) { hold=0; px=ax; pz=az; }
+    else if (last_dir>=0 && hold>=12 && GA_TOKEN!=0xA8003248u) {
         int dx=ax-px,dz=az-pz,n=abs(dx)+abs(dz);
         if (n>=40) {
             int nx=dx*1000/n,nz=dz*1000/n;
@@ -137,7 +167,7 @@ static uint16_t RouteM34Shim(void)
     uint16_t mask=0xFFFFu;
     static int seeded;
     if (!seeded) { seeded=1; g_m34s_init=0; }   /* reseed the pad map for M34's camera */
-    if (rec) {
+    if (rec && !g_route_aids_pad_only) {
         unsigned mx=PE_LoadU16(rec+28u);
         if (mx && PE_LoadU16(rec+12u)<mx) PE_StoreU16(rec+12u,(uint16_t)mx);
     }
@@ -219,7 +249,7 @@ static uint16_t RouteBattleShim(void)
     pe_addr_t best=0; long long bd=0; int ax,az,ex=0,ez=0,ehp=0;
     uint16_t mask=0xFFFFu;
     if ((uint32_t)GA_TOKEN!=last_tok) { last_tok=(uint32_t)GA_TOKEN; g_m34s_init=0; }
-    if (rec) {
+    if (rec && !g_route_aids_pad_only) {
         unsigned mx=PE_LoadU16(rec+28u);
         if (mx && PE_LoadU16(rec+12u)<mx) PE_StoreU16(rec+12u,(uint16_t)mx);
     }
@@ -941,8 +971,8 @@ static uint16_t RouteRewardSewerPilot(uint16_t mask)
                     if (abs(z)*2>abs(x)) mask&=z>0?0xFFEFu:0xFFBFu;
                 }
             }
-            if (heal_start<0 && equip_start<0 && !PE_LoadU8(0x8009CE3Cu) && PE_LoadU16(rec+12u)<=25u &&
-                PE_LoadU16(rec+16u)>=9000u &&
+            if (heal_start<0 && equip_start<0 && !PE_LoadU8(0x8009CE3Cu) && PE_LoadU16(rec+12u)<=g_po_heal_hp &&
+                PE_LoadU16(rec+16u)>=g_po_heal_atb &&
                 (PE_LoadU16(0x800C0E50u)==7u || PE_LoadU32(rec+8u)>=60u*65536u)) {
                 heal_start=g_frame;fprintf(stderr,"LOOT_PILOT_HEAL %d\n",g_frame);
             }

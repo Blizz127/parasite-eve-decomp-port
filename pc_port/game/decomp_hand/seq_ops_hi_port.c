@@ -680,6 +680,7 @@ static void program_change(pe_addr_t a0, unsigned int a1, int fixed_attr)
         PE_StoreU32(a0 + 0xF4u, PE_LoadU32(a0 + 0xF4u) | 0x10u);
         if (den == 0u) {
             PE_D_COMP_BOUNDARY2("program_change_divide_trap", 0u, a0, old);
+            return;
         } else {
             PE_StoreU32(a0 + 0x30u, (PE_LoadU32(a0 + 0x30u) * PE_LoadU32(rec + 0x10u)) / den);
         }

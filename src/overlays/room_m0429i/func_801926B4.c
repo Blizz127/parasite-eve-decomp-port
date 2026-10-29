@@ -4,7 +4,7 @@
 
 typedef struct { int w[8]; } B32;
 extern char *D_8009D254;
-extern void func_80192D04();
+extern void func_80192D04(char *);
 extern int func_800DFE20();
 extern void func_80020C74();
 extern void func_80192878();
@@ -23,7 +23,7 @@ void func_801926B4(char *a0)
     v = *(char **)r;
     if (v != 0 && *(int *)(v + 0x10) <= 1000000) {
         **(int **)(a0 + 0x10) = 4;
-        func_80192D04();
+        func_80192D04(a0);
         return;
     }
     p = D_8009D254;

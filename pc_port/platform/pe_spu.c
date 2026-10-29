@@ -8,6 +8,7 @@
  */
 #include "pe_spu.h"
 #include "pe_spu_dma.h"
+#include "pe_irq.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,6 +31,7 @@ typedef struct {
     int ignore_loop;         /* repeat address written while on */
     int16_t block[28];
     int block_pos;           /* 0..28; 28 = need a new block */
+    int block_decoded;       /* first read has no prior block to finish */
     uint8_t block_flags;
     int32_t hist1, hist2;
     int16_t h[4];            /* oldest, older, old, new (gaussian taps) */
@@ -39,6 +41,7 @@ typedef struct {
     int32_t vol_level[2];
     int32_t vol_counter[2];
     int on;
+    int sfx;                 /* class latched at key-on: 0 music, 1 SFX */
 } Voice;
 
 static struct {
@@ -48,8 +51,11 @@ static struct {
     Voice v[NVOICE];
     uint32_t endx;
     uint32_t xfer_addr;
+    uint32_t capture_addr;   /* byte cursor shared by the four 1 KiB rings */
+    int irq_pending;
     int32_t main_level[2];
     int32_t main_counter[2];
+    int32_t main_current[2]; /* signed volume actually applied last sample */
     /* noise */
     int32_t noise_timer;
     int16_t noise_level;
@@ -95,6 +101,60 @@ static int16_t clamp16(int32_t v)
     return (int16_t)(v < -0x8000 ? -0x8000 : v > 0x7FFF ? 0x7FFF : v);
 }
 
+static int g_cd_gain = 100;   /* host option, not SPU state: survives Reset */
+void PE_Spu_SetCdGain(int percent)
+{
+    g_cd_gain = percent < 0 ? 0 : percent > 100 ? 100 : percent;
+}
+int PE_Spu_CdGain(void) { return g_cd_gain; }
+
+/* MUSIC VOLUME / SFX VOLUME (pe_spu.h): host options, not SPU state, so
+ * they survive Reset like g_cd_gain.  Index = Voice.sfx. */
+static int g_voice_gain[2] = {100, 100};
+static PeSpuSfxMaskFn g_sfx_source;
+void PE_Spu_SetVoiceGains(int music_percent, int sfx_percent)
+{
+    g_voice_gain[0] = music_percent < 0 ? 0 : music_percent > 100 ? 100 : music_percent;
+    g_voice_gain[1] = sfx_percent < 0 ? 0 : sfx_percent > 100 ? 100 : sfx_percent;
+}
+int PE_Spu_MusicGain(void) { return g_voice_gain[0]; }
+int PE_Spu_SfxGain(void) { return g_voice_gain[1]; }
+
+/* SPU INTERPOLATION (host option, survives Reset): 0 = the 4-point Gaussian
+ * the console uses, in PE_Spu_Render below, exactly as it always was; 1 =
+ * PE_Spu_InterpolateCubic. */
+static int g_interp = PE_SPU_INTERP_GAUSSIAN;
+void PE_Spu_SetInterpolation(int mode)
+{
+    g_interp = mode == PE_SPU_INTERP_CUBIC ? PE_SPU_INTERP_CUBIC : PE_SPU_INTERP_GAUSSIAN;
+}
+int PE_Spu_Interpolation(void) { return g_interp; }
+
+/* Catmull-Rom through taps[0..3] between taps[1] (phase 0) and taps[2]
+ * (phase 4096), in the polynomial form
+ *     out = p1 + 0.5 * (c*u + b*u^2 + a*u^3),   u = phase / 4096
+ *     a = 3*(p1-p2) + p3 - p0,  b = 2*p0 - 5*p1 + 4*p2 - p3,  c = p2 - p0
+ * evaluated exactly in 64-bit integers (u is a 12-bit fraction, the Gaussian
+ * only uses its top 8 bits), rounded half away from zero, clamped to int16.
+ * Exact for constant, linear and quadratic input. */
+int PE_Spu_InterpolateCubic(const int16_t taps[4], unsigned phase)
+{
+    int64_t p0 = taps[0], p1 = taps[1], p2 = taps[2], p3 = taps[3], u = (int64_t)(phase & 0xFFFu);
+    int64_t a = 3 * (p1 - p2) + p3 - p0, b = 2 * p0 - 5 * p1 + 4 * p2 - p3, c = p2 - p0;
+    int64_t n = c * u * ((int64_t)1 << 24) + b * u * u * ((int64_t)1 << 12) + a * u * u * u;   /* 2^37 * (out - p1) */
+    int64_t half = (int64_t)1 << 36, v;
+    v = p1 + (n >= 0 ? (n + half) / ((int64_t)1 << 37) : (n - half) / ((int64_t)1 << 37));
+    return (int)(v > 32767 ? 32767 : v < -32768 ? -32768 : v);
+}
+void PE_Spu_SetSfxMaskSource(PeSpuSfxMaskFn source) { g_sfx_source = source; }
+uint32_t PE_Spu_SfxVoices(void)
+{
+    uint32_t m = 0;
+    for (int n = 0; n < NVOICE; n++)
+        if (S.v[n].sfx) m |= 1u << n;
+    return m;
+}
+
 void PE_Spu_SetActive(int active) { S.active = active ? 1 : 0; }
 int PE_Spu_Active(void) { return S.active; }
 
@@ -106,6 +166,7 @@ void PE_Spu_Reset(void)
     S.active = active;
     S.kon_hook = hook;
     S.noise_level = 1;
+    for (int n = 0; n < NVOICE; n++) S.v[n].block_pos = 28;
 }
 
 void PE_Spu_SetKonHook(PeSpuKonHook hook) { S.kon_hook = hook; }
@@ -121,15 +182,20 @@ void PE_Spu_DecodeAdpcmBlock(const uint8_t block[16], int32_t *hist1,
                              int32_t *hist2, int16_t out[28])
 {
     int shift = block[0] & 0x0F;
-    int filter = (block[0] >> 4) & 0x07;
+    int filter = block[0] >> 4;
     int32_t h1 = *hist1, h2 = *hist2;
 
     if (shift > 12) shift = 9;           /* psx-spx: 13..15 act like 9 */
-    if (filter > 4) filter = 4;          /* 5..7 are undefined; clamp */
+    /* Reserved predictors 5..15 have zero feedback, not filter4 and not
+     * aliases of the valid predictors when header bit7 is set. */
+    if (filter > 4) filter = 0;
     for (int i = 0; i < 28; i++) {
         int nib = (block[2 + i / 2] >> ((i & 1) * 4)) & 0x0F;
         int32_t s = (int32_t)(int16_t)(nib << 12) >> shift;
-        s += (h1 * k_pos[filter] + h2 * k_neg[filter] + 32) >> 6;
+        /* SPU feedback loses each product's fractional bits separately.
+         * Do not use the CD-XA decoder's rounded combined prediction. */
+        s += (h1 * k_pos[filter]) >> 6;
+        s += (h2 * k_neg[filter]) >> 6;
         s = clamp16(s);
         out[i] = (int16_t)s;
         h2 = h1;
@@ -146,15 +212,31 @@ void PE_Spu_DecodeAdpcmBlock(const uint8_t block[16], int32_t *hist1,
 static int32_t env_tick(int32_t level, int32_t *counter, int shift,
                         int32_t step, int exp, int dec)
 {
-    int32_t cycles = 1 << (shift > 11 ? shift - 11 : 0);
-    int32_t s = step << (shift < 11 ? 11 - shift : 0);
+    int32_t increment = 0x8000 >> (shift > 11 ? shift - 11 : 0);
+    /* Decay/release steps are negative. Scaling the bounded -8..7 step
+     * by at most 2048 preserves the hardware result without signed-shift UB. */
+    int32_t s = step * (1 << (shift < 11 ? 11 - shift : 0));
 
-    if (exp && !dec && level > 0x6000) cycles *= 4;
+    if (exp && !dec && level > 0x6000) {
+        /* Fast rates reduce the step; rate 10 splits the slowdown between
+         * step and period. Only rates 11+ wait four times as long. */
+        if (shift < 10) s /= 4;
+        else if (shift == 10) { s /= 2; increment >>= 1; }
+        else increment >>= 2;
+    }
     if (exp && dec) s = (s * level) >> 15;
-    if (++*counter < cycles) return level;
-    *counter = 0;
+    /* Seven-bit all-ones rates stop; other very slow rates still advance
+     * the 15-bit accumulator by one (e.g. 0x76 behaves like 0x6a). */
+    if (shift == 31 && (step == 4 || step == -5)) return level;
+    if (increment == 0) increment = 1;
+    *counter += increment;
+    if ((*counter & 0x8000) == 0) return level;
+    *counter &= 0x7FFF;
     level += s;
-    if (level < 0) level = 0;
+    /* ENVX permits a manually written signed level. Increasing envelopes
+     * retain it while ramping upward; decreasing phases saturate at zero. */
+    if (dec && level < 0) level = 0;
+    if (level < -0x8000) level = -0x8000;
     if (level > 0x7FFF) level = 0x7FFF;
     return level;
 }
@@ -182,6 +264,7 @@ void PE_Spu_EnvelopeStep(PeSpuEnvelope *env)
 
     switch (env->phase) {
     case 1: /* attack */
+        if ((lo & 0x7F00u) == 0x7F00u) break;
         env->level = env_tick(env->level, &env->counter, (lo >> 10) & 0x1F,
                               7 - ((lo >> 8) & 3), (lo >> 15) & 1, 0);
         if (env->level >= 0x7FFF) {
@@ -193,13 +276,15 @@ void PE_Spu_EnvelopeStep(PeSpuEnvelope *env)
         int32_t sustain = (((int32_t)(lo & 0xF)) + 1) * 0x800;
         env->level = env_tick(env->level, &env->counter, (lo >> 4) & 0xF,
                               -8, 1, 1);
-        if (env->level <= sustain) {
+        /* Decay crosses below its threshold; equality still decays. */
+        if (env->level < sustain) {
             env->phase = 3;
             env->counter = 0;
         }
         break;
     }
     case 3: { /* sustain: runs until key off */
+        if ((hi & 0x1FC0u) == 0x1FC0u) break;
         int dec = (hi >> 14) & 1;
         int stepbits = (hi >> 6) & 3;
         env->level = env_tick(env->level, &env->counter, (hi >> 8) & 0x1F,
@@ -208,6 +293,7 @@ void PE_Spu_EnvelopeStep(PeSpuEnvelope *env)
         break;
     }
     case 4: /* release */
+        if ((hi & 0x1Fu) == 0x1Fu) break;
         env->level = env_tick(env->level, &env->counter, hi & 0x1F, -8,
                               (hi >> 5) & 1, 1);
         if (env->level <= 0) {
@@ -226,7 +312,7 @@ static int32_t volume_step(uint16_t reg, int32_t *level, int32_t *counter)
 {
     if (!(reg & 0x8000)) {
         int32_t v = (int32_t)(int16_t)(uint16_t)(reg << 1);
-        *level = v < 0 ? -v : v;
+        *level = v;
         return v;
     }
     {
@@ -234,18 +320,55 @@ static int32_t volume_step(uint16_t reg, int32_t *level, int32_t *counter)
         int dec = (reg >> 13) & 1;
         int neg = (reg >> 12) & 1;
         int stepbits = reg & 3;
-        *level = env_tick(*level, counter, (reg >> 2) & 0x1F,
-                          dec ? -8 + stepbits : 7 - stepbits, exp, dec);
-        return neg ? -*level : *level;
+        int shift = (reg >> 2) & 0x1F;
+        if ((reg & 0x7Fu) == 0x7Fu) return *level;
+        if (!exp || !dec) {
+            int32_t step = 7 - stepbits;
+            int32_t increment = 0x8000 >> (shift > 11 ? shift - 11 : 0);
+            if (dec ^ neg) step = ~step;
+            step *= 1 << (shift < 11 ? 11 - shift : 0);
+            /* Exponential increase is a signed linear ramp with a slower
+             * rate above +6000h. Do not take abs(level) or force its sign:
+             * phase inversion crosses zero instead of jumping across it. */
+            if (exp && *level > 0x6000) {
+                if (shift < 10) step /= 4;
+                else if (shift == 10) { step /= 2; increment >>= 1; }
+                else increment >>= 2;
+            }
+            if (increment == 0) increment = 1;
+            *counter += increment;
+            if ((*counter & 0x8000) == 0) return *level;
+            *counter &= 0x7FFF;
+            *level += step;
+            if (dec) {
+                if (neg && *level > 0) *level = 0;
+                if (!neg && *level < 0) *level = 0;
+            }
+            if (*level < -0x8000) *level = -0x8000;
+            if (*level > 0x7FFF) *level = 0x7FFF;
+        } else {
+            /* Exponential decrease phase behavior remains unresolved;
+             * retain that existing magnitude-based model separately. */
+            int32_t magnitude = *level < 0 ? -*level : *level;
+            magnitude = env_tick(magnitude, counter, shift,
+                                 dec ? -8 + stepbits : 7 - stepbits, exp, dec);
+            *level = neg ? -magnitude : magnitude;
+        }
+        return *level;
     }
 }
 
 /* ── voices ────────────────────────────────────────────────────────── */
 
+static void spu_irq_on_access(uint32_t address);
+
 static void voice_decode_block(Voice *v, int n)
 {
     const uint8_t *b = ram() + (v->cur_addr & (PE_SPU_RAM_SIZE - 16u));
     (void)n;
+    /* Stable aligned voice IRQ at this backend's block-read event.
+     * Mid-block IRQ misses and hardware-cycle read timing are unresolved. */
+    spu_irq_on_access(v->cur_addr & (PE_SPU_RAM_SIZE - 16u));
     v->block_flags = b[1];
     S.stats.blocks_decoded++;
     if ((b[0] >> 4) > 4) S.stats.blocks_bad++;
@@ -253,15 +376,18 @@ static void voice_decode_block(Voice *v, int n)
         v->loop_addr = v->cur_addr;
     PE_Spu_DecodeAdpcmBlock(b, &v->hist1, &v->hist2, v->block);
     v->block_pos = 0;
+    v->block_decoded = 1;
 }
 
 static void voice_end_block(Voice *v, int n)
 {
     if (v->block_flags & 1) {
         S.endx |= 1u << n;
-        v->cur_addr = v->loop_addr;
-        if (!(v->block_flags & 2)) {
-            /* loop end without repeat: mute (psx-spx) */
+        v->cur_addr = v->loop_addr & (PE_SPU_RAM_SIZE - 16u);
+        unsigned noise = S.reg[0x194 / 2 + n / 16] & (1u << (n & 15));
+        if (!(v->block_flags & 2) && !noise) {
+            /* End-without-repeat mutes ADPCM, not the noise generator.
+             * Noise voices still jump to LSA and publish ENDX above. */
             v->env.phase = 0;
             v->env.level = 0;
             v->on = 0;
@@ -275,7 +401,7 @@ static int16_t voice_next_sample(Voice *v, int n)
 {
     int16_t s;
     if (v->block_pos >= 28) {
-        voice_end_block(v, n);
+        if (v->block_decoded) voice_end_block(v, n);
         voice_decode_block(v, n);
     }
     s = v->block[v->block_pos++];
@@ -287,7 +413,9 @@ static void key_on(int n)
     Voice *v = &S.v[n];
     uint16_t *r = &S.reg[n * 8];
 
-    v->cur_addr = ((uint32_t)r[3] * 8u) & (PE_SPU_RAM_SIZE - 1u);
+    /* SSA/LSA use 8-byte units, but the decoder starts on a 16-byte block.
+     * Retain that aligned address too: loop-start flags copy it into LSA. */
+    v->cur_addr = ((uint32_t)r[3] * 8u) & (PE_SPU_RAM_SIZE - 16u);
     {
         const uint8_t *b = ram() + (v->cur_addr & (PE_SPU_RAM_SIZE - 16u));
         int zero = 1;
@@ -332,12 +460,48 @@ static void key_off(int n)
     PE_Spu_EnvelopeKeyOff(&S.v[n].env);
 }
 
+uint32_t PE_Spu_TransferCursor(void) { return S.xfer_addr; }
+void PE_Spu_SetTransferCursor(uint32_t address)
+{
+    S.xfer_addr = address & (PE_SPU_RAM_SIZE - 1u);
+}
+
 /* ── register interface ────────────────────────────────────────────── */
+
+static void spu_irq_on_access(uint32_t address)
+{
+    if (S.active && !S.irq_pending &&
+        (S.reg[0x1AA / 2] & 0x8040u) == 0x8040u &&
+        address == (uint32_t)S.reg[0x1A4 / 2] * 8u) {
+        S.irq_pending = 1;
+        PE_IRQ_AssertSources(1u << 9);
+    }
+}
+
+void PE_Spu_NotifyRamTransfer(uint32_t address, uint32_t size)
+{
+    uint32_t irq_address = (uint32_t)S.reg[0x1A4 / 2] * 8u;
+    /* SPU RAM wraps at 512 KiB. The checked native DMA copy may cross
+     * that boundary; its end is exclusive and an empty copy cannot hit. */
+    uint32_t distance = (irq_address - address) & (PE_SPU_RAM_SIZE - 1u);
+    if (distance < size) spu_irq_on_access(irq_address);
+}
 
 void PE_Spu_OnRegisterWrite(uint32_t offset, uint16_t value)
 {
     uint32_t idx = offset / 2u;
-    if (!S.active || idx >= 0x100u) return;
+    if (idx >= 0x100u) return;
+    /* The register interface owns the FIFO even when synthesis is disabled.
+     * Keep one transfer cursor across changes to the synthesis setting. */
+    if (offset == 0x1A6u) {
+        S.xfer_addr = ((uint32_t)value * 8u) & (PE_SPU_RAM_SIZE - 1u);
+    } else if (offset == 0x1A8u) {
+        ram()[S.xfer_addr] = (uint8_t)value;
+        ram()[(S.xfer_addr + 1u) & (PE_SPU_RAM_SIZE - 1u)] = (uint8_t)(value >> 8);
+        spu_irq_on_access(S.xfer_addr);
+        S.xfer_addr = (S.xfer_addr + 2u) & (PE_SPU_RAM_SIZE - 1u);
+    }
+    if (!S.active) return;
     S.reg[idx] = value;
     S.written[idx] = 1;
     S.stats.register_writes++;
@@ -358,12 +522,22 @@ void PE_Spu_OnRegisterWrite(uint32_t offset, uint16_t value)
         return;
     }
     switch (offset) {
+    case 0x1AA:
+        /* SPUCNT IRQ-disable acknowledges the SPU latch. CPU I_STAT is
+         * independently acknowledged by its own write-zero-to-clear port. */
+        if (!(value & 0x40u)) S.irq_pending = 0;
+        break;
     case 0x188: case 0x18A: {
         uint32_t mask = offset == 0x188 ? value : (uint32_t)value << 16;
+        uint32_t sfx;
         mask &= 0xFFFFFFu;
+        /* MUSIC/SFX VOLUME: class each keyed voice by the driver's SFX
+         * ownership at this write (pe_audio_driver.c explains why now). */
+        sfx = mask && g_sfx_source ? g_sfx_source() : 0u;
         for (int n = 0; n < NVOICE; n++)
             if (mask & (1u << n)) {
                 key_on(n);
+                S.v[n].sfx = (int)((sfx >> n) & 1u);
                 S.stats.kon_events++;
             }
         if (mask && S.kon_hook) S.kon_hook(mask);
@@ -384,12 +558,8 @@ void PE_Spu_OnRegisterWrite(uint32_t offset, uint16_t value)
         S.rev_cur = S.rev_base;
         break;
     case 0x1A6:
-        S.xfer_addr = ((uint32_t)value * 8u) & (PE_SPU_RAM_SIZE - 1u);
         break;
     case 0x1A8:
-        ram()[S.xfer_addr] = (uint8_t)value;
-        ram()[(S.xfer_addr + 1u) & (PE_SPU_RAM_SIZE - 1u)] = (uint8_t)(value >> 8);
-        S.xfer_addr = (S.xfer_addr + 2u) & (PE_SPU_RAM_SIZE - 1u);
         S.stats.fifo_bytes += 2;
         break;
     default:
@@ -400,17 +570,37 @@ void PE_Spu_OnRegisterWrite(uint32_t offset, uint16_t value)
 int PE_Spu_OnRegisterRead(uint32_t offset, uint16_t *value)
 {
     if (!S.active) return 0;
+    if (offset >= 0x200u && offset < 0x260u && !(offset & 1u)) {
+        unsigned index = offset - 0x200u;
+        *value = (uint16_t)S.v[index / 4u].vol_level[(index / 2u) & 1u];
+        return 1;
+    }
     if (offset < 0x180u && (offset & 0xFu) == 0xCu) {
         *value = (uint16_t)S.v[offset >> 4].env.level;
+        return 1;
+    }
+    if (offset < 0x180u && (offset & 0xFu) == 0xEu) {
+        /* ADPCM loop-start headers update LSAX without a CPU write. */
+        *value = (uint16_t)(S.v[offset >> 4].loop_addr >> 3);
         return 1;
     }
     switch (offset) {
     case 0x19C: *value = (uint16_t)S.endx; return 1;
     case 0x19E: *value = (uint16_t)(S.endx >> 16); return 1;
-    case 0x1B8: *value = (uint16_t)S.main_level[0]; return 1;
-    case 0x1BA: *value = (uint16_t)S.main_level[1]; return 1;
+    case 0x1B8: *value = (uint16_t)S.main_current[0]; return 1;
+    case 0x1BA: *value = (uint16_t)S.main_current[1]; return 1;
     default: return 0;
     }
+}
+
+uint16_t PE_Spu_CaptureStatus(uint16_t stored_status, uint16_t ram_control)
+{
+    if (!S.active) return stored_status;
+    /* Capture-half and IRQ flags are live; retain the register owner's
+     * other bits. psx-spx gates capture bit 11 on RAM_CTRL bits 2/3. */
+    return (uint16_t)((stored_status & ~0x840u) |
+        (S.irq_pending ? 0x40u : 0u) |
+        (((ram_control & 0xCu) && (S.capture_addr & 0x200u)) ? 0x800u : 0u));
 }
 
 void PE_Spu_PushCdAudio(const int16_t *stereo, int frames)
@@ -460,7 +650,21 @@ static void rev_wr(int32_t reg8, int32_t v)
 
 #define RR(o) (S.reg[(o) / 2u])
 #define RS(o) ((int32_t)(int16_t)S.reg[(o) / 2u])
-#define MUL(a, b) (((int32_t)(a) * (int32_t)(b)) >> 15)
+/* IIR input sums can exceed int16 even though each source is int16.
+ * Widen before multiplying; clamp only at the existing stage boundaries. */
+#define MUL(a, b) ((int32_t)(((int64_t)(a) * (int64_t)(b)) >> 15))
+
+static void reverb_iir(int32_t input, int32_t source, int32_t dest,
+                        int32_t wall, int32_t coefficient)
+{
+    int32_t previous = rev_rd(dest, -1);
+    int32_t value = MUL(input + MUL(rev_rd(source, 0), wall) - previous,
+                        coefficient) + previous;
+    /* psx-spx vIIR=-8000h quirk: negate the entire result, including the
+     * previous-sample addition, not just the coefficient multiplication. */
+    if (coefficient == -0x8000) value = -value;
+    rev_wr(dest, value);
+}
 
 static void reverb_tick(int32_t in_l, int32_t in_r, int32_t *out_l, int32_t *out_r)
 {
@@ -470,18 +674,10 @@ static void reverb_tick(int32_t in_l, int32_t in_r, int32_t *out_l, int32_t *out
     int32_t l, r;
 
     if (S.reg[0x1AA / 2] & 0x80) {  /* reverb master enable: write work area */
-        rev_wr(RR(0x1D4), MUL(lin + MUL(rev_rd(RR(0x1E0), 0), vwall) -
-                                  rev_rd(RR(0x1D4), -1), viir) +
-                              rev_rd(RR(0x1D4), -1));
-        rev_wr(RR(0x1D6), MUL(rin + MUL(rev_rd(RR(0x1E2), 0), vwall) -
-                                  rev_rd(RR(0x1D6), -1), viir) +
-                              rev_rd(RR(0x1D6), -1));
-        rev_wr(RR(0x1E4), MUL(lin + MUL(rev_rd(RR(0x1F2), 0), vwall) -
-                                  rev_rd(RR(0x1E4), -1), viir) +
-                              rev_rd(RR(0x1E4), -1));
-        rev_wr(RR(0x1E6), MUL(rin + MUL(rev_rd(RR(0x1F0), 0), vwall) -
-                                  rev_rd(RR(0x1E6), -1), viir) +
-                              rev_rd(RR(0x1E6), -1));
+        reverb_iir(lin, RR(0x1E0), RR(0x1D4), vwall, viir);
+        reverb_iir(rin, RR(0x1E2), RR(0x1D6), vwall, viir);
+        reverb_iir(lin, RR(0x1F2), RR(0x1E4), vwall, viir);
+        reverb_iir(rin, RR(0x1F0), RR(0x1E6), vwall, viir);
     }
     l = MUL(RS(0x1C6), rev_rd(RR(0x1D8), 0)) + MUL(RS(0x1C8), rev_rd(RR(0x1DC), 0)) +
         MUL(RS(0x1CA), rev_rd(RR(0x1E8), 0)) + MUL(RS(0x1CC), rev_rd(RR(0x1EC), 0));
@@ -509,8 +705,10 @@ static void reverb_tick(int32_t in_l, int32_t in_r, int32_t *out_l, int32_t *out
         if (S.reg[0x1AA / 2] & 0x80) rev_wr(RR(0x1FA), r);
         r = MUL(clamp16(r), va2) + t;
     }
-    *out_l = MUL(clamp16(l), RS(0x184));
-    *out_r = MUL(clamp16(r), RS(0x186));
+    /* Retain unscaled wet samples in the resampler. EVOLL/EVOLR belong
+     * to the 44.1 kHz mixer, after interpolation, not its input history. */
+    *out_l = clamp16(l);
+    *out_r = clamp16(r);
     S.rev_cur += 2u;
     if (S.rev_cur >= PE_SPU_RAM_SIZE) S.rev_cur = S.rev_base;
 }
@@ -539,11 +737,14 @@ void PE_Spu_Render(int16_t *out, int frames)
     uint32_t non = (S.reg[0x194 / 2] | ((uint32_t)S.reg[0x196 / 2] << 16)) & 0xFFFFFFu;
     uint32_t eon = (S.reg[0x198 / 2] | ((uint32_t)S.reg[0x19A / 2] << 16)) & 0xFFFFFFu;
     uint16_t cnt = S.reg[0x1AA / 2];
-    int reverb_ok = S.written[0x1A2 / 2] && S.rev_base != 0;
+    /* Explicit ESA=0 selects the full RAM work area. Only an unwritten
+     * base retains the port's collapsed-initialization compatibility gate. */
+    int reverb_ok = S.written[0x1A2 / 2];
     uint32_t cd_cap = (uint32_t)(sizeof(S.cd) / sizeof(S.cd[0]) / 2u);
 
     for (int f = 0; f < frames; f++) {
         int32_t mix[2] = {0, 0}, rin[2] = {0, 0};
+        int16_t capture[4] = {0, 0, 0, 0};
         uint32_t act = 0;
 
         noise_tick();
@@ -551,20 +752,23 @@ void PE_Spu_Render(int16_t *out, int frames)
             Voice *v = &S.v[n];
             uint16_t *r = &S.reg[n * 8];
             int32_t step, s, o;
+            /* Volume generators run on the sample clock independently of
+             * key-on/ADSR. Their settled level seeds the next audible note. */
+            int32_t vl = volume_step(r[0], &v->vol_level[0], &v->vol_counter[0]);
+            int32_t vr = volume_step(r[1], &v->vol_level[1], &v->vol_counter[1]);
 
-            if (!v->on && v->env.phase == 0) {
-                /* still consume volume sweeps so they settle */
-                continue;
-            }
-            act++;
+            /* ADPCM keeps reading after release, including in noise mode.
+             * Silence gates the mixer, not the pitch/loop/IRQ machinery. */
+            int sounding = v->on || v->env.phase != 0;
+            if (sounding) act++;
             step = r[2];
-            if (step > 0x3FFF) step = 0x4000;
             if (n > 0 && (pmon & (1u << n))) {
                 int32_t factor = S.v[n - 1].last_out + 0x8000;
-                step = (int32_t)(((int64_t)step * factor) >> 15);
-                if (step > 0x3FFF) step = 0x4000;
-                if (step < 0) step = 0;
+                /* PMON uses the signed raw register, then wraps to 16 bits
+                 * before the common pitch cap (psx-spx SPU pitch formula). */
+                step = (uint16_t)(((int64_t)(int16_t)r[2] * factor) >> 15);
             }
+            if (step > 0x3FFF) step = 0x4000;
             v->counter += (uint32_t)step;
             while (v->counter >= 0x1000u) {
                 v->counter -= 0x1000u;
@@ -575,6 +779,8 @@ void PE_Spu_Render(int16_t *out, int frames)
             }
             if (non & (1u << n)) {
                 s = S.noise_level;
+            } else if (g_interp == PE_SPU_INTERP_CUBIC) {
+                s = PE_Spu_InterpolateCubic(v->h, v->counter & 0xFFFu);   /* SPU INTERPOLATION: cubic */
             } else {
                 /* psx-spx 4-point gaussian: index = pitch counter bits 4..11 */
                 int i = (int)((v->counter >> 4) & 0xFFu);
@@ -583,12 +789,19 @@ void PE_Spu_Render(int16_t *out, int frames)
                 s += (k_gauss[0x100 + i] * v->h[2]) >> 15;
                 s += (k_gauss[0x000 + i] * v->h[3]) >> 15;
             }
+            /* Mix this clock's ENVX, then publish the next envelope level.
+             * Capture and the following voice's PMON use this same output. */
+            o = sounding ? (s * v->env.level) >> 15 : 0;
             PE_Spu_EnvelopeStep(&v->env);
-            o = (s * v->env.level) >> 15;
             v->last_out = o;
+            if (n == 1) capture[2] = clamp16(o);
+            if (n == 3) capture[3] = clamp16(o);
             {
-                int32_t vl = volume_step(r[0], &v->vol_level[0], &v->vol_counter[0]);
-                int32_t vr = volume_step(r[1], &v->vol_level[1], &v->vol_counter[1]);
+                int gain = g_voice_gain[v->sfx];
+                if (gain != 100) {   /* MUSIC/SFX VOLUME; dry and reverb send */
+                    vl = vl * gain / 100;
+                    vr = vr * gain / 100;
+                }
                 int32_t l = (o * vl) >> 15, rr = (o * vr) >> 15;
                 mix[0] += l;
                 mix[1] += rr;
@@ -600,6 +813,14 @@ void PE_Spu_Render(int16_t *out, int frames)
             if (v->env.phase == 0) v->on = 0;
         }
         S.stats.voices_active = act;
+
+        /* SPUCNT mute gates the voice sum, before CD input. ADPCM,
+         * envelopes and capture still advance; CD audio is unaffected.
+         * Retain the existing collapsed-init enable-bit compatibility gate. */
+        if ((cnt & 0x8000) && !(cnt & 0x4000)) {
+            mix[0] = mix[1] = 0;
+            rin[0] = rin[1] = 0;
+        }
 
         /* CD audio input (SPUCNT bit 0 = CD audio enable).
          * The port delivers XA sectors in bursts paced by the movie/drive
@@ -629,6 +850,10 @@ void PE_Spu_Render(int16_t *out, int frames)
                 S.cd_live = 1;
                 cl = S.cd[S.cd_r * 2u];
                 cr = S.cd[S.cd_r * 2u + 1u];
+                /* Capture precedes input volume, mute and host fade/gain.
+                 * The existing host CD jitter buffer still sets cadence. */
+                capture[0] = (int16_t)cl;
+                capture[1] = (int16_t)cr;
                 S.cd_r = (S.cd_r + 1u) % cd_cap;
                 S.cd_n--;
                 if (S.cd_fade) {
@@ -650,6 +875,10 @@ void PE_Spu_Render(int16_t *out, int frames)
             if (!cd_written || (cnt & 1)) {
                 int32_t vl = cd_written ? RS(0x1B0) : 0x7FFF;
                 int32_t vr = cd_written ? RS(0x1B2) : 0x7FFF;
+                if (g_cd_gain != 100) {
+                    vl = vl * g_cd_gain / 100;
+                    vr = vr * g_cd_gain / 100;
+                }
                 int32_t l = (cl * vl) >> 15, rr = (cr * vr) >> 15;
                 mix[0] += l;
                 mix[1] += rr;
@@ -659,6 +888,19 @@ void PE_Spu_Render(int16_t *out, int frames)
                 }
             }
         }
+
+        /* psx-spx SPU memory layout: CD L/R, voice 1/3 after ADSR.
+         * Silent channels still overwrite their ring with zero samples. */
+        for (unsigned channel = 0; channel < 4u; channel++) {
+            uint32_t address = channel * 0x400u + S.capture_addr;
+            uint16_t sample = (uint16_t)capture[channel];
+            ram()[address] = (uint8_t)sample;
+            ram()[address + 1u] = (uint8_t)(sample >> 8);
+            /* Capture has an additional RAM_CTRL gate. Reverb triggers
+             * remain a gap. No guest callback runs here. */
+            if (S.reg[0x1AC / 2] & 0xCu) spu_irq_on_access(address);
+        }
+        S.capture_addr = (S.capture_addr + 2u) & 0x3FFu;
 
         if (reverb_ok) {
             /* psx-spx "Reverb Buffer Resampling": the 22.05 kHz unit
@@ -689,8 +931,8 @@ void PE_Spu_Render(int16_t *out, int frames)
                 ro[1] += y[1] * k_rev_fir[k];
             }
             S.rev_hp = (hp + 1u) & 63u;
-            mix[0] += clamp16(ro[0] >> 14);
-            mix[1] += clamp16(ro[1] >> 14);
+            mix[0] += MUL(clamp16(ro[0] >> 14), RS(0x184));
+            mix[1] += MUL(clamp16(ro[1] >> 14), RS(0x186));
         }
 
         {
@@ -701,11 +943,10 @@ void PE_Spu_Render(int16_t *out, int frames)
             uint16_t mr = S.written[0x182 / 2] ? S.reg[0x182 / 2] : 0x3FFF;
             int32_t vl = volume_step(ml, &S.main_level[0], &S.main_counter[0]);
             int32_t vr = volume_step(mr, &S.main_level[1], &S.main_counter[1]);
+            S.main_current[0] = vl;
+            S.main_current[1] = vr;
             int32_t l = (clamp16(mix[0]) * vl) >> 15;
             int32_t r = (clamp16(mix[1]) * vr) >> 15;
-            /* SPUCNT bit 14 = unmute; honoured only once SPUCNT was
-             * written with the enable bit (bit 15), see gap notes. */
-            if ((cnt & 0x8000) && !(cnt & 0x4000)) l = r = 0;
             out[f * 2] = clamp16(l);
             out[f * 2 + 1] = clamp16(r);
         }
@@ -822,7 +1063,9 @@ void PE_Spu_CdSector(const uint8_t *raw, uint8_t mode, int muted,
     int32_t lvol[2], rvol[2];
 
     if (!S.active || !(mode & 0x40u)) return;         /* XA-ADPCM off */
-    if (raw[15] != 2 || !(sub[2] & 0x04u) || !(sub[2] & 0x20u)) return;
+    /* The drive routes Mode2 audio+real-time sectors to XA; the Form2
+     * bit is not the routing predicate (psx-spx CD sector filtering). */
+    if (raw[15] != 2 || (sub[2] & 0x44u) != 0x44u) return;
     if ((mode & 0x08u) && (sub[0] != filter_file || sub[1] != filter_chan)) return;
     X.sectors++;
     {
@@ -840,7 +1083,8 @@ void PE_Spu_CdSector(const uint8_t *raw, uint8_t mode, int muted,
                     sub[0], sub[1], sub[3]);
     }
     frames = PE_Spu_DecodeXaSector(sub, pcm, &ch, &rate);
-    if (muted) return;
+    /* Mute suppresses output, not decoder/FIR history or sample cadence.
+     * Feed silence through the same queue so unmute resumes the live stream. */
     /* CD audio volume matrix (0x80 = 100%): L->L, L->R, R->R, R->L */
     lvol[0] = vol[0]; lvol[1] = vol[1]; rvol[1] = vol[2]; rvol[0] = vol[3];
     for (int i = 0; i < frames; i++) {
@@ -861,8 +1105,8 @@ void PE_Spu_CdSector(const uint8_t *raw, uint8_t mode, int muted,
                 }
                 fl = clamp16(fl);
                 fr = clamp16(fr);
-                outbuf[k * 2] = clamp16((fl * lvol[0] + fr * rvol[0]) >> 7);
-                outbuf[k * 2 + 1] = clamp16((fl * lvol[1] + fr * rvol[1]) >> 7);
+                outbuf[k * 2] = muted ? 0 : clamp16((fl * lvol[0] + fr * rvol[0]) >> 7);
+                outbuf[k * 2 + 1] = muted ? 0 : clamp16((fl * lvol[1] + fr * rvol[1]) >> 7);
                 if (++k == 256) { PE_Spu_PushCdAudio(outbuf, k); k = 0; }
             }
         }

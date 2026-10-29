@@ -28,6 +28,7 @@
 #define PE_GUEST_DECOMP_H
 
 #include "psx_compat.h"
+#include "pe_plat/cd.h"   /* retail CdIntToPos/CdPosToInt names -> pe_plat entries */
 #include "pe_port_compat.h"
 #include "game/decomp_hand/decomp_hand_protos.h"  /* hand-adapter host prototypes */
 #include "pe_guestcode.h"                          /* PE_GuestCall (guest code pointers) */
@@ -118,6 +119,17 @@ int PE_Decomp_BoundaryFrom(const char *caller, const char *symbol, unsigned vma,
                            unsigned arity, uintptr_t a0, uintptr_t a1,
                            uintptr_t a2, uintptr_t a3);
 void PE_Decomp_SetBoundaryStop(int stop);
+/* A generated TU's runtime division hit a zero divisor (the pe_low_divs/divu/mods/modu helpers).
+ * Retail's divide check executes `break 7` there, so under the STOP policy
+ * this prints "GUEST_TRAP break 7 (integer divide by zero) in <fn>" and
+ * stops the run; the caller then returns the R3000 div result.  Counted
+ * either way (PE_Decomp_GuestTrapCount). */
+void PE_Decomp_GuestTrapDivZero(const char *fn);
+/* Message of the first boundary / guest-trap stop ("" when none). */
+const char *PE_Decomp_StopDetail(void);
+/* Record the first stop message from a non-decomp boundary (disc swap, ...). */
+void PE_Decomp_NoteStopDetail(const char *text);
+unsigned PE_Decomp_GuestTrapCount(void);
 int  PE_Decomp_BoundaryStopEnabled(void);
 
 /* Argument pickers: the generated `#define callee(...) PE_D_COMP_BOUNDARYn(

@@ -60,6 +60,17 @@ const char *PE_Decomp_BoundaryName(unsigned index)
  * missing function instead of continuing with an invented 0.  The library
  * default stays RECORD (tests enumerate boundaries without stopping). */
 static int g_boundary_stop;
+/* The first stop's message, kept for the player-visible stop report
+ * (port_main.c writes it to a file the player can send). */
+static char g_stop_detail[512];
+
+const char *PE_Decomp_StopDetail(void) { return g_stop_detail; }
+
+void PE_Decomp_NoteStopDetail(const char *text)
+{
+    if (!g_stop_detail[0] && text)
+        snprintf(g_stop_detail, sizeof g_stop_detail, "%s", text);
+}
 
 void PE_Decomp_SetBoundaryStop(int stop) { g_boundary_stop = stop ? 1 : 0; }
 int  PE_Decomp_BoundaryStopEnabled(void) { return g_boundary_stop; }
@@ -73,6 +84,13 @@ int PE_Decomp_BoundaryFrom(const char *caller, const char *symbol, unsigned vma,
         static unsigned printed;
         if (printed < 8u) {
             printed++;
+            if (!g_stop_detail[0])
+                snprintf(g_stop_detail, sizeof g_stop_detail,
+                         "CPU_BOUNDARY/REFUSED pc=0x%08X ra=%s sym=%s arity=%u "
+                         "a0=0x%08X a1=0x%08X a2=0x%08X a3=0x%08X",
+                         vma, caller ? caller : "?", symbol ? symbol : "?", arity,
+                         (unsigned)(uint32_t)a0, (unsigned)(uint32_t)a1,
+                         (unsigned)(uint32_t)a2, (unsigned)(uint32_t)a3);
             fprintf(stderr,
                     "CPU_BOUNDARY/REFUSED pc=0x%08X ra=%s sym=%s arity=%u "
                     "a0=0x%08X a1=0x%08X a2=0x%08X a3=0x%08X (native only: "
@@ -89,6 +107,33 @@ int PE_Decomp_BoundaryFrom(const char *caller, const char *symbol, unsigned vma,
                                      a0, a1, a2, a3, NULL, 0u);
     }
     return 0;
+}
+
+static unsigned g_guest_traps;
+
+void PE_Decomp_GuestTrapDivZero(const char *fn)
+{
+    g_guest_traps++;
+    if (g_boundary_stop) {
+        static unsigned printed;
+        if (printed < 8u) {
+            printed++;
+            if (!g_stop_detail[0])
+                snprintf(g_stop_detail, sizeof g_stop_detail,
+                         "GUEST_TRAP break 7 (integer divide by zero) in %s", fn ? fn : "?");
+            fprintf(stderr,
+                    "GUEST_TRAP break 7 (integer divide by zero) in %s "
+                    "(native only: retail's divide check traps here; run "
+                    "stopped)\n", fn ? fn : "?");
+            fflush(stderr);
+        }
+        PE_Port_RequestStop(PE_PORT_STOP_GUEST_TRAP);
+    }
+}
+
+unsigned PE_Decomp_GuestTrapCount(void)
+{
+    return g_guest_traps;
 }
 
 int PE_Decomp_Boundary(const char *symbol, unsigned vma, unsigned arity,

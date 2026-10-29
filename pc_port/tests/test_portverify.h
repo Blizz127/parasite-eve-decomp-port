@@ -401,9 +401,124 @@ static void test_PV_48918_item_window_constructor(void)
     PASS();
 }
 
+/* Queue one menu event the way the input layer does: D_8009D0E0 head,
+ * D_8009D0E4 tail, record {next, type, buttons}; func_8005E30C pops it onto
+ * the free list D_8009D0DC. */
+static pe_addr_t PV_PostMenuEvent(pe_addr_t rec, uint32_t type, uint32_t buttons)
+{
+    PE_StoreU32(rec, 0u);
+    PE_StoreU32(rec + 4u, type);
+    PE_StoreU32(rec + 8u, buttons);
+    PE_StoreU32(0x8009D0E0u, rec);
+    PE_StoreU32(0x8009D0E4u, rec);
+    return rec;
+}
+
+/* func_80048918 gives the 0x0D item list window the update callback
+ * 0x800494AC (src/func_800494AC.c).  A Confirm (type-4 event, bit 32 ->
+ * 0x10000) dispatched by func_8005E30C passes the focused list node (its
+ * func_80063E0C returns 0 for 0x10000 while +132 is 0) to that window.  The
+ * callback must resolve to native code; an unresolved address is the
+ * PE_MenuInputCallback boundary and a stop. */
+static void test_PV_494AC_item_list_confirm_runs_native(void)
+{
+    pe_addr_t window, list, w13, node, rec;
+    const PeGuestCodeEntry *e;
+    unsigned steps;
+    TEST("PV_494AC_item_list_confirm_runs_native");
+    ResetTestState();
+    PE_Decomp_ResetBoundaries();
+    menu4ae1c_build(&window, &list);
+    {
+        static const uint32_t ids[2] = {11u, 13u};
+        unsigned n;
+        for (n = 0u; n < 2u; n++) {
+            PE_StoreU32(0x80092888u + ids[n] * 32u + 8u, 1u);
+            PE_StoreU32(0x80092888u + ids[n] * 32u + 12u, 4u);
+            PE_StoreU32(0x80092888u + ids[n] * 32u + 24u, 12u);
+        }
+    }
+    PE_StoreU32(0x8009CF0Cu, 0u);
+    PE_StoreU32(0x8009CF30u, 0u);
+    PE_StoreU32(0x8009CF1Cu, 0u);
+    func_80048918(0x33E, -3, -1);
+    ASSERT(!PE_Port_ShouldStop(), "constructor stopped");
+    w13 = func_80062A34(1u, 13u);
+    ASSERT(w13 != 0u && PE_LoadU32(w13 + 0x2Cu) == 0x800494ACu, "0x0D window update 0x800494AC");
+    /* The Confirm walk from the focus reaches w13 through list nodes that
+     * pass 0x10000 on. */
+    for (node = (pe_addr_t)func_80062CC4(), steps = 0u; node && node != w13 && steps < 8u;
+         node = PE_LoadU32(node + 4u), steps++)
+        ASSERT(PE_LoadU32(node + 44u) == 0x80063E0Cu && PE_LoadU32(node + 132u) == 0u,
+               "a node before the window would consume the Confirm");
+    ASSERT(node == w13, "the Confirm walk from the focus reaches the 0x0D window");
+    rec = PV_PostMenuEvent(0x801F0100u, 4u, 32u);
+    func_8005E30C();
+    ASSERT(!PE_Port_ShouldStop() && !CountOrderLog("PE_MenuInputCallback"),
+           "Confirm on the item list reached an unresolved input callback");
+    ASSERT(PE_LoadU32(0x8009D0DCu) == rec, "event consumed onto the free list");
+    e = PE_GuestCode_Resolve(0x800494ACu);
+    ASSERT(e && e->symbol && strcmp(e->symbol, "func_800494AC") == 0,
+           "0x800494AC resolves to native func_800494AC");
+    PASS();
+}
+
+/* func_8004D5CC (card notice cleanup) calls the slot D_8009CFFC with no
+ * arguments (src/func_8004D5CC.c).  func_80042264 installs 0x80042228 there
+ * after a card CRC match.  It has native code (a generated TU), so the hand
+ * port's dispatch must run it through the registry, not the card-operation
+ * boundary its default arm used to raise. */
+static void test_PV_4D5CC_card_slot_runs_registry_callback(void)
+{
+    TEST("PV_4D5CC_card_slot_runs_registry_callback");
+    ResetTestState();
+    PE_Decomp_ResetBoundaries();
+    func_80062F9C();
+    PE_StoreU32(0x8009CFFCu, 0x80042228u);
+    PE_StoreU32(0x8009CF44u, 0xFFFFFFFFu);   /* index mismatch: stop after the slot */
+    PE_StoreU32(0x8009D010u, 0x55u);
+    func_8004D5CC(0u);
+    ASSERT(!PE_Port_ShouldStop() && !CountOrderLog("card operation unresolved call"),
+           "slot 0x80042228 stopped on the card-operation boundary");
+    ASSERT(PE_LoadU32(0x8009CFFCu) == 0u, "slot cleared after the call");
+    ASSERT(PE_LoadU32(0x8009D010u) == 2u,
+           "func_80042228 ran (its func_800512AC(12) sets D_8009D010 = 2)");
+    PASS();
+}
+
+/* func_80049354 (equip-slot list) opens the slot detail with func_8004A570,
+ * which makes a task-9 window with update 0x8004A9A0 (src/func_8004A9A0.c)
+ * and focuses it, so every following pad event goes there first. */
+static void test_PV_4A9A0_slot_detail_input_runs_native(void)
+{
+    pe_addr_t window, list, p, rec;
+    const PeGuestCodeEntry *e;
+    TEST("PV_4A9A0_slot_detail_input_runs_native");
+    ResetTestState();
+    PE_Decomp_ResetBoundaries();
+    menu4ae1c_build(&window, &list);
+    func_8004A570((int)window, 3);
+    ASSERT(!PE_Port_ShouldStop(), "func_8004A570 stopped");
+    p = (pe_addr_t)func_80062CC4();
+    ASSERT(p != 0u && PE_LoadU32(p + 0x2Cu) == 0x8004A9A0u && PE_LoadU32(p + 0x30u) == 0x8004A6CCu,
+           "focused slot-detail window with update 0x8004A9A0");
+    rec = PV_PostMenuEvent(0x801F0100u, 1u, 0x4000u);
+    func_8005E30C();
+    ASSERT(!PE_Port_ShouldStop() && !CountOrderLog("PE_MenuInputCallback"),
+           "slot-detail input reached an unresolved input callback");
+    ASSERT(PE_LoadU32(0x8009D0DCu) == rec, "event consumed onto the free list");
+    e = PE_GuestCode_Resolve(0x8004A9A0u);
+    ASSERT(e && e->symbol && strcmp(e->symbol, "func_8004A9A0") == 0,
+           "0x8004A9A0 resolves to native func_8004A9A0");
+    PASS();
+}
+
 static void test_PV_all(void)
 {
     test_PV_48918_item_window_constructor();
+    test_PV_494AC_item_list_confirm_runs_native();
+    test_PV_4A9A0_slot_detail_input_runs_native();
+    test_PV_4D5CC_card_slot_runs_registry_callback();
     test_PV_777C0_immediate_moveimage();
     test_PV_775E8_immediate_loadimage();
     test_PV_1F814_null_actor_latch();

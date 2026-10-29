@@ -57,6 +57,7 @@ void PE_Rcnt2_Advance(uint32_t cycles)
             uint64_t to_target = (uint64_t)(target - counter);
             if (ticks >= to_target) {
                 mode |= 0x0800u;
+                if (target == 0xFFFFu) mode |= 0x1000u;
                 ticks -= to_target;
                 counter = (uint16_t)(ticks % target);
             } else {
@@ -73,14 +74,28 @@ void PE_Rcnt2_Advance(uint32_t cycles)
             counter = (uint16_t)(counter + ticks);
             return;
         }
-        /* reset mode with counter >= target (or target 0): step once */
-        counter++;
-        ticks--;
-        if (counter == target) {
-            mode |= 0x0800u;
-            counter = 0;
+        /* With target zero, reset coincides with 16-bit wrap. For a
+         * counter already at/above a nonzero target, first wrap to that
+         * target, then use normal target periods. Both paths are bounded
+         * regardless of the number of elapsed cycles. */
+        {
+            uint64_t to_target = (uint16_t)(target - counter - 1u) + 1u;
+            uint64_t to_ffff = (uint16_t)(0xFFFFu - counter - 1u) + 1u;
+            if (target == 0u) {
+                if (ticks >= to_target) mode |= 0x0800u;
+                if (ticks >= to_ffff) mode |= 0x1000u;
+                counter = (uint16_t)(counter + ticks);
+            } else if (ticks < to_target) {
+                if (ticks >= to_ffff) mode |= 0x1000u;
+                counter = (uint16_t)(counter + ticks);
+            } else {
+                if (to_ffff <= to_target) mode |= 0x1000u;
+                mode |= 0x0800u;
+                if (target == 0xFFFFu) mode |= 0x1000u;
+                ticks -= to_target;
+                counter = (uint16_t)(ticks % target);
+            }
+            return;
         }
-        if (counter == 0xFFFFu)
-            mode |= 0x1000u;
     }
 }

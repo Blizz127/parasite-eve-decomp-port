@@ -1,5 +1,7 @@
 /*
- * Host gamepad input — Linux kernel joystick API (/dev/input/js*).
+ * Host gamepad input — SDL2 GameController (host_pad_sdl.h, dlopened) with the
+ * Linux kernel joystick API (/dev/input/js*) as the fallback when SDL2 is
+ * missing or sees no controller.
  *
  * Zero new link dependencies: uses only <linux/joystick.h> and plain
  * open/read/ioctl.  Devices are opened non-blocking and rescanned about once
@@ -22,6 +24,7 @@
 #define HOST_PAD_H
 
 #include <stdint.h>
+#include "host_pad_combo.h"
 
 #define HOST_PAD_SELECT   0x0001u
 #define HOST_PAD_START    0x0008u
@@ -62,6 +65,9 @@ void     HostPad_DeviceDefaults(HostPadDevice *dev);
 void     HostPad_DeviceEvent(HostPadDevice *dev, uint8_t type, uint8_t number, int16_t value);
 /* Held PSX bits (active-high) for one device. */
 uint16_t HostPad_DeviceHeld(const HostPadDevice *dev);
+/* The same without the left stick (ABS_X/ABS_Y) -> d-pad bits (opt-in
+ * ANALOG STICK: in analog mode a DualShock's stick sets no d-pad bits). */
+uint16_t HostPad_DeviceHeldAnalog(const HostPadDevice *dev);
 /* Held HOST_PAD_HOTKEY_* bits for one device. */
 uint8_t  HostPad_DeviceHotkeys(const HostPadDevice *dev);
 
@@ -69,8 +75,13 @@ uint8_t  HostPad_DeviceHotkeys(const HostPadDevice *dev);
 void     HostPad_Poll(void);
 /* Held PSX bits (active-high) OR-ed over all connected controllers. */
 uint16_t HostPad_Held(void);
+/* HostPad_Held without the left-stick -> d-pad bits (ANALOG STICK replies). */
+uint16_t HostPad_HeldAnalog(void);
 /* Held HOST_PAD_HOTKEY_* bits OR-ed over all connected controllers. */
 uint8_t  HostPad_Hotkeys(void);
+/* Each connected controller (SDL devices, then js* nodes) with a key unique
+ * to that connection, for the dev-menu combo; returns the count (<= max). */
+int      HostPad_Origins(HostPadOrigin *out, int max);
 /* Close all devices. */
 void     HostPad_Close(void);
 

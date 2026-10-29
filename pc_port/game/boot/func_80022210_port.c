@@ -1,8 +1,46 @@
 /* Original item animation, escape judgement and command dispatch, 120D8.s. */
 #include "psx_compat.h"
 #include "pe_port_compat.h"
+#include "game_port.h"
 
-/* func_80022210: ported from the matching decomp -- generated TU pc_port/game/decomp/func_80022210_port.c (src/func_80022210.c); hand port retired after differential verification (docs/evidence/portverify/REPORT.md). */
+extern void func_8001A680(pe_addr_t actor, unsigned int command);
+
+/* Native game adapter for the matched 80022210 body. Stop boundaries unwind
+ * before later item or queue work; normal guest-memory order is retained. */
+void func_80022210(void)
+{
+    pe_addr_t rec=PE_LoadU32(0x8009D278u), actor;
+    if (PE_LoadU32(rec+0x4Cu)&0x200000u) {
+        func_8001A680(PE_LoadU32(0x8009D254u),14u);
+        if (PE_Port_ShouldStop()) return;
+        actor=PE_LoadU32(0x8009D254u);
+        func_8006DE80(0x4B3,0,(int16_t)PE_LoadU16(actor+0x2Au),
+            (int16_t)PE_LoadU16(actor+0x2Eu),(int16_t)PE_LoadU16(actor+0x32u));
+        if (PE_Port_ShouldStop()) return;
+        PE_StoreU32(0x8009D1A0u,PE_LoadU32(0x8009D1A0u)|0x100u);
+        rec=PE_LoadU32(0x8009D278u);
+        PE_StoreU32(rec+0x4Cu,PE_LoadU32(rec+0x4Cu)&~0x200000u);
+    }
+    actor=PE_LoadU32(0x8009D254u);
+    if (PE_LoadU8(actor+0xFu)==PE_LoadU16(actor+0x1Au)) {
+        rec=PE_LoadU32(0x8009D278u);
+        func_8001A680(actor,PE_LoadU8(rec+0x12u));
+        if (PE_Port_ShouldStop()) return;
+        rec=PE_LoadU32(0x8009D278u);
+        PE_StoreU32(rec+0x4Cu,PE_LoadU32(rec+0x4Cu)|0x200000u);
+        func_80023E14((int16_t)PE_LoadU16(0x800BE834u+(uint32_t)PE_LoadU8(0x8009D1D4u)*8u)-3);
+        if (PE_Port_ShouldStop()) return;
+        (void)func_8006F39C(0x55u,PE_LoadU32(0x8009D254u));
+        if (PE_Port_ShouldStop()) return;
+        PE_StoreU8(0x8009D1D4u,(uint8_t)(PE_LoadU8(0x8009D1D4u)+1u));
+        {
+            int16_t command=(int16_t)PE_LoadU16(0x800BE834u+(uint32_t)PE_LoadU8(0x8009D1D4u)*8u);
+            actor=PE_LoadU32(0x8009D254u);
+            if (command<3 || command>=0x197 || PE_LoadU8(actor+0xEu)<4u)
+                PE_StoreU32(0x8009D1A0u,PE_LoadU32(0x8009D1A0u)&~0x100u);
+        }
+    }
+}
 
 int8_t func_800255E4(void)
 {

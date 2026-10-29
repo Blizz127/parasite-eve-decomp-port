@@ -1586,6 +1586,14 @@ class MaspsxProcessor:
             narrow_shifted_reg_load
             or os.environ.get("MASPSX_NARROW_SHIFTED_REG_LOAD") == "1"
         )
+        # LOCAL PATCH K3c: MASPSX_NARROW_SHIFTED_ANY_DEST. With K3 or K3b
+        # on, also narrow when the shift writes another register
+        # (`lw $d` ... `sra $x,$d,N`) and $d is dead after it (the next
+        # straight-line reference writes $d). room_m0350i func_80192E4C:
+        # retail `lh $v0,2($v0)` / `sra $s2,$v0,5`. Opt-in.
+        self.narrow_shifted_any_dest = (
+            os.environ.get("MASPSX_NARROW_SHIFTED_ANY_DEST") == "1"
+        )
         # LOCAL PATCH K4: MASPSX_HOIST_BLOCK_LI. In a straight-line run of
         # store groups that each reload the same absolute word
         # (`lw $x,SYM`), cc1 emits every group constant as `li $r,K` in
@@ -3526,23 +3534,60 @@ class MaspsxProcessor:
                 if sm and sm.group(1) == d and sm.group(2) == d:
                     hit = (k, int(sm.group(3)))
                     break
+                if (sm and self.narrow_shifted_any_dest and sm.group(2) == d
+                        and sm.group(1) != d and self._reg_dead_after(out, k + 1, d)):
+                    hit = (k, int(sm.group(3)), sm.group(1))
+                    break
                 if reg_re.search(s):
                     break
                 k += 1
             if hit is None or not 16 <= hit[1] <= 31:
                 continue
-            k, n = hit
+            k, n = hit[0], hit[1]
+            dst = hit[2] if len(hit) > 2 else d
             disp = (int(off) if off else 0) + 2
             if sym is None:
                 out[i] = f"lh\t{d},{disp}{base}"
             else:
                 sign = "+" if disp >= 0 else "-"
                 out[i] = f"lh\t{d},{sym}{sign}{abs(disp)}{base}"
-            if n == 16:
+            if n == 16 and dst == d:
                 drop.add(k)
+            elif n == 16:
+                out[k] = f"addu\t{dst},{d},$0"
             else:
-                out[k] = f"sra\t{d},{d},{n - 16}"
+                out[k] = f"sra\t{dst},{d},{n - 16}"
         return [x for j, x in enumerate(out) if j not in drop]
+
+    # K3c helper: True when, in the straight-line code from index `start`,
+    # the first instruction naming `reg` writes it without reading it.
+    # Any label, directive, branch, jump or other reference is "live".
+    _K3C_WRITERS = {
+        "addu", "addiu", "subu", "and", "andi", "or", "ori", "xor", "xori",
+        "nor", "slt", "slti", "sltu", "sltiu", "sll", "srl", "sra", "sllv",
+        "srlv", "srav", "lui", "li", "la", "move", "lw", "lh", "lhu", "lb",
+        "lbu", "mflo", "mfhi", "negu",
+    }
+
+    def _reg_dead_after(self, out, start, reg):
+        ctl_re = re.compile(r"^(b\w*|j|jal|jr|jalr|syscall|break)\b")
+        reg_re = re.compile(re.escape(reg) + r"(?!\w)")
+        for line in out[start:]:
+            s = line.split("#", 1)[0].strip()
+            if not s:
+                continue
+            if s.endswith(":"):
+                continue  # a join only adds paths; ours still flows through
+            if s.startswith(".") or ctl_re.match(s):
+                return False
+            if not reg_re.search(s):
+                continue
+            parts = s.split(None, 1)
+            if parts[0] not in self._K3C_WRITERS or len(parts) < 2:
+                return False
+            ops = [o.strip() for o in parts[1].split(",")]
+            return ops[0] == reg and not any(reg_re.search(o) for o in ops[1:])
+        return False
 
     def _mult_mflo_to_multu(self, res):
         """`mult $a,$b` / `mflo` -> `multu`. Does not touch a following `mfhi`."""

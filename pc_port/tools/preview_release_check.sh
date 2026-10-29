@@ -9,7 +9,9 @@
 #
 # Usage: pc_port/tools/preview_release_check.sh [--skip-build | --bin PATH] [--until CP]
 #            [--max-frames N] [--no-package] [--force-package]
-# Env: CMAKE (default build/lanes/port/venv/bin/cmake), DISC, BASELINE_BIN.
+# Env: CMAKE (default build/lanes/port/venv/bin/cmake), DISC, BASELINE_BIN,
+#      PE_PREVIEW_DEV_MENU=1|0 (required unless --no-package: 1 = owner/checkpoint
+#      build with the Back+Start / F8 dev menu on, 0 = public preview; exit 6 if unset).
 # Outputs: build/lanes/day1/release-check/ (logs, table.txt), package in
 #          build/lanes/day1/release-check/dist. No git ops, no deploy.
 set -euo pipefail
@@ -30,6 +32,15 @@ while [[ $# -gt 0 ]]; do
         *) echo "unknown option: $1" >&2; exit 2 ;;
     esac
 done
+
+# The packaged launcher's dev-menu default must be an explicit choice; check it before
+# the build and the route runs so a missing knob fails in seconds, not after packaging.
+if [[ $PACKAGE -eq 1 ]]; then
+    case "${PE_PREVIEW_DEV_MENU:-}" in
+        0|1) ;;
+        *) echo "RELEASE_CHECK FAIL PE_PREVIEW_DEV_MENU must be 1 (owner/checkpoint: dev menu on) or 0 (public preview) when packaging; it is ${PE_PREVIEW_DEV_MENU:-unset}"; exit 6 ;;
+    esac
+fi
 
 OUT=build/lanes/day1/release-check
 BUILD_DIR=build/pcbuild-release
@@ -126,9 +137,14 @@ STATUS=0
 if [[ $PACKAGE -eq 1 && ( $STATUS -eq 0 || $FORCE_PACKAGE -eq 1 ) ]]; then
     echo "== package (PE_PREVIEW_DEFAULT_SKIP=0) -> $OUT/dist"
     if ! PE_BINARY="$NEW_BIN" PE_PREVIEW_DEFAULT_SKIP=0 PE_OUTPUT_DIR="$ROOT/$OUT/dist" \
+         PE_PREVIEW_DEV_MENU="$PE_PREVIEW_DEV_MENU" \
          PE_SOURCE_NOTE="preview_release_check status=$STATUS" \
          pc_port/package_preview.sh > "$OUT/package.log" 2>&1; then
         echo "RELEASE_CHECK FAIL packaging (see $OUT/package.log)"; exit 6
+    fi
+    if ! pc_port/tools/check_preview_dev_menu.sh "$OUT/dist/parasite-eve-day1-preview-linux-x64.tar.gz" \
+         "$PE_PREVIEW_DEV_MENU" >> "$OUT/package.log" 2>&1; then
+        echo "RELEASE_CHECK FAIL dev-menu default check (see $OUT/package.log)"; exit 6
     fi
     tail -3 "$OUT/package.log"
 else

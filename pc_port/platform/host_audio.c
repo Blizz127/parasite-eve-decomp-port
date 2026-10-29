@@ -1,5 +1,6 @@
 /* Host audio output — see host_audio.h. */
 #include "host_audio.h"
+#include "host_qol.h"
 #include "pe_spu.h"
 
 #include <stdio.h>
@@ -10,6 +11,13 @@
 #include <dlfcn.h>
 #include <pthread.h>
 #include <time.h>
+#endif
+
+#ifndef _WIN32
+/* MASTER VOLUME and MONO AUDIO (plat_enhance.c).  Weak so a consumer without
+ * the enhancement registry keeps the retail level and stereo. */
+extern int pe_enh_master_volume(void) __attribute__((weak));
+extern int pe_enh_mono(void) __attribute__((weak));
 #endif
 
 /* ── WAV dump ──────────────────────────────────────────────────────── */
@@ -416,7 +424,28 @@ void HostAudio_Submit(const int16_t *stereo, int frames)
         }
     }
 #ifndef _WIN32
-    if (g_device) pulse_submit(stereo, frames);
+    if (g_device) {
+        static int last = 100;     /* the level the previous submit ended at */
+        int percent = pe_enh_master_volume ? pe_enh_master_volume() : 100;
+        int mono = pe_enh_mono ? pe_enh_mono() : 0;
+        if (percent == 100 && last == 100 && !mono) {
+            pulse_submit(stereo, frames);
+        } else {
+            /* Fixed chunks on the stack: no allocation that could fail open. */
+            int16_t chunk[2 * 256];
+            for (int done = 0; done < frames; done += 256) {
+                int n = frames - done < 256 ? frames - done : 256;
+                if (percent == 100 && last == 100)
+                    memcpy(chunk, stereo + 2 * done, sizeof(int16_t) * 2 * (size_t)n);
+                else
+                    HostAudio_GainRamp(chunk, stereo, done, n, frames, last, percent);
+                /* MONO AUDIO: after the volume stages, on the device feed only */
+                if (mono) HostQol_Downmix(chunk, chunk, n);
+                pulse_submit(chunk, n);
+            }
+        }
+        last = percent;
+    }
 #endif
 }
 

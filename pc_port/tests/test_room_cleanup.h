@@ -1,4 +1,24 @@
 #include "retail_room_cleanup_cases.h"
+static void test_room_cleanup_finalizer_stop(void)
+{
+    const pe_addr_t table=0x80150000u,desc=0x80151000u;
+    int policy=PE_Decomp_BoundaryStopEnabled();
+    TEST("room_cleanup_finalizer_stop");
+    ResetTestState(); PE_Decomp_SetBoundaryStop(1);
+    PE_StoreU32(0x800942E0u,table); PE_StoreU32(table,desc);
+    PE_StoreU32(desc+24u,0x81234567u);
+    PE_StoreU32(table+8u*4u,0xA5A5A5A5u);
+    PE_StoreU32(0x800E1044u+0x1Eu*4u,0x5A5A5A5Au);
+    D_8009D1A0=0x80u;
+    func_800696F0();
+    PE_Decomp_SetBoundaryStop(policy);
+    ASSERT(PE_Port_GetStopReason()==PE_PORT_STOP_UNRESOLVED_BOUNDARY &&
+           (D_8009D1A0&0x80u) && PE_LoadU32(table+8u*4u)==0xA5A5A5A5u &&
+           PE_LoadU32(0x800E1044u+0x1Eu*4u)==0x5A5A5A5Au,
+           "room cleanup continued after stopped finalizer");
+    PASS();
+}
+
 static void test_SEW16_room_cleanup(void)
 {
     TEST("SEW16_room_cleanup");

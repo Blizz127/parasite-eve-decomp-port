@@ -1,6 +1,5 @@
 /* Original field/name menu frame and palette transition.
- * 4C998.s / 7640.s / 3E4A4.s / 334C4.s. Inventory/card callbacks
- * remain explicit native boundaries until their implementations land. */
+ * 4C998.s / 7640.s / 3E4A4.s / 334C4.s. */
 #include "psx_compat.h"
 #include "pe_port_compat.h"
 #include "pe_sdk.h"
@@ -14,13 +13,23 @@ static void menu_boundary(const char *name)
     PE_Port_RequestStop(PE_PORT_STOP_UNRESOLVED_BOUNDARY);
 }
 
+/* src/func_8004DCA4.c: a nonzero mode calls func_80048918(0, -2, -1) when
+ * func_80054294() (D_8009D068) is set, otherwise sets the D_8009D034 latch
+ * (func_8005C488) and returns before the help window. */
+extern int func_80054294(void);
+extern void func_80048918(int a0, int a1, int a2);
+
 void func_8004DCA4(uint32_t mode)
 {
     pe_addr_t help;
     func_8005DE88();
     if (func_80062A34(1u,13u) || func_80062A34(1u,23u)) return;
-    if (mode) {menu_boundary("func_8004DCA4_inventory_rename");return;}
-    func_8004DD64(-1);
+    if (mode) {
+        if (func_80054294()) func_80048918(0, -2, -1);
+        else {func_8005C488();return;}
+    } else {
+        func_8004DD64(-1);
+    }
     if (!func_80062A34(1u,19u)) {
         help=func_80062D2C(19u,0u,0u,0u);PE_StoreU32(help+48u,0x8004C608u);
     }
@@ -60,8 +69,11 @@ void func_80046334(void)
 
 void func_800339A0(uint32_t style)
 {
+    /* src/func_800339A0.c copies the four rows to a 16-byte stack buffer and
+     * indexes it unchecked: a style >= 4 reads the stack above that buffer,
+     * which the host cannot reproduce, so it stays a loud boundary. */
     pe_addr_t row=0x80010E38u+(style&255u)*4u;
-    if ((style&255u)>=4u) {menu_boundary("func_800339A0_invalid_style");return;}
+    if ((style&255u)>=4u) {menu_boundary("func_800339A0_stack_row");return;}
     PE_StoreU16(0x8009CE84u,PE_LoadU16(row));PE_StoreU8(0x8009CE80u,(uint8_t)style);
     PE_StoreU16(0x8009CE86u,PE_LoadU16(row+2u));
 }

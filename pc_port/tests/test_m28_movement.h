@@ -2,12 +2,14 @@
 static void test_DAY1_m28_movement(void)
 {
     TEST_RETAIL_DISC1("DAY1_m28_movement"); TEST_RETAIL_FIXUPS(RETAILFIX_m28_movement);
+    char why[256];ASSERT(PE_TestReadM28Bodies(why,sizeof why),why);
     for(unsigned k=0;k<sizeof(m28_movement_cases)/sizeof(m28_movement_cases[0]);k++) {
         ResetTestState();
         for(unsigned i=0;i<sizeof(m28_movement_common)/sizeof(m28_movement_common[0]);i++)
             PE_StoreU32(0x80000000u+m28_movement_common[i][0],m28_movement_common[i][1]);
         for(unsigned i=m28_movement_cases[k].first;i<m28_movement_cases[k].end;i++)
             PE_StoreU32(0x80000000u+m28_movement_patches[i][0],m28_movement_patches[i][1]);
+        PE_TestRestoreM28Bodies();
         const uint32_t *a=m28_movement_cases[k].args;
         uint32_t result=0;
         switch(m28_movement_cases[k].kind) {

@@ -17,10 +17,14 @@
  * exports, so M0005 now supplies descriptor 80190B44 and
  * callback 80190A6C, now native through the effect callback dispatcher.
  *
- * Unknown jalr targets are not invented.
+ * Any other handler goes through PE_GuestCallN with all six arguments
+ * (the registry thunk, or a loud boundary); unknown jalr targets are not
+ * invented and never skipped.
  */
 #include "psx_compat.h"
 #include "pe_port_compat.h"
+#include "pe_guestcode.h"
+#include "game_port.h"
 
 #define GA_D_800942E0 0x800942E0u
 #define GA_D_800942E4 0x800942E4u
@@ -44,7 +48,11 @@ int func_800D4698(pe_addr_t slot, unsigned int mode, unsigned int a2,
     if (fn_addr<0x200000u) fn_addr|=0x80000000u;
     fn = PE_LoadU32(fn_addr);
     PE_EffectCallback_SetExtra1(extra1);   /* retail a3 for overlay callbacks */
-    if (fn) PE_StoreU32(slot+0x14u,(uint32_t)PE_EffectCallback(fn,(int32_t)a2,a3,extra0));
+    if (fn) {
+        uint32_t result=(uint32_t)PE_EffectCallback(fn,(int32_t)a2,a3,extra0);
+        if (PE_Port_ShouldStop()) return 0;
+        PE_StoreU32(slot+0x14u,result);
+    }
     return 0;
 }
 
@@ -103,5 +111,13 @@ int func_8006F6D4(unsigned int index, unsigned int mode, unsigned int a2,
         (void)func_800D4698(slot, mode, a2, out0, out1, out2);
     else if (fn==0x800C9B3Cu || fn==0x800CD89Cu || fn==0x800CE118u)
         (void)func_800C2AF0(slot,(int32_t)mode,(int32_t)a2,out0);
+    else {
+        /* Any other handler: the retail jalr with all six arguments (a4/a5
+         * are O32 stack arguments) through the guest-code registry; the
+         * handler's result is returned as in retail.  Unresolved -> loud
+         * boundary (STOP), never a silent skip. */
+        const uintptr_t args[6] = {slot, mode, a2, out0, out1, out2};
+        return PE_GuestCallN("@8006F6D4:handler+8", fn, 6u, args);
+    }
     return 0;
 }

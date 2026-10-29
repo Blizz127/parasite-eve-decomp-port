@@ -237,3 +237,30 @@ void PE_StoreU32(pe_addr_t address, uint32_t value)
     p[2] = (uint8_t)((value >> 16) & 0xFF);
     p[3] = (uint8_t)((value >> 24) & 0xFF);
 }
+
+/* Native guest frames (see pe_guest_ram.h). */
+static pe_addr_t g_pe_frame_sp = PE_GUEST_FRAME_HI;
+
+pe_addr_t PE_GuestFrame_Enter(uint32_t size)
+{
+    uint32_t n = (size + 7u) & ~7u;
+    if (n > g_pe_frame_sp - PE_GUEST_FRAME_LO) {
+        fprintf(stderr, "FATAL: PE_GuestFrame_Enter: %u-byte native guest frame "
+                "overflows [0x%08X,0x%08X) (sp=0x%08X)\n", (unsigned)size,
+                (unsigned)PE_GUEST_FRAME_LO, (unsigned)PE_GUEST_FRAME_HI,
+                (unsigned)g_pe_frame_sp);
+        abort();
+    }
+    g_pe_frame_sp -= n;
+    return g_pe_frame_sp;
+}
+
+void PE_GuestFrame_Leave(pe_addr_t base, uint32_t size)
+{
+    if (base != g_pe_frame_sp) {
+        fprintf(stderr, "FATAL: PE_GuestFrame_Leave: 0x%08X is not the frame "
+                "top 0x%08X\n", (unsigned)base, (unsigned)g_pe_frame_sp);
+        abort();
+    }
+    g_pe_frame_sp += (size + 7u) & ~7u;
+}

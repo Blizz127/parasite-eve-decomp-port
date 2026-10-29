@@ -11,6 +11,8 @@
 #include "psx_compat.h"
 #include "game_port.h"
 #include "stub_registry.h"
+#include "pe_guestcode.h"
+#include "pe_sdk.h"
 #include <stdio.h>
 
 /* ── Declarations ──────────────────────────────────────────────────── */
@@ -27,7 +29,6 @@ extern void func_8006F044(void);
 extern int  func_8006E834(void);
 extern void func_80069B08(int);
 extern void func_8003F3C4(void);
-extern void func_801235DC(void);
 extern void func_8019234C(void);
 extern int  func_801909B4(void);
 extern int  func_8006E9A0(int);
@@ -57,6 +58,66 @@ static void PE_Port_ScratchpadCall(void (*overlay)(void))
     Stub_Record("scratchpad_stack_handoff", "HOST_ADAPTED");
     if (overlay) overlay();
     Trace_Direct("scratchpad_atom_end");
+}
+
+/* func_801235DC is the credits main loop in ovl_0457.  func_8006F044 has
+ * just reloaded PE.IMG [0x39F,0x3C5) (ovl_039F, libpress) to 0x8010BCF8 and
+ * [0x457,0x4FC) (ovl_0457) to 0x80120D00.  The registry binds the address by
+ * the fingerprint of the bytes now there (generated ovl_0457__func_801235DC);
+ * anything else is a loud boundary, never a silent return.
+ *
+ * The loop drives the drive itself.  With D_8009D1A0 bit 16 clear it opens
+ * \XASTREAM\CREDITS.XA;1 (Disc 2) and queues CdlSetmode 0xC8 and
+ * CdlSetfilter through func_8007EE84, waiting on func_8007F418 for each.  It
+ * then plays the stream by CdlReadS and CdlGetlocP (func_801258EC,
+ * func_80125A40).  Production's host-mode libds does not serve those commands,
+ * so the entry attaches the register-level device around the loop
+ * (PE_Cd_AttachDevice) and detaches it afterwards.
+ *
+ * With bit 16 set (the nine-step pad code in func_8003EB04 sets 0x12000)
+ * there is no XA setup.  An edge on D_8009D1F4 bit 26 or 27 runs
+ * func_80125894, which waits for func_8007F418(0, 0) == 2 and then sends
+ * CdlSetfilter through func_80080DC4, so that mode needs the attached drive
+ * too.  The 2 it waits for is the CdlComplete of the CdlPause that ends
+ * every read (func_80081268), which the host read now publishes
+ * (pe_libcd.c func_8006E6D4).
+ *
+ * Two cases stop on a named boundary instead of entering:
+ *   - credits_xa_file_absent: bit 16 is clear and the active disc lacks the
+ *     overlay's own file name (D_80125B48).  func_8012562C would retry
+ *     CdSearchFile forever.
+ *   - credits_cd_attach: the device cannot attach (no disc, libds busy, or
+ *     already attached).
+ *
+ * The generated ovl_0457 loops never test PE_Port_ShouldStop.  The entry arms
+ * the stop escape (game_port.h) around the loop, so a stop inside it (a
+ * boundary, or a host quit) returns here instead of spinning.  The attach
+ * record is static, so it stays valid across the longjmp. */
+static PeCdAttach g_credits_cd;
+
+static int credits_boundary(const char *name)
+{
+    Bootstrap_ReturnVoid1(name, "func_8001220C", D_8009D1A0 & 0x30000u);
+    PE_Port_RequestStop(PE_PORT_STOP_UNRESOLVED_BOUNDARY);
+    return 0;
+}
+
+int PE_Main_EnterCredits(void)
+{
+    jmp_buf escape;
+    if (!PE_Cd_XaServiceAvailable()) return credits_boundary("credits_cd_xa_service");
+    if (!(D_8009D1A0 & 0x10000u) && !PE_Cd_FilePresent(PE_LoadU32(0x80125B48u)))
+        return credits_boundary("credits_xa_file_absent");
+    if (!PE_Cd_AttachDevice(&g_credits_cd)) return credits_boundary("credits_cd_attach");
+    if (setjmp(escape) == 0) {
+        PE_Port_EscapeArm(&escape);
+        PE_Port_CreditsPadArm(1);
+        (void)PE_GuestCall("func_8001220C", 0x801235DCu, 0u, 0u, 0u, 0u, 0u);
+    }
+    PE_Port_CreditsPadArm(0);
+    PE_Port_EscapeDisarm();
+    PE_Cd_DetachDevice(&g_credits_cd);
+    return !PE_Port_ShouldStop();
 }
 
 /* ── Main — adapted from PARKED candidate ──────────────────────────── */
@@ -104,6 +165,7 @@ void func_8001220C(void)
         func_8006A64C();
         func_8003E680();
         func_8006A9E4();
+        if (PE_Port_ShouldStop()) return;
         D_8009D280 = state_val;
 
         while (1) {
@@ -118,6 +180,7 @@ void func_8001220C(void)
             }
 
             func_8006AD40();
+            PE_Field_PassContinues = 0;
             /* B53I-B2 deterministic hardware opportunity.  It deliberately
              * runs before the sticky host stop is honored: the admitted
              * retail prefix may have issued one DMA whose hardware/IRQ
@@ -159,7 +222,9 @@ void func_8001220C(void)
                 if (v == 0xAA108448u) {
                     if (*flagbyte & 0x2) {
                         func_8006F044();
-                        func_801235DC();
+                        if (PE_Port_ShouldStop()) return;
+                        if (!PE_Main_EnterCredits()) return;
+                        if (PE_Port_ShouldStop()) return;
                         D_8009D280 = 0xA80830C8u;
                         *data |= 0x1;
                     } else {
@@ -191,9 +256,15 @@ void func_8001220C(void)
             if (v == 0xA80661C8u) continue;
             if (v == 0xA8066348u) continue;
 
-            /* volume gate */
+            /* volume gate.  Retail reaches it only once 3F3C4 returns (field
+             * exit at 3F68C); a host one-pass field tick that retail would
+             * still be looping in does not raise the disc-swap request, so
+             * a story bump past 0x258 inside a room swaps at the next room
+             * transition, not over the live room overlay.  Same as retail. */
             v = D_800A7918;
-            if (v < 0x258u) {
+            if (PE_Field_PassContinues) {
+                /* retail is still inside the 3F3C4 inner loop */
+            } else if (v < 0x258u) {
                 if (!(*flagbyte & 0x1)) {
                     dispatch = 1;
                     *data |= bitmask;

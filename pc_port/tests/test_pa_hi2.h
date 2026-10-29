@@ -263,6 +263,10 @@ static void test_PA_hi2_reverb(void)
     TEST("PA_hi2_8008CF70_reverb");
     ResetTestState();
     PE_Decomp_ResetBoundaries();
+    /* The reverb clear is a real DMA since 1556d867e: install the SPU DMA
+     * IRQ/event as test_spu_mode does. */
+    func_8007D15C();
+    PE_StoreU32(0x8009B424u, 3u);
     const pe_addr_t regs = PA_HI2 + 0x3800u;
     unsigned k;
 
@@ -292,7 +296,9 @@ static void test_PA_hi2_reverb(void)
     /* func_8008D610 now runs natively (pe_stream.c): like retail
      * func_8007D778(1) it leaves SPUCNT in DMA-write mode (bits 4-5 = 2)
      * before bit 7 is restored. */
-    ASSERT(PE_LoadU16(regs + 0x1AAu) == 0xA1u, "8CF70 SPUCNT bit 7 restored, DMA-write mode");
+    /* The DMA now completes; the modelled completion handler clears the
+     * transfer-mode bits 4-5 as the SDK handler does in software. */
+    ASSERT(PE_LoadU16(regs + 0x1AAu) == 0x81u, "8CF70 SPUCNT bit 7 restored, transfer mode cleared");
     ASSERT(PE_Decomp_BoundaryCount() == 0, "8CF70 clear -> native func_8008D610 (no boundary)");
 
     /* preset 8 without clear and with bit 7 off. */

@@ -1,0 +1,4 @@
+#!/bin/sh
+# `zig ar` (llvm-ar) for the zig macOS toolchains; Mach-O members make it
+# write the Darwin (BSD) archive format.  PE_ZIG names the zig executable.
+exec "${PE_ZIG:-zig}" ar "$@"

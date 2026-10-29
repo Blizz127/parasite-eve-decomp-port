@@ -1,0 +1,444 @@
+# NON_MATCHING overlay leaves: functionally equivalent C, not byte-exact.
+# The overlay YAML keeps these spans as `asm`, so the exact rebuild is unchanged.
+# tools/analysis/gen_overlay_ports.py emits a native TU for each from
+# src/nonmatching/overlays/<ovl>/<name>.c; the runtime registry still keys it to
+# the retail bytes (FNV-1a over the span), and tools/analysis/e21_diff.py
+# differential-tests it against the retail asm (RAM, scratchpad, calls, v0).
+#   - [overlay, name, file_offset, file_size]
+leaves:
+  - [room_m0156i, func_8018F058, 0x70, 0x11D8]   # particle emitter; mode 2 register allocation differs
+  - [room_m0156i, func_80192208, 0x3220, 0x7E0]   # debris effect (m0156i / m0380i)
+  - [room_m0156i, func_80191B94, 0x2BAC, 0x674]   # debris particle callback (m0156i / m0380i)
+  - [room_m0162i, func_80192A68, 0x3A80, 0x6B0]   # enemy shot effect (m0162i / m0163i)
+  - [room_m0162i, func_801924FC, 0x3514, 0x56C]   # shot particle callback (m0162i / m0163i)
+  - [room_m0188i, func_8019251C, 0x3534, 0xB98]   # battle effect pool particle callback (m0188i)
+  - [room_m0188i, func_80193300, 0x4318, 0x590]   # battle effect particle callback (m0188i); handwritten cop2 loads
+  - [room_m0188i, func_80193BCC, 0x4BE4, 0x9BC]   # enemy joint glow particle callback (m0188i); handwritten cop2 loads
+  - [room_m0188i, func_8019479C, 0x57B4, 0xA50]   # ground-burst pool particle callback (m0188i); handwritten cop2 loads
+  - [room_m0188i, func_801951EC, 0x6204, 0x3B4]   # ground-burst battle effect main (m0188i)
+  - [room_m0188i, func_801955A0, 0x65B8, 0x474]   # splash pool particle callback (m0188i)
+  - [room_m0188i, func_80195A14, 0x6A2C, 0x360]   # splash battle effect main (m0188i)
+  - [room_m0245i, func_801933EC, 0x4404, 0x2A0]   # triceratops beam glow particle callback (m0245i); handwritten cop2 loads
+  - [room_m0245i, func_8019368C, 0x46A4, 0x6F0]   # triceratops beam battle effect main (m0245i); handwritten cop2 loads
+  - [room_m0245i, func_80194C54, 0x5C6C, 0x2A0]   # triceratops beam glow particle callback, second beam (m0245i)
+  - [room_m0245i, func_80194EF4, 0x5F0C, 0x6F0]   # triceratops beam battle effect main, second beam (m0245i)
+  - [room_m0245i, func_80192500, 0x3518, 0xD44]   # triceratops fire breath particle callback (m0245i); handwritten cop2 loads
+  - [room_m0245i, func_80193D7C, 0x4D94, 0xD30]   # triceratops fire breath particle callback, second head (m0245i)
+  - [room_m0273i, func_80197BBC, 0x8BD4, 0x4A4]   # slime / Eve turn-and-strike battle effect main (m0273i); handwritten cop2 loads
+  - [room_m0273i, func_8019665C, 0x7674, 0x37C]   # slime drop particle callback (m0273i)
+  - [room_m0273i, func_80192838, 0x3850, 0x3C8]   # slime grab-attack driver (m0273i)
+  - [room_m0089i, func_80192CD4, 0x3CEC, 0x52C]   # park battle effect callback (m0089i)
+  - [room_m0089i, func_80193200, 0x4218, 0x418]   # park battle effect particle callback (m0089i); handwritten cop2
+  - [room_m0089i, func_80193618, 0x4630, 0x9D8]   # park battle effect 2 callback (m0089i)
+  - [room_m0273i, func_80199C50, 0xAC68, 0x320]   # slime swing-attack battle effect main (m0273i); handwritten cop2 loads
+  - [room_m0273i, func_801986E8, 0x9700, 0x434]   # slime swing-attack spray effect (m0273i)
+  - [room_m0273i, func_801981A4, 0x91BC, 0x544]   # slime swing spray particle callback (m0273i)
+  - [room_m0273i, func_80198E94, 0x9EAC, 0x55C]   # Eve ground-shock ring particle callback (m0273i)
+  - [room_m0231i, func_80193650, 0x4668, 0xDDC]   # museum 2F enemy acid-spit particle callback (m0231i); handwritten cop2 loads
+  - [room_m0231i, func_80192548, 0x3560, 0x3F8]   # museum 2F enemy spore-cloud particle callback (m0231i / m0234i)
+  - [room_m0086i, func_8018F734, 0x74C, 0x998]   # park effect handler (m0086i); 2026-10-15 park packet, directed inputs in tools/analysis/park_native
+  - [room_m0429i, func_801982A4, 0x92BC, 0x670]   # particle callback, near twin of room_m0269i func_8019070C (m0429i)
+  - [room_m0432i, func_801962FC, 0x7314, 0x258]   # effect-object callback, sprite from func_800CF844 (m0432i)
+  - [room_m0428i, func_801928CC, 0x38E4, 0x2C0]   # particle callback with an actor distance test (m0428i)
+  - [room_m0429i, func_80192878, 0x3890, 0x298]   # per-frame effect-object step, modes 0xC/0xD/0x10 (m0429i)
+  - [room_m0350i, func_80196F2C, 0x7F44, 0x2F0]   # thrown-object callback with a 4-entry trail (m0350i)
+  - [room_m0318i, func_801955E4, 0x65FC, 0x320]   # effect callback, sprite pool via func_800D3F64 (m0318i)
+  - [room_m0318i, func_80192718, 0x3730, 0x364]   # effect callback, modes 1/2 (m0318i)
+  - [room_m0318i, func_80192A7C, 0x3A94, 0x324]   # effect callback, modes 0/1/2 (m0318i)
+  - [room_m0318i, func_80193638, 0x4650, 0x374]   # effect callback, modes 0/1/2 (m0318i)
+  - [room_m0432i, func_801957CC, 0x67E4, 0x374]   # effect-object callback (m0432i)
+  - [room_m0318i, func_80194164, 0x517C, 0x384]   # effect callback, modes 0/1/2 (m0318i)
+  - [room_m0318i, func_8019646C, 0x7484, 0x3B4]   # effect callback, modes 1/2 (m0318i)
+  - [room_m0318i, func_80192ED4, 0x3EEC, 0x398]   # effect callback, modes 0/1/2 (m0318i)
+  - [room_m0318i, func_8019326C, 0x4284, 0x3CC]   # effect callback, modes 0/1/2 (m0318i)
+  - [room_m0404i, func_80193A6C, 0x4A84, 0x3B8]   # effect callback, modes 0/1/2 (m0404i)
+  - [room_m0318i, func_80196820, 0x7838, 0x428]   # effect task, modes 0/1/2 (m0318i)
+  - [room_m0318i, func_80195904, 0x691C, 0x41C]   # effect callback, modes 1/2 (m0318i)
+  - [room_m0318i, func_80195190, 0x61A8, 0x454]   # effect callback, modes 1/2 (m0318i)
+  - [room_m0404i, func_801935E0, 0x45F8, 0x48C]   # effect callback, modes 1/2 (m0404i)
+  - [room_m0432i, func_8019702C, 0x8044, 0x510]   # effect-object callback, cmd 1/2 x kind 0/1/2 (m0432i)
+  - [room_m0429i, func_80196748, 0x7760, 0x584]   # effect callback, modes 0/1/2, states at a1+8 (m0429i)
+  - [room_m0318i, func_80197CBC, 0x8CD4, 0x5AC]   # effect callback, modes 0/1/2 (m0318i)
+  - [room_m0318i, func_801944E8, 0x5500, 0x5C4]   # effect callback, modes 1/2 (m0318i)
+  - [room_m0429i, func_801972EC, 0x8304, 0x600]   # effect callback, modes 1/2 (m0429i)
+  - [room_m0429i, func_80196CCC, 0x7CE4, 0x620]   # effect callback, modes 0/1/2 (m0429i)
+  - [room_m0429i, func_801960C4, 0x70DC, 0x684]   # effect callback, modes 0/1/2 (m0429i)
+  - [room_m0318i, func_80198268, 0x9280, 0x690]   # effect callback, modes 1/2 (m0318i)
+  - [room_m0318i, func_80197618, 0x8630, 0x6A4]   # effect callback, modes 0/1/2 (m0318i)
+  - [room_m0318i, func_80194AAC, 0x5AC4, 0x6E4]   # effect callback, modes 0/1/2 (m0318i)
+  - [room_m0432i, func_8019485C, 0x5874, 0x704]   # effect-object callback, modes 1/2 (m0432i)
+  - [room_m0432i, func_80193940, 0x4958, 0x74C]   # effect-object callback, modes 1/2 (m0432i)
+  - [room_m0318i, func_80195D20, 0x6D38, 0x74C]   # effect callback, modes 0/1/2 (m0318i)
+  - [room_m0273i, func_80194E6C, 0x5E84, 0x77C]   # effect callback, modes 0/1/2 (m0273i)
+  - [room_m0432i, func_80195B40, 0x6B58, 0x7BC]   # effect-object callback, modes 0/1/2 (m0432i)
+  - [room_m0318i, func_80196E4C, 0x7E64, 0x7CC]   # effect-object callback, modes 0/1/2 (m0318i)
+  - [room_m0432i, func_8019408C, 0x50A4, 0x7D0]   # effect-object callback, modes 0/1/2 (m0432i)
+  - [room_m0432i, func_80194F60, 0x5F78, 0x86C]   # effect-object callback, modes 0/1/2 (m0432i)
+  - [room_m0429i, func_80198914, 0x992C, 0x8E4]   # effect callback, modes 0/1/2 (m0429i)
+  - [room_m0318i, func_801988F8, 0x9910, 0x920]   # effect callback, modes 0/1/2 (m0318i)
+  - [room_m0429i, func_801978EC, 0x8904, 0x9B8]   # effect callback, modes 0/1/2 (m0429i)
+  - [room_m0432i, func_80196554, 0x756C, 0xAD8]   # effect-object callback, modes 0/1/2 (m0432i)
+  - [room_m0432i, func_80198348, 0x9360, 0xBFC]   # effect-object callback, modes 0/1/2 (m0432i)
+  - [room_m0429i, func_8019549C, 0x64B4, 0xC28]   # effect callback, modes 1/2 (m0429i)
+  - [room_m0432i, func_8019753C, 0x8554, 0xC74]   # effect-object callback, modes 0/1/2 (m0432i)
+  - [room_m0404i, func_80192540, 0x3558, 0xE28]   # effect callback, modes 0/1/2, kinds 0-4 (m0404i)
+  - [room_m0256i, func_801940B0, 0x50C8, 0x1270]  # effect callback, modes 1/2, states 0-5 (m0256i)
+  - [room_m0429i, func_80192F9C, 0x3FB4, 0x2500]  # effect state machine, modes 0/1/2, states 0-5 (m0429i)
+# EXE leaves: [exe, name, SLUS file offset, size] (src/nonmatching/exe/<name>.c,
+# lowered by gen_decomp_ports.py --e21, proven by tools/analysis/e21_leaf.py exe).
+# Most are asm spans in disc1.yaml.  An entry may also shadow a matched `c` leaf
+# that no lowering takes; the matched leaf stays the byte-exact authority, and
+# the port uses the NON_MATCHING TU.
+  - [exe, func_800C3324, 0xB3B24, 0x7E0]   # 3D textured-quad packet; called by the 0x800E0D08 weapon-effect callbacks
+  - [exe, func_800C689C, 0xB709C, 0x284]   # point-in-triangle test against the D_8009D254 actor (GTE OP)
+  - [exe, func_800D5A00, 0xC6200, 0x2E4]   # particle effect task, modes 0/1/2
+  - [exe, func_800D8388, 0xC8B88, 0x304]   # orbiting effect task, modes 0/1/2
+  - [exe, func_800C83A0, 0xB8BA0, 0x4D0]   # effect primitive builder
+  - [exe, func_8004A9A0, 0x3B1A0, 0x3FC]   # shop input callback (func_8004A570); the matched leaf drops func_8005BBE4's a1, retail passes D_8009CFDC
+  - [exe, func_8002AA98, 0x1B298, 0x650]   # battle mode-3 revive presentation; the matched leaf drops func_8006F39C's a1, retail passes D_8009D254
+  - [exe, func_800DD9E4, 0xCE1E4, 0x38C]   # rising-sparks particle callback (func_800DDD70); local typedef moved to file scope
+  - [exe, func_800DB6BC, 0xCBEBC, 0x3E0]   # field effect type 16 main (D_800E1044[16]); two unread struct pointers typed void * for the lowering
+  - [exe, func_800C499C, 0xB519C, 0x4B4]   # effect quad builder with OTZ/depth arms
+  - [exe, func_800C9398, 0xB9B98, 0x4D0]   # effect primitive builder (straight-line GTE)
+  - [exe, func_800D6514, 0xC6D14, 0x508]   # effect task, modes 0/1/2
+  - [exe, func_800DC058, 0xCC858, 0x564]   # effect task, modes 0/1/2, phase/frame counter
+  - [exe, func_800D5290, 0xC5A90, 0x608]   # effect task, modes 0/1/2
+  - [exe, func_800DE0A8, 0xCE8A8, 0x700]   # effect task with glow pass, modes 0/1/2
+  - [exe, func_800CAE0C, 0xBB60C, 0x944]   # effect primitive builder (straight-line GTE)
+# Directed differential inputs (seed k takes the k-th combination; see e21_diff.py).
+inputs:
+  - [room_m0429i, func_801982A4, "a0=1,2; h(a1+0x10)=0,1,2; h(a1+0x12)=0,11,12,24; h(0x800F336C)=4,0; w(0x800F3428)=1,0; out=800783E4:4"]
+  - [room_m0432i, func_801962FC, "a0=1,2;h(a1+0x10)=0,1;h(a1+0x12)=0x1e,0x1f,0,5,-3,0x7ff0,0x20;h(a1+0xE)=0,0x7fe0,0xfff0"]
+  - [room_m0428i, func_801928CC, "a0=1,2; h(a1+0x10)=0x80,0x100,0x12,0x8; h(a1+0x12)=0,1,3"]
+  - [room_m0429i, func_80192878, "a0=0x80120000; w(a0+8)=0x80121000; w(0x8009D254)=0x80122000; w(0x80122000)=0x80123000,0,0x80127000; h(0x8012300C)=1; h(0x8012700C)=0; w(a0+0x10)=0x80124000; w(0x80124000)=0; h(0x8012100E)=0x0A0D,0x160D,0x0A0C,0x0A10,0x0A11,0x0A05; h(0x80121016)=0,5,0xB,0x14; h(0x8012101A)=0,2,3,0xA,0xB,0x14; w(0x80121000)=0x80125000,0; w(0x80125018)=0x80126000; h(0x80126000)=1,5"]
+  - [room_m0350i, func_80196F2C, "a0=1,2,0,3;h(a1+0xE)=0,1;h(0x800942EC)=0x7000,0,0xFFF0"]
+  - [room_m0350i, func_80196F2C, "h(0x8019A85C)=4,-1,2,0,3;a0=1;h(a1+0xE)=0;h(0x800942EC)=0x7FFF;r(0x8019721C)=0"]
+# Matched ovl_0457 leaves whose CD-status busy-waits no seeded mock exits:
+# r(FN)=V makes the mocked CD callee return V.
+  - [ovl_0457, func_80125894, "a0=0,1,0x80,0xFF;r(0x8007F418)=2"]
+  - [ovl_0457, func_80125744, "r(0x8007F72C)=1;r(0x8007F778)=0;r(0x8007EE84)=5;r(0x8007F418)=2"]
+  - [ovl_0457, func_8012562C, "r(0x8007F72C)=1;r(0x8007F778)=0;r(0x80081414)=0x80150000;out=80081414:0:24"]
+# The matched room loader (src/func_8006B4F8.c) spins on the CD read issue
+# (func_8006E6A8 == -1) and poll (func_8006E7E8 != 0).
+  - [exe, func_8006B4F8, "r(0x8006E6A8)=0;r(0x8006E7E8)=0;r(0x8006E454)=1,2,3"]
+# room_m0318i func_80192560 (matched): actor search over the D_8009D20C list;
+# an empty list takes the printf (PE_Printf_Guest) miss path.
+  - [room_m0318i, func_80192560, "a0=5;a1=7,8;w(0x8009D20C)=0,0x80110000;w(0x80110000)=0x80110100;w(0x80110110)=1,0;w(0x80110004)=0;h(0x8011000C)=0x0507;w(0x8009D254)=0"]
+# room_m0273i func_80193114 (matched): weighted pick over D_8019A8C8[a0][band(*a1[1])][(*a1[0]>>10)&3];
+# a1 points at two pointers, which random RAM almost never gives (sweep 5 skipped it).
+  - [room_m0273i, func_80193114, "a0=0,1,2; a1=0x80130000; w(a1+0)=0x80130100; w(a1+4)=0x80130200; w(0x80130100)=0,0x400,0x800,0xC00,0xFFFFFC00; w(0x80130200)=0,0x27F,0x280,0x5FF,0x600,-1"]
+# room_m0017i func_8018F580 (matched): model draw; geometry header, index and record tables, the
+# frame index D_8009CDDC and both OT bases D_800B0E38.ordering[] pinned (sweep 5 skipped it).
+  - [room_m0017i, func_8018F580, "a0=0x80130000; w(a0+0)=0x80130400; w(a0+0x10)=0x80131000; w(a0+0x54)=0x80134000; w(0x800B0E38)=0x80150000; w(0x800B0E3C)=0x80158000; h(0x80130408)=0,1,3; h(0x8013040A)=0,2; h(0x8013040C)=0,2; h(0x8013040E)=0,2; w(0x8009CDDC)=0,1"]
+# Matched verbatim slot setters `Slot *p = &D_X[a1]` (e21_verbatim): a1 is a slot index; a seeded
+# pointer-sized a1 puts every store outside RAM, so random seeds never ran (0 of 96).
+  - [room_m0104i, func_8018FDF8, "a0=0,1; a1=0,1,2,3"]
+  - [room_m0430i, func_801906EC, "a0=0,1,2,3,4; a1=0,1,2,3"]
+  - [room_m0113i, func_80190A7C, "a0=0,1; a1=0,1,2,3"]
+  - [room_m0122i, func_80190E98, "a0=0,1; a1=0,1,2,3"]
+  - [room_m0156i, func_801929F8, "a0=0,1; a1=0,1,2,3"]
+  - [room_m0116i, func_801932EC, "a0=0,1; a1=0,1,2,3"]
+  - [room_m0263i, func_80193F70, "a0=0,1; a1=0,1,2,3"]
+  - [room_m0391i, func_801942F0, "a0=0,1; a1=0,1,2,3"]
+  - [room_m0392i, func_80194440, "a0=0,1; a1=0,1,2,3"]
+  - [room_m0318i, func_801955E4, "a0=0,1,2,3,-1;h(a1+0xA)=2,3,27,40;w(a2+0)=0,1;w(a2+4)=20;w(a2+8)=-7,300;w(a2+0xC)=5"]
+  - [room_m0318i, func_80192718, "a0=1,2;h(a1+0)=0,1,2;h(a1+4)=0,0xC,0xB,0xFFF5;h(0x800F336C)=4,0;w(0x800F3428)=1,0;w(0x800E27EC)=0x23,0x24,0xFFFFFFF0,0x1000"]
+  - [room_m0318i, func_80192718, "a0=0,3,-1,5"]
+  - [room_m0432i, func_801962FC, "a0=0,3,1,2,-1,0x10"]
+  - [room_m0318i, func_80192A7C, "a0=0;a1=0x80130000;a2=0x80120000;w(a2+0)=5,0x105,0xFFFFFF05;w(a2+4)=7,0x107;w(0x8009D20C)=0x80110000;w(0x8009D254)=0x80110000,0x80110300;w(0x80110000)=0x80110100;w(0x80110004)=0;w(0x80110110)=1,0,0xFFFFFFFF,0x80000000;h(0x8011000C)=0x0507,0x0705"]
+  - [room_m0318i, func_80192A7C, "a0=1;a1=0x80130000;w(0x80130008)=0,0x1000,0xFFFFF000;w(0x800E27EC)=0x1F,0x20,0x21,0x45,0x46,0x47,0xFFFFFFFF,0xFFFFFFFE,0x80000000,0x7FFFFFFF,0x1E,0x0"]
+  - [room_m0318i, func_80192A7C, "a0=2;a1=0x80130000"]
+  - [room_m0318i, func_80192A7C, "a0=3,4,0xFFFFFFFF,0x80000000,0x7FFFFFFF,5"]
+  - [room_m0318i, func_80193638, "a0=1;w(0x800F32D0)=0x80150000;w(0x800E2368)=0x80150400;w(0x8009D254)=0x80150500;w(0x80150500)=0x80150600;w(0x80150218)=0x80150300;w(0x80150008)=0x80150100;w(0x80150100)=0x80150200;w(0x800E27EC)=0,5,6,-6,-5,0x27,0x28,0x2B,0x2C,0x30,0x3F,0x40,0x41;w(0x80150200)=0x01000000,0x02000000,0x41000000;w(0x8015040C)=0x100,0"]
+  - [room_m0318i, func_80193638, "a0=0;w(0x800F32D0)=0x80150000;w(0x800E2368)=0x80150400;w(0x8009D254)=0x80150500;w(0x80150500)=0x80150600;w(0x80150218)=0x80150300;w(0x80150008)=0x80150100,0;w(0x80150100)=0x80150200,0;w(0x80150300)=1,0;w(0x8015040C)=0x100,0;w(0x800B0E64)=0,5"]
+  - [room_m0318i, func_80193638, "a0=-1,3"]
+  - [room_m0318i, func_80193638, "a0=2"]
+  - [room_m0432i, func_801957CC, "a0=0,1,2,3;h(a1+0x10)=0,1,2;h(a1+0x12)=0,5,0x1e,0x1f,-3,0x7ff0,0x20,0xb,0x17"]
+  - [room_m0318i, func_80194164, "a0=0;w(0x800F32D0)=0x80100000;w(0x80100008)=0x80100100;w(0x80100100)=0x80100200;w(0x80100218)=0x80100300;w(0x800E2368)=0x80100400;w(0x8009D254)=0x80100500;w(0x80100500)=0x80100600;w(0x80100200)=0x01000000;w(0x80100300)=1,2,0;w(0x8010040C)=0x100,0;w(0x800B0E64)=0x80100700,0"]
+  - [room_m0318i, func_80194164, "a0=1;w(0x800F32D0)=0x80100000;w(0x80100008)=0x80100100;w(0x80100100)=0x80100200;w(0x80100218)=0x80100300;w(0x800E2368)=0x80100400;w(0x8009D254)=0x80100500;w(0x80100500)=0x80100600;w(0x800E27EC)=0x10,0x27,0x28,0x35;w(0x80100200)=0x01000000,0x02000000;w(0x8010040C)=0x100,0"]
+  - [room_m0318i, func_80194164, "a0=-1,3,2,0x100"]
+  - [room_m0318i, func_8019646C, "a0=1,2;h(a1+0x10)=0,1;h(a1+0x12)=0,1,2,0x1F,0x20,0x21,0x27,0x28,3;h(0x800F336C)=4,0;w(0x800F3428)=1,0"]
+  - [room_m0318i, func_8019646C, "a0=0,1,2,3;h(a1+0x10)=2,0xFFFF,5;h(a1+0x12)=1,0x7FFF,0x8000,0xFFFF,0x20"]
+  - [room_m0318i, func_80192ED4, "a0=0;a1=0x80130000;a2=0x80120000;w(0x800F33E0)=0x80150000;w(a2+0)=5,0x105;w(a2+4)=7;w(0x8009D20C)=0x80110000,0;w(0x8009D254)=0x80110000,0x80110300;w(0x80110000)=0x80110100,0;w(0x80110004)=0,0x80110200;w(0x80110200)=0x80110100;w(0x80110204)=0;h(0x8011020C)=0x0507;w(0x80110110)=1,0,0xFFFFFFFF;h(0x8011000C)=0x0507,0x0705,0x0505,0x0707"]
+  - [room_m0318i, func_80192ED4, "a0=1;a1=0x80130000;w(0x800F33E0)=0x80150000;w(0x80130008)=0,0x400,0xFFFFF000;w(0x8013000C)=0x1000,0xFFFFF000,5,-5,0;w(0x800E27EC)=0x1F,0x32,0x33,0x49,0x4A,0xFFFFFFFF;r(0x800CE610)=0,0x80140000"]
+  - [room_m0318i, func_80192ED4, "a0=2;a1=0x80130000;w(0x800E27EC)=0,1,0x31,0x32,0x33,0xFFFFFFFF,0x7FFFFFFF;h(0x800E11FA)=0,3,0x7FFF;out=800CF3AC:1"]
+  - [room_m0318i, func_80192ED4, "a0=3,0xFFFFFFFF,0x7FFFFFFF,0x80000000,5"]
+  - [room_m0318i, func_8019326C, "a0=1,2,0,3;h(a1+6)=0,1;h(a1+8)=0xFFF1,0x1234,7;w(0x800E27EC)=0,1,3,4,5,0x17,0x18,25,0xFFFFFFF0;w(0x800F3428)=1,0;h(0x800F336C)=4,0"]
+  - [room_m0404i, func_80193A6C, "a0=0,1,2,3,-1; w(0x800E27EC)=0,1,3,4,5,7; h(0x800E11EA)=0,1,2"]
+  - [room_m0318i, func_80196820, "a0=0,1,2,3,-1;w(0x800E27EC)=2,8,5,9"]
+  - [room_m0318i, func_80196820, "a0=1;w(0x800E2368)=0x80150400;h(0x80150416)=0,1;w(0x800E27EC)=2,8,7,-1,0x80000000,0x7FFFFFFF;h(a1+8)=0,0x7FFF,0x8000,0xFFFF;h(a1+0xA)=0,0x7C00,0xFFFF"]
+  - [room_m0318i, func_80196820, "a0=2,0,-1,3,0x10000;h(0x800E11EA)=0,1,5,0xFFFF;h(a1+0)=0,0x8000,0xFFFF;h(a1+4)=0,0x7FFF,0x8000"]
+  - [room_m0318i, func_80195904, "a1=0x80110000; a0=1,2,0; h(a1+0x10)=0,1,2; h(a1+0x12)=0,10,22,23,24,30; h(0x800F336C)=4,0; w(0x800F3428)=1,0"]
+  - [room_m0318i, func_80195190, "a0=0,1,2,3; h(a1+0x10)=0,1,2,3; h(a1+0x12)=0,5,0x10,0x17; h(a1+2)=0x7000,0x100; h(0x800942EC)=0x500"]
+  - [room_m0318i, func_80195190, "a0=1; h(a1+0x10)=1; h(a1+8)=0x8001,0x100; h(a1+0xC)=0x8001,0x100; h(a1+2)=0x7000,0x100"]
+  - [room_m0404i, func_801935E0, "a0=1,2; h(a1+0x10)=0,1; h(a1+0x12)=0x3E,0x3F,0x1E,0x1F; h(a1+0xA)=5,-20; h(0x800942EC)=0x7FFF,-0x8000; h(0x800F336C)=4,0; w(0x800F3428)=1,0; h(a1+8)=0x100,-0x100; out=800CF3AC:1:3"]
+  - [room_m0404i, func_801935E0, "a0=0,1,2; h(a1+0x10)=1,2; h(a1+0x12)=-5,-6; out=800CF3AC:1:3"]
+  - [room_m0432i, func_8019702C, "a0=1,2;h(a1+0x10)=0,1,2;h(a1+0x12)=0,5,0x1f,0x7fff,-3,0x20;h(a1+0xE)=0,0x7fe0;h(a1+0xA)=0,1,0x7fff;h(0x800F336C)=4,0;w(0x800F3428)=1,0;h(0x80199504)=0,1"]
+  - [room_m0432i, func_8019702C, "a0=0,1,2,3,-1;h(a1+0x10)=3,-1,0x7fff,2,1,0;h(a1+0x12)=0x20,3"]
+  - [room_m0432i, func_8019702C, "a0=1;h(a1+0x10)=1;h(0x80199504)=0,1,0x100,-1"]
+  - [room_m0429i, func_80196748, "a0=1,2,0; h(a1+8)=0,1,2,3; h(a1+0xA)=0x2E,0x2F,0xE,0xF,0x10,0x11,3,4; h(0x800F336C)=4,0; w(0x800F3428)=1,0"]
+  - [room_m0429i, func_80196748, "a0=1,2; h(a1+8)=-1,0x7fff"]
+  - [room_m0318i, func_80197CBC, "a0=0,1,2,3,-1;h(a1+0xA)=0,1,2,3,0x84,0x85,0x8B,0x8C,0x8D,0x8E;w(0x800E27EC)=0,1"]
+  - [room_m0318i, func_801944E8, "a0=1,2; h(a1+0x10)=0,1,2; h(a1+0x12)=0,11,12,24; h(0x800F336C)=4,0; w(0x800F3428)=1,0; h(0x800942EC)=0x7000,0"]
+  - [room_m0318i, func_801944E8, "a0=0,1,2,3; h(a1+0x10)=-1,0,1,2,3,0x7fff; h(a1+0x12)=0,5"]
+  - [room_m0429i, func_801972EC, "a0=1,2;h(a1+0x10)=0,1,2;h(a1+0x12)=0,5,0x30;h(0x800F336C)=4,0;w(0x800F3428)=1,0"]
+  - [room_m0429i, func_801972EC, "a0=0,1,2,3;h(a1+0x10)=3,0xFFFF,7"]
+  - [room_m0429i, func_80196CCC, "a0=0,1,2; h(a1+0)=0,1,3,0x2E,0x2F; h(a1+2)=0,5,0xFFFF; h(a1+0x10)=0,1"]
+  - [room_m0429i, func_80196CCC, "a0=0xFFFFFFFF,3,5"]
+  - [room_m0429i, func_801960C4, "a0=0,1,2,-1,3; h(a1+8)=0,5,0xC,0x10,0x18,0x19,0x20,0x21,0xFFF0; h(a1+0xA)=0,0x14; w(0x800F32D0)=0x80120000; w(0x80120008)=0x80121000; w(0x80121000)=0x80122000; w(0x80122018)=0x80123000; h(0x80123000)=1; w(0x800E2368)=0x80124000; h(0x8012400C)=0x0100"]
+  - [room_m0429i, func_801960C4, "a0=0; w(0x800F32D0)=0x80120000; w(0x80120008)=0x80121000,0; w(0x80121000)=0x80122000,0; w(0x80122018)=0x80123000; h(0x80123000)=1,2; w(0x800E2368)=0x80124000; h(0x8012400C)=0x0100,0"]
+  - [room_m0429i, func_801960C4, "a0=0,1,2; h(a1+8)=0,5,0xC,0x10,0x18,0x19,0x20,0x21; h(a1+0xA)=0,0x14; w(0x800F3428)=1,0"]
+  - [room_m0318i, func_80198268, "a0=1,2; h(a1+0x10)=0,1,2; h(a1+0x12)=0,3,9,0x17,0x30"]
+  - [room_m0318i, func_80198268, "a0=0,1,2,3; h(a1+0x10)=3,0xFFFF"]
+  - [room_m0318i, func_80197618, "a0=1,2; h(a1+0x10)=0,1,2; h(a1+0x12)=0,11,24; h(0x800F336C)=4,0; w(0x800F3428)=1,0; h(0x800942EC)=0x7000,0"]
+  - [room_m0318i, func_80197618, "a0=0,1,2; h(a1+0x10)=0,1,2,5; h(a1+0x12)=5,0xFFF0; h(0x800942EC)=0x8000,0x7FFF"]
+  - [room_m0318i, func_80197618, "a0=1,2; h(a1+0x10)=0xFFFF,0,1,2; h(a1+0x12)=3,0x20; h(a1+6)=0x8000,0x4000"]
+  - [room_m0318i, func_80197618, "a0=2; h(a1+0x10)=1; h(a1+0x12)=1,2,3,0xFFF0,7,9; h(a1+6)=0x8000,0x7FFF,0xC000,0x1234,0xF000,0x00FF"]
+  - [room_m0318i, func_80194AAC, "a0=1;a1=0x80130000;w(0x800F33E0)=0x80150000;h(a1+8)=0,1,2,3,0xFFFF;h(a1+0xA)=0,1,0xE,0xF,0x16,0x17,0x18,0x1E,0x1F,0x7FFF,0xFFFF;r(0x800CE610)=0,0x80140000"]
+  - [room_m0318i, func_80194AAC, "a0=0;a1=0x80130000;a2=0x80120000;w(0x800F33E0)=0x80150000;w(a2+0)=5,0x105;w(a2+4)=7;w(0x8009D20C)=0x80110000,0;w(0x8009D254)=0x80110000,0x80110300;w(0x80110000)=0x80110100,0;w(0x80110004)=0,0x80110200;w(0x80110200)=0x80110100;w(0x80110204)=0;h(0x8011020C)=0x0507;w(0x80110110)=1,0,0xFFFFFFFF;h(0x8011000C)=0x0507,0x0705,0x0505,0x0707"]
+  - [room_m0318i, func_80194AAC, "a0=2;a1=0x80130000;w(0x800BCFA4)=0x80140000;h(a1+0xC)=0,5,0xFFFB;w(0x800E27EC)=0,1;h(0x800E11EA)=0,3"]
+  - [room_m0318i, func_80194AAC, "a0=-1,3"]
+  - [room_m0432i, func_8019485C, "a0=1,2;h(a1+0x10)=0,1,2,3;h(a1+0x12)=0,5,0x1f,0x20,7,8,0xf,0x10,-3,0x7ff0,0x1e;h(0x800F336C)=4,0;w(0x800F3428)=1,0"]
+  - [room_m0432i, func_8019485C, "a0=0,1,2,3;h(a1+0x10)=-1,3,4"]
+# a1 is pinned outside the overlay code: an unpinned seeded a1 can point into the body's own bytes
+# (m0432i 80193940 seed 104: the record stores rewrite code the oracle then runs).
+  - [room_m0432i, func_80193940, "a0=1,2;a1=0x80101000;h(a1+0x10)=0,1,2;h(a1+0x12)=0,5,0xf,0x10,0x17,0x18,-3,0x7ff0;h(a1+0xA)=0,1,0x7fff;h(0x800F336C)=4,0;w(0x800F3428)=1,0"]
+  - [room_m0432i, func_80193940, "a0=0,3,1,2,-1,0x10;a1=0x80101000;h(a1+0x10)=3,-1,0x7fff,2,1,0;h(a1+0x12)=0x20,3"]
+  - [room_m0432i, func_80193940, "a0=2;a1=0x80101000;h(a1+0x10)=0,1,2,5;h(a1+0x12)=0,1,0x17,0x18,0x1f,0xffff,0x8000,0x7fff;w(0x800E27EC)=0,0x41;h(0x800E11EA)=0,1;h(0x800E11FA)=0,1;w(0x800F3428)=1,0"]
+  - [room_m0432i, func_80193940, "a0=1;a1=0x80101000;h(a1+0x10)=0,1,2,5,-1;h(a1+0x12)=0xf,0x10,0x17,0x18,0xffff,0x8000;h(a1+8)=-33,0x7fff,0;h(a1+0xA)=1,0x8000,0x7fff;h(a1+2)=0x7000,0x8000;h(0x800942EC)=0x100"]
+  - [room_m0318i, func_80195D20, "a0=1,2,0,-1,3; a1=0x80110000; w(0x800E27EC)=0,1,2,3,4,5,8,0x20,0x21,-1; w(0x800B0E64)=1,0; r(0x800CE610)=0x80120000"]
+  - [room_m0318i, func_80195D20, "a0=0,1,2,3; a1=0x80110000; w(0x800E27EC)=0,1,2,3,4,8,0x21,0x20,5,7,-1; w(0x800B0E64)=1,0; h(0x800F336C)=4,0; w(0x800F3428)=1,0"]
+  - [room_m0273i, func_80194E6C, "a0=1; a1=0x80180800; h(0x8018080E)=0; h(0x80180862)=2,8; h(0x8018080C)=0,5,-5; h(0x80180802)=-400,-200,100; w(0x8019ACA4)=0; w(0x8019ACA8)=0; h(0x800942EC)=0,-200; h(0x8019AEEC)=-1000,1000; h(0x80180A0E)=3,4; r(0x8005186C)=0x10,0x500; h(0x8019AEE8)=0,5; w(0x8009D254)=0x80180A00; w(0x80180A00)=0x80180E00; w(0x80180C38)=0x80180F00; w(0x800F32D0)=0x80180000; w(0x80180008)=0x80180100; w(0x80180100)=0x80180200,0"]
+  - [room_m0273i, func_80194E6C, "a0=1,0,3; a1=0x80180800; h(0x8018080E)=1; h(0x80180862)=0,1,5,0x7FFF"]
+  - [room_m0273i, func_80194E6C, "a0=2; a1=0x80180800; h(0x8018080E)=0,1; h(0x80180862)=0,1,2,5; h(0x80180860)=0,3,7; w(0x800E27EC)=0,5,0x10,0x11,0x20; h(0x800966EC)=-1000,1000"]
+  - [room_m0432i, func_80195B40, "a0=0,1,2; h(a1+8)=0,1,2; h(a1+0xA)=0,1,5,6,19,29; w(0x800B0E64)=0,1; w(0x800E27EC)=0,1"]
+  - [room_m0432i, func_80195B40, "a0=-1,3,0x7FFFFFFF,5"]
+  - [room_m0432i, func_80195B40, "a0=2; h(a1+8)=1; h(a1+0xA)=1,7; h(0x800F336C)=3,4; w(0x800F3428)=0,1"]
+  - [room_m0318i, func_80196E4C, "a0=0,1,2,3,-1;h(a1+6)=0,1;w(a2+0)=0,1;w(0x800E27EC)=0,1"]
+  - [room_m0318i, func_80196E4C, "a0=1;h(a1+6)=0,1,2,0x7FFF,0xFFFF;w(a2+0)=0,1,-1"]
+  - [room_m0318i, func_80196E4C, "a0=2;w(0x800E27EC)=0,1,0x10,0x7FFFFFFF,-1;h(0x800F336C)=4,0;w(0x800F3428)=1,0"]
+  - [room_m0318i, func_80196E4C, "a0=0,3,-1,0x7FFFFFFF;h(a1+0)=0,6;w(a2+0)=0"]
+  - [room_m0432i, func_8019408C, "a0=0,1,2;h(a1+8)=0,1,2;h(a1+0xA)=0,1,0x17,0x18,0x1f,6;h(a1+0xC)=0,5"]
+  - [room_m0432i, func_8019408C, "a0=0,1,3,-1,1,2; h(a1+8)=1,0,3,-1,2; h(a1+0xA)=0x18,5,0x17; w(0x800F32D0)=0x80120000; w(0x80120008)=0x80121000; w(0x80121000)=0x80122000; w(0x80122018)=0x80123000; w(0x800E2368)=0x80124000; w(0x8009D254)=0x80125000; w(0x80125000)=0x80126000; h(0x8012400C)=0x0100; w(0x80122000)=0x01000000,0; h(0x80123000)=1,0"]
+  - [room_m0432i, func_8019408C, "a0=1; h(a1+8)=1; h(a1+0xA)=0x1f,0x7fff,0x20; w(0x800F32D0)=0x80120000; w(0x80120008)=0x80121000; w(0x80121000)=0x80122000; w(0x80122018)=0x80123000; w(0x800E2368)=0x80124000; w(0x8009D254)=0x80125000; w(0x80125000)=0x80126000; h(0x8012400C)=0x0100; w(0x80122000)=0x01000000,0"]
+  - [room_m0432i, func_80194F60, ""]
+  - [room_m0432i, func_80194F60, "a0=1; w(0x800F32D0)=0x80120000; w(0x80120008)=0x80121000; w(0x80121000)=0x80122000; w(0x80122018)=0x80123000; h(0x80123000)=1; w(0x800E2368)=0x80124000; w(0x8009D254)=0x80125000; w(0x80125000)=0x80126000; w(0x800E27EC)=0x10,0x11,0x1B,0x1C,0x1D,0x1F,0x20,0x21; h(0x8012400C)=0x0100,0; w(0x80122000)=0x01000000,0; r(0x80071A54)=-7,5,100"]
+  - [room_m0432i, func_80194F60, "a0=0; w(0x800F32D0)=0x80120000; w(0x80122018)=0x80123000; w(0x800E2368)=0x80124000; w(0x8009D254)=0x80125000; w(0x80125000)=0x80126000; w(0x80120008)=0x80121000,0; w(0x80121000)=0x80122000,0; h(0x80123000)=1,0,2; h(0x8012400C)=0x0100,0; r(0x800CE560)=0,5"]
+  - [room_m0432i, func_80194F60, "a0=3,0xFFFFFFFF"]
+  - [room_m0432i, func_80194F60, "a0=2; w(0x800E27EC)=0x10,0x11,0x20,0x21; r(0x80077CF4)=-100,-33,100,4000; w(0x800F32D0)=0x80120000"]
+  - [room_m0429i, func_80198914, "a0=0,1,2,-1,3; w(0x800E27EC)=0,3,4,0x14,0x15,0x1C,-1; out=800CE9D4:2"]
+  - [room_m0429i, func_80198914, "a0=1; w(0x800E27EC)=0,5; r(0x800CE610)=0,0x80140000"]
+  - [room_m0318i, func_801988F8, "a0=1; a1=0x80180800; h(a1+0xA)=0,1,0x16,0x17,0x18,0x7FFF,0xFFFF; r(0x800CE610)=0x80180A00,0; r(0x800C6B90)=1,0; r(0x80071A54)=0x1234,-0x1235; r(0x80077DC4)=0x1234,-0x1234; w(0x800E2368)=0x80180000; w(0x8018000C)=0x100,0; w(0x800F32D0)=0x80180100; w(0x80180108)=0x80180200; w(0x80180200)=0x80180300; w(0x80180300)=0x01000000,0x11000000; w(0x800F33E0)=0x80180500; w(0x80180508)=0x80180580; w(0x8009D254)=0x80180600; w(0x80180600)=0x80180700; out=800CE870:2:6"]
+  - [room_m0318i, func_801988F8, "a0=2; a1=0x80180800; h(a1+0xA)=0,1,0x18,0x19,0x7FFF,0xFFFF; w(0x800E27EC)=0,1; w(0x800BCFA4)=0x80180C00; w(0x800F32D0)=0x80180100; w(0x80180108)=0x80180200; out=800CE870:2:6"]
+  - [room_m0318i, func_801988F8, "a0=0; a1=0x80180800; w(0x800B0E64)=0,1; w(0x800E2368)=0x80180000; w(0x8018000C)=0x100,0; w(0x800F32D0)=0x80180100; w(0x80180108)=0x80180200,0; w(0x80180200)=0x80180300,0; w(0x80180318)=0x80180400; h(0x80180400)=1,0; w(0x800F33E0)=0x80180500; w(0x80180508)=0x80180580"]
+  - [room_m0318i, func_801988F8, "a0=-1,3,0x7FFFFFFF; a1=0x80180800"]
+  - [room_m0429i, func_801978EC, ""]
+  - [room_m0429i, func_801978EC, "a0=0;h(0x8013000C)=0x0100,0;w(0x80131008)=0x80132000,0;w(0x80132000)=0x80133000,0;h(0x80134000)=1,2;w(0x800B0E64)=0,5;w(0x800E2368)=0x80130000;w(0x800F32D0)=0x80131000;w(0x80133018)=0x80134000;w(0x8009D254)=0x80135000;w(0x80135000)=0x80136000;w(0x800F33E0)=0x80137000"]
+  - [room_m0429i, func_801978EC, "a0=1;h(a1+8)=0,1,0xFFFF,3;h(a1+0xA)=0,5,0xE,0xF,0x1D,0x1F;r(0x80071A54)=0x1234,-0x1235;r(0x800CE610)=0x80140000,0;r(0x80077CF4)=0x1234,-0x1234;w(0x800E2368)=0x80130000;w(0x800F32D0)=0x80131000;w(0x80131008)=0x80132000;w(0x80132000)=0x80133000;w(0x80133018)=0x80134000;w(0x8009D254)=0x80135000;w(0x80135000)=0x80136000;w(0x800F33E0)=0x80137000"]
+  - [room_m0429i, func_801978EC, "a0=1;h(a1+8)=2;h(a1+0xA)=0,0x17,0x16,5;r(0x80077DC4)=0x1234,-0x1234;h(0x8013000C)=0x0100,0;w(0x80133000)=0x01000000,0x02000000;w(0x800E2368)=0x80130000;w(0x800F32D0)=0x80131000;w(0x80131008)=0x80132000;w(0x80132000)=0x80133000;w(0x80133018)=0x80134000;w(0x8009D254)=0x80135000;w(0x80135000)=0x80136000;w(0x800F33E0)=0x80137000"]
+  - [room_m0429i, func_801978EC, "a0=2;h(a1+0xC)=0,0x20,-5;h(a1+0xA)=0,1;w(0x800E27EC)=1,2"]
+  - [room_m0429i, func_801978EC, "a0=3,-1"]
+  - [room_m0432i, func_80196554, "a1=0x80120000,0x80130100;a0=0,1,2,0xFFFFFFFF,3;h(a1+0x18)=0,1,2,0xFFFF,3;h(a1+0x1A)=0,15;w(0x800E27EC)=0,1"]
+  - [room_m0432i, func_80196554, "a1=0x80120000;a0=2;h(a1+0x18)=1;h(a1+0x1A)=0,15;w(0x800E27EC)=1;r(0x80077DC4)=0xFFFF0000,0xFFFF8000"]
+  - [room_m0432i, func_80198348, "a0=0;a1=0x80101000;a2=0x80102000;w(0x800B0E64)=0,1;w(0x800F33E0)=0x80150000"]
+  - [room_m0432i, func_80198348, "a0=1;a1=0x80101000;a2=0x80102000;h(a1+0x12)=4,5,6,0x26,0x27,-1,0x7FFF;r(0x800C6B90)=0,1;w(0x800E2368)=0x80180400;w(0x8018040C)=0x100,0;w(0x800F32D0)=0x80180000;w(0x80180008)=0x80180100;w(0x80180100)=0x80180200;w(0x80180200)=0x01000000,0x41000000,0x11000000;w(0x8009D254)=0x80180500;w(0x80180500)=0x80180600;w(0x800F33E0)=0x80150000;r(0x800CE610)=0,0x80140000"]
+  - [room_m0432i, func_80198348, "a0=2;a1=0x80101000;h(a1+0x12)=0,1,3,4,5,6,7,12,13,24,25,-1,0x7FFF;h(0x800E11FA)=0,1;h(0x800E11EA)=0,1;w(0x800F3428)=1,0"]
+  - [room_m0432i, func_80198348, "a0=3,-1,0x7FFFFFFF,5;a1=0x80101000;a2=0x80102000"]
+  - [room_m0429i, func_8019549C, "a0=1; h(a1+0x1C)=1,2,0,3,0xFFFF; r(0x800C6B90)=1,0; h(a1+0x1E)=0xA,0xB,0x16,0x17; h(a1+0x18)=0x24; h(a1+0x1A)=0x7FF; h(0x800942EC)=0x1000; r(0x800CFE94)=0x700,0x800; w(0x800F32D0)=0x80120000; w(0x80120008)=0x80121000; w(0x80121000)=0x80122000; w(0x80122000)=0x01000000,0; w(0x8009D254)=0x80123000; w(0x80123000)=0x80124800; w(0x800E2368)=0x80125000; h(0x8012500C)=0x0100,0"]
+  - [room_m0429i, func_8019549C, "a0=2,3,1; h(a1+0x1C)=1,2,0,4; h(a1+0x1E)=0xA,0xB,0x16; h(a1+6)=0,1; h(0x800F336C)=4,0; w(0x800F3428)=1,0; r(0x80077DC4)=-0x100,0x100"]
+  - [room_m0432i, func_8019753C, "a0=0;a1=0x80120000;a2=0x80126000;w(0x800E2368)=0x80121000;h(0x8012100C)=0,0x100;w(0x800F32D0)=0x80122000;w(0x80122008)=0x80123000,0;w(0x80123000)=0x80124000,0;w(0x80124018)=0x80125000;h(0x80125000)=1,2,0"]
+  - [room_m0432i, func_8019753C, "a0=1;a1=0x80120000;h(a1+0x18)=0,1,2;h(a1+0x1A)=0,3,7,8,11,12,15,22,23;w(0x800B0E64)=0,5;w(0x800E27EC)=0,1;w(0x800F33E0)=0x80122000"]
+  - [room_m0432i, func_8019753C, "a0=2;a1=0x80120000;h(a1+0x18)=0,1,2;h(a1+0x1A)=0,3,0x10;w(0x800E27EC)=0,1"]
+  - [room_m0432i, func_8019753C, "a0=3,0xFFFFFFFF,0x80000000,-2"]
+  - [room_m0404i, func_80192540, "a1=0x80130000; a0=1,2; h(a1+0x10)=0..4; r(0x8001CAB0)=0,1; r(0x800C6B90)=0,1; r(0x800CE610)=0,0x80131000; w(0x8012000C)=0x100; w(0x80123000)=0x01000000; w(0x800E2368)=0x80120000; w(0x800F32D0)=0x80121000; w(0x80121008)=0x80122000; w(0x80122000)=0x80123000; w(0x8009D254)=0x80124000; w(0x80124000)=0x80125000; w(0x800F33E0)=0x80127000; w(0x80127008)=0x80128000; h(0x800942EC)=0x1000; w(0x800BCFA4)=0x80126000"]
+  - [room_m0404i, func_80192540, "a1=0x80130000; a0=1; h(a1+0x10)=0; h(a1+0x12)=0,1; h(a1+2)=0x100,0x1000; r(0x800CE610)=0,0x80131000; r(0x800C6B90)=0,1; r(0x8001CAB0)=0,1; w(0x8012000C)=0x100,0; w(0x80123000)=0x01000000,0x02000000; r(0x80071A54)=0x35; w(0x800E2368)=0x80120000; w(0x800F32D0)=0x80121000; w(0x80121008)=0x80122000; w(0x80122000)=0x80123000; w(0x8009D254)=0x80124000; w(0x80124000)=0x80125000; w(0x800F33E0)=0x80127000; w(0x80127008)=0x80128000; h(0x800942EC)=0x1000; w(0x800BCFA4)=0x80126000"]
+  - [room_m0404i, func_80192540, "a1=0x80130000; a0=1; h(a1+0x10)=1; h(a1+0x12)=0,1,0x1E,0x1F; r(0x800CE610)=0,0x80131000; r(0x800C6B90)=0,1; r(0x8001CAB0)=0,1; w(0x8012000C)=0x100,0; w(0x80123000)=0x01000000,0x02000000; r(0x80071A54)=0x35; w(0x800E2368)=0x80120000; w(0x800F32D0)=0x80121000; w(0x80121008)=0x80122000; w(0x80122000)=0x80123000; w(0x8009D254)=0x80124000; w(0x80124000)=0x80125000; w(0x800F33E0)=0x80127000; w(0x80127008)=0x80128000; h(0x800942EC)=0x1000; w(0x800BCFA4)=0x80126000"]
+  - [room_m0404i, func_80192540, "a1=0x80130000; a0=1; h(a1+0x10)=2,3; h(a1+0x12)=0,0xF,0xB; h(a1+2)=0x100,0x2000; h(a1+8)=0x1234,0xF000; h(a1+0xC)=0x7FFF,0x8001; h(a1+0xA)=0x10,0xFF00; w(0x800E2368)=0x80120000; w(0x800F32D0)=0x80121000; w(0x80121008)=0x80122000; w(0x80122000)=0x80123000; w(0x8009D254)=0x80124000; w(0x80124000)=0x80125000; w(0x800F33E0)=0x80127000; w(0x80127008)=0x80128000; h(0x800942EC)=0x1000; w(0x800BCFA4)=0x80126000"]
+  - [room_m0404i, func_80192540, "a1=0x80130000; a0=1; h(a1+0x10)=4; h(a1+0x12)=0,1,0x2C,0x2D; r(0x800CE610)=0,0x80131000; r(0x800C6B90)=0,1; w(0x8012000C)=0x100,0; w(0x80123000)=0x01000000,0x02000000; r(0x80071A54)=0,0x35; w(0x800E2368)=0x80120000; w(0x800F32D0)=0x80121000; w(0x80121008)=0x80122000; w(0x80122000)=0x80123000; w(0x8009D254)=0x80124000; w(0x80124000)=0x80125000; w(0x800F33E0)=0x80127000; w(0x80127008)=0x80128000; h(0x800942EC)=0x1000; w(0x800BCFA4)=0x80126000"]
+  - [room_m0404i, func_80192540, "a1=0x80130000; a0=2; h(a1+0x10)=0,1,2,3,4; h(a1+0x12)=3,0xB; w(0x800E27EC)=0,1; h(0x800F336C)=4,0; w(0x800F3428)=1,0; r(0x80071A54)=0,1; h(0x800F336A)=7; h(0x800F3368)=0x1234; r(0x80077CF4)=0x1234; r(0x80077DC4)=0x555; w(0x800E2368)=0x80120000; w(0x800F32D0)=0x80121000; w(0x80121008)=0x80122000; w(0x80122000)=0x80123000; w(0x8009D254)=0x80124000; w(0x80124000)=0x80125000; w(0x800F33E0)=0x80127000; w(0x80127008)=0x80128000; h(0x800942EC)=0x1000; w(0x800BCFA4)=0x80126000"]
+  - [room_m0404i, func_80192540, "a1=0x80130000; a0=2; h(a1+0x10)=2,3,4,5,0xFFFF; h(a1+0x12)=7,0xFFF3,0x20; r(0x80077CF4)=0x1235,-0x1235; r(0x80071A54)=0,1; h(0x800F336A)=7,-7; h(0x800F3368)=0x9000; h(0x800F336C)=4; w(0x800F3428)=1; w(0x800E27EC)=0x7FFF; w(0x800E2368)=0x80120000; w(0x800F32D0)=0x80121000; w(0x80121008)=0x80122000; w(0x80122000)=0x80123000; w(0x8009D254)=0x80124000; w(0x80124000)=0x80125000; w(0x800F33E0)=0x80127000; w(0x80127008)=0x80128000; h(0x800942EC)=0x1000; w(0x800BCFA4)=0x80126000"]
+  - [room_m0404i, func_80192540, "a1=0x80130000; a0=0,3,2,1; h(a1+0x10)=0,1,5,0xFFFF; r(0x80077CF4)=-0x1235,0x1235; w(0x800E27EC)=3,0x7FFFFFFF; w(0x800E2368)=0x80120000; w(0x800F32D0)=0x80121000; w(0x80121008)=0x80122000; w(0x80122000)=0x80123000; w(0x8009D254)=0x80124000; w(0x80124000)=0x80125000; w(0x800F33E0)=0x80127000; w(0x80127008)=0x80128000; h(0x800942EC)=0x1000; w(0x800BCFA4)=0x80126000"]
+  - [room_m0256i, func_801940B0, "a0=1; a1=0x80180800; h(a1+6)=0,1,2; h(a1+0x14)=1; h(a1+0xE)=0; r(0x800C6B90)=0; r(0x800CE610)=0x80180A00,0; r(0x80071A54)=0x1234,-0x1235; h(a1+2)=0x7000,0x100; h(0x800942EC)=0x500; h(a1+0x10)=0x1A,0x1B,0x32; w(0x800E27EC)=0x24,0x23,0x51,0x50; h(a1+0x12)=0x7FF,0x801,0; w(0x800E2368)=0x80180000; w(0x800F32D0)=0x80180100; w(0x80180108)=0x80180200; w(0x80180200)=0x80180300; w(0x800F33E0)=0x80180500; w(0x80180508)=0x80180580; w(0x8009D254)=0x80180600; w(0x80180600)=0x80180700; out=800CE870:2:6,800CFAA8:2:6"]
+  - [room_m0256i, func_801940B0, "a0=1; a1=0x80180800; h(a1+6)=0,1,2; h(a1+0x14)=1; h(a1+0x10)=0x1B; r(0x800C6B90)=1,0; r(0x800CE610)=0x80180A00,0; h(a1+0xE)=0,1,0xF,0x10,0x7FFF; h(a1+2)=0x7000,0x100; w(0x8018000C)=0x100,0; w(0x80180300)=0x01000000,0x11000000; w(0x800E27EC)=0x24,0x70; r(0x80071A54)=0x1234; h(0x800942EC)=0x500; w(0x800E2368)=0x80180000; w(0x800F32D0)=0x80180100; w(0x80180108)=0x80180200; w(0x80180200)=0x80180300; w(0x800F33E0)=0x80180500; w(0x80180508)=0x80180580; w(0x8009D254)=0x80180600; w(0x80180600)=0x80180700; out=800CE870:2:6,800CFAA8:2:6"]
+  - [room_m0256i, func_801940B0, "a0=1; a1=0x80180800; h(a1+0x14)=0; h(a1+6)=0,1,0x7FFF,0xFFFF; r(0x800CE610)=0x80180A00,0; r(0x80071A54)=0x1234,-1; w(0x800E2368)=0x80180000; w(0x800F32D0)=0x80180100; w(0x80180108)=0x80180200; w(0x80180200)=0x80180300; w(0x800F33E0)=0x80180500; w(0x80180508)=0x80180580; w(0x8009D254)=0x80180600; w(0x80180600)=0x80180700"]
+  - [room_m0256i, func_801940B0, "a0=1; a1=0x80180800; h(a1+0x14)=2; h(a1+0x16)=0xE,0xF,0x7FFF; h(a1+2)=0x7000,0x100; h(0x800942EC)=0x500; h(a1+8)=0x64,0xFF9C; h(a1+0xC)=0x64,0xFF9C; h(a1+0xA)=1,0x8000; w(0x800E2368)=0x80180000; w(0x800F32D0)=0x80180100; w(0x80180108)=0x80180200; w(0x80180200)=0x80180300; w(0x800F33E0)=0x80180500; w(0x80180508)=0x80180580; w(0x8009D254)=0x80180600; w(0x80180600)=0x80180700"]
+  - [room_m0256i, func_801940B0, "a0=1; a1=0x80180800; h(a1+0x14)=3,4,5,6,0xFFFF; h(a1+0x16)=8,9,0xE,0xF,0x16,0x17,0x7FFF; r(0x800C6B90)=1,0; w(0x8018000C)=0x100,0; w(0x80180300)=0x01000000,0x11000000; w(0x800E2368)=0x80180000; w(0x800F32D0)=0x80180100; w(0x80180108)=0x80180200; w(0x80180200)=0x80180300; w(0x800F33E0)=0x80180500; w(0x80180508)=0x80180580; w(0x8009D254)=0x80180600; w(0x80180600)=0x80180700; out=800CE870:2:6,800CFAA8:2:6"]
+  - [room_m0256i, func_801940B0, "a0=2; a1=0x80180800; w(0x800BCFA4)=0x80180C00; h(a1+0x14)=1,2,3,4,5; h(a1+0x16)=0,0xC,0xD,0x7FFF,0xFFFF,5; h(0x800F336C)=4,0; w(0x800F3428)=1,0; w(0x800E27EC)=1,0; w(0x800E2368)=0x80180000; w(0x800F32D0)=0x80180100; w(0x80180108)=0x80180200; w(0x80180200)=0x80180300; w(0x800F33E0)=0x80180500; w(0x80180508)=0x80180580; w(0x8009D254)=0x80180600; w(0x80180600)=0x80180700"]
+  - [room_m0256i, func_801940B0, "a0=0,3,-1,0x7FFFFFFF; a1=0x80180800"]
+  - [room_m0256i, func_801940B0, "a0=2; a1=0x80180800; w(0x800BCFA4)=0x80180C00; h(a1+0x14)=0,6,7,0xFFFF,0x8001"]
+  - [room_m0256i, func_801940B0, "a0=1; a1=0x80180800; h(a1+0x14)=1; h(a1+0xE)=0; h(a1+0x10)=0x1B; r(0x800C6B90)=0; r(0x800CE610)=0; r(0x80077CF4)=0x100,-0x100,0x7FFFFFFF,-0x7FFFFFFF; w(0x80195EF0)=0x1000,-0x1000,0x7FFFFFFF; w(0x800E2368)=0x80180000; w(0x800F32D0)=0x80180100; w(0x80180108)=0x80180200; w(0x80180200)=0x80180300; w(0x800F33E0)=0x80180500; w(0x80180508)=0x80180580; w(0x8009D254)=0x80180600; w(0x80180600)=0x80180700; out=800CE870:2:6,800CFAA8:2:6"]
+  - [room_m0429i, func_80192F9C, "a0=0,3; w(0x800F32D0)=0x80100000; w(0x800F33E0)=0x80100600; w(0x800B0E64)=1,5"]
+  - [room_m0429i, func_80192F9C, "a0=0xFFFFFFFF,5"]
+  - [room_m0429i, func_80192F9C, "a0=1; w(0x800F32D0)=0x80100000; w(0x800F33E0)=0x80100600; h(a1+0x18)=0,1,2,3,4,5; h(a1+0x1A)=0,1,0xF,0x10,0x16,0x17,0x1F; w(0x800B0E64)=0,1; r(0x800CE610)=0,0x80100800"]
+  - [room_m0429i, func_80192F9C, "a0=1; h(a1+0x18)=3; h(a1+0x1A)=0xF,0x1F; w(0x800F32D0)=0x801E0000; w(0x801E0008)=0x801E0100; w(0x801E0100)=0x801E0200; w(0x801E0200)=0x01000000,0x02000000; w(0x800E2368)=0x801E0300; h(0x801E030C)=0x100,0; w(0x8009D254)=0x801E0400; w(0x801E0400)=0x801E0500; w(0x800F33E0)=0x801E1000; r(0x800C6B90)=1,0; r(0x800CE610)=0x80100800"]
+  - [room_m0429i, func_80192F9C, "a0=2; w(0x800BCFA4)=0x80100000; h(a1+0x18)=0,1,2,3,4,5; w(0x800E27EC)=0,1; h(a1+0x1A)=0,5,9,0x10"]
+  - [room_m0429i, func_80192F9C, "a0=2; w(0x800BCFA4)=0x80100000; h(a1+0x18)=0,1,2,3,4,5"]
+  - [exe, func_800C3324, "h(a0+0x28)=0x80,0x100,0x4000,0; w(a0+0x20)=0xFFFFFFFF,0x01010101,0x00FF0000; h(0x800F337A)=0,1; h(a0+0)=0x5000,0xB000; h(a0+2)=0x4000,0xC000"]
+  - [exe, func_800C689C, "h(a0+0)=0,1;h(a0+4)=0,3;h(a0+8)=0,5;h(a0+0xC)=0,7;h(a0+0x10)=0,2;h(a0+0x14)=0,9;h(a0+2)=0,4;h(a0+6)=0,1"]
+  - [exe, func_800D5A00, "a0=0,1,2,3;w(0x800E27EC)=0,4,10,11,12,13,0x1F,0x20,0xFFFFFFF9"]
+  - [exe, func_800D5A00, "a0=0xFFFFFFFF,0x80000000"]
+  - [exe, func_800D8388, "a0=0,1,2,3;w(0x800E27EC)=0,1,-3,0x2A,0x2C,0x45,0x46,0x2B,-1;out=800CE870:2:8"]
+# func_80057834 (Items -> Use, matched leaf; hand port retired for the generated
+# TU): the D_800BEEAC record's +0xE kind through every switch arm, the
+# D_8009D028 history arm with func_800512AC(0, &local), and the other id ranges
+# (func_8005DB44, D_8009DE64) and out-of-range indices (p = 0).
+  - [exe, func_80057834, "a0=0; w(0x8009D050)=4; w(0x8009D048)=0x80180000; h(0x80180000)=0x100; w(0x8009D028)=0; h(0x800C0EBA)=1,2,4,5,6,12,13,14,3,0"]
+  - [exe, func_80057834, "a0=0,2; w(0x8009D050)=4; w(0x8009D048)=0x80180000; h(0x80180000)=0x100,5,0x203,-7; h(0x80180004)=7,0x150; w(0x8009D028)=1"]
+  - [exe, func_80057834, "a0=0,5,-1; w(0x8009D050)=4; w(0x8009D048)=0x80180000; h(0x80180000)=5,0x203,0x300,0x17F,0x180; w(0x8009D028)=0"]
+# func_800466C0 (Equipment list window, matched leaf; hand port retired for the
+# generated TU): confirm with D_8009CF1C set (stock sum, item flag 0x40), confirm
+# with it clear (func_80054240 fail, the func_8005B89C confirm window at both
+# widths, func_80046574), and the cancel paths (D_8009CF0C, key 0x40, the
+# window-6 equality arm).
+  - [exe, func_800466C0, "a1=0x10000; w(0x8009CF1C)=1; w(0x800A1888)=0,1; r(0x8005332C)=0x80180000; h(0x80180004)=0,0x4000"]
+  - [exe, func_800466C0, "a1=0x10000; w(0x8009CF1C)=0; r(0x80054240)=1,0; r(0x8005B89C)=0,1; r(0x8005F1A0)=50,200"]
+  - [exe, func_800466C0, "a1=0x1040,0x40,0x1000,0; w(0x8009CF0C)=1,0; w(0x8009CF1C)=1,0; r(0x80062CC4)=0x80180100; r(0x80062A34)=0x80180100,0x80180200; w(0x80180168)=0,1"]
+# func_8005A318 (Equipment tool transfer, generated E21 TU): sel() through the
+# D_800C0E48 table to the D_800BEEAC records 0x100 (src, 0x800C0EAC) and 0x101
+# (dst, 0x800C0ECC): an attribute-slot move (class match, no match, free slot,
+# full), the slot < 0 stat merge and HP spill per item-kind bucket, and the
+# cnt < 999 tail with both flag modes.  func_80059A40(&tmp) writes the tmp
+# that func_80054E4C then takes (out=), as on retail.
+  - [exe, func_8005A318, "a0=0; a1=0; a2=0; a3=999; w(0x8009D098)=0; w(0x8009D09C)=0; w(0x8009D090)=0; w(0x8009D094)=1; r(0x80052F70)=4; h(0x800C0E48)=0x100; h(0x800C0E4A)=0x101; h(0x800C0EC0)=0x2104,0x0004; h(0x800C0EE0)=0x2102,0x4102,0x0002,0x4101; h(0x800C0EE2)=0x0000,0x0101"]
+  - [exe, func_8005A318, "a0=0; a1=-1; a2=0; a3=999; w(0x8009D098)=0; w(0x8009D09C)=0; w(0x8009D090)=0; w(0x8009D094)=1; r(0x80052F70)=4; h(0x800C0E48)=0x100; h(0x800C0E4A)=0x101; h(0x800C0EB2)=5,1,0x14,9,0; h(0x800C0EB4)=0x3200,0x0100; h(0x800C0EB6)=60,900"]
+  - [exe, func_8005A318, "a0=0,1; a1=-1; a2=0,1,2,3; a3=0; w(0x8009D098)=0; w(0x8009D09C)=0; w(0x8009D090)=0; w(0x8009D094)=1; r(0x80052F70)=4; h(0x800C0E48)=0x100; h(0x800C0E4A)=0x101; r(0x8005DB44)=0x80180000; h(0x80180006)=12,13; h(0x800C1EB8)=5,0; out=80059A40:0:4"]
+  - [exe, func_800D8388, "a0=-1,3,0x7FFFFFFF,2;w(0x800E27EC)=0,0x2D"]
+  - [exe, func_800C83A0, "h(a2+4)=0,0x1234,0xFFFF; h(a2+8)=0,0x7FFF,0x8000,0x100; h(a2+0xA)=0,0x7FFF,0x8000,-1; w(a2+0x1C)=0x7FFF0000,0,0x12345678,0x80000000"]
+  - [exe, func_800C499C, "a2=0,1,0x100; h(0x800F337A)=0,1; h(a0+0x10)=0,0x100,0x400,0x800,0xC00,0xF00,0xFFF,0xF000,0xE000,0xC000,0xA000,0x8000"]
+  - [exe, func_800C9398, "h(a2+4)=0,1,0xFFFF;h(a2+8)=0,0x1234,0xF000;h(a2+0xA)=0,0x7FFF,0x8001;h(a2+0xC)=0,5,0xFFFF"]
+  - [exe, func_800D6514, "a0=0,1,2;w(0x800E27EC)=0,1,5,0x17,0x18,-3;w(0x800F3428)=0,1;h(0x800F336C)=4,0;h(0x800E11E4)=0,3"]
+  - [exe, func_800D6514, "a0=-1,3"]
+  - [exe, func_8004A9A0, "a1=0x1000; w(0x8009CFD0)=5,6,0,1,2; w(0x8009CFDC)=3000,7,0; w(0x800A18EC)=5,0,4000; w(0x800A18F0)=5,0,4000"]
+  - [exe, func_8004A9A0, "a1=0x4000; w(0x8009CFD0)=0,1,2,5,6; w(0x8009CFD8)=100,5000,0; h(0x800A1A0E)=0,998,999; h(0x800A1A10)=0,999; h(0x800A1A12)=0,999; out=8005BA78:2:4"]
+  - [exe, func_8004A9A0, "a1=0x10000,0x40,0; w(0x8009CFD0)=0,3,5"]
+  - [exe, func_8004A9A0, "a1=0x10000; w(0x8009CFD0)=0,1,2; r(0x80052F0C)=0"]
+  - [exe, func_8004A9A0, ""]
+  - [exe, func_8002AA98, "h(0x8009CE74)=0; w(0x8009D254)=0x80150000; h(0x8015000E)=0x0013,0x0513,0x0012; h(0x80150016)=0,5,0x0105; w(0x80150098)=0x100,0xFFFFFFFF"]
+  - [exe, func_8002AA98, "h(0x8009CE74)=1; h(0x8009CE70)=0,3; w(0x8009D254)=0x80150000; h(0x80150250)=0x1001; h(0x800B0D88)=0x2002"]
+  - [exe, func_8002AA98, "h(0x8009CE74)=2; w(0x8009D254)=0x80150000; h(0x80150252)=0,1; h(0x800B0D8A)=0,1; h(0x8015002A)=0x0111,0xF234; h(0x8015002E)=0x0222; h(0x80150032)=0x8333"]
+  - [exe, func_8002AA98, "h(0x8009CE74)=3; h(0x8009CE70)=0,2; w(0x8009D254)=0x80150000; h(0x80150250)=0x1001; h(0x800B0D88)=0x2002"]
+  - [exe, func_8002AA98, "h(0x8009CE74)=4; h(0x8009CE70)=0x10,0x11,5; w(0x8009D254)=0x80150000; w(0x80150098)=0x100,0xFFFFFFFF"]
+  - [exe, func_8002AA98, "h(0x8009CE74)=5; h(0x8009CE70)=0,4; w(0x8009D254)=0x80150000; h(0x80150250)=0x1001"]
+  - [exe, func_8002AA98, "h(0x8009CE74)=6; w(0x8009D254)=0x80150000; h(0x8015000E)=0x0300,0x0700; h(0x8015001A)=3,9,0x0103; w(0x8009D278)=0x80160000; h(0x80160012)=0x0009,0x00F3"]
+  - [exe, func_8002AA98, "h(0x8009CE74)=7; w(0x8009D254)=0x80150000; w(0x8009D278)=0x80160000; h(0x8009D2A0)=0,1; h(0x8016001C)=0x1235,0x9ABC; w(0x80160008)=0x12345678,0x87654321; h(0x80150210)=0x0111; h(0x80150212)=0x0222; w(0x8009D28C)=3; h(0x800B00EC)=0xFFFF; h(0x800B00FC)=0xFFFF; h(0x800B0110)=0xFFFF; h(0x800B0120)=0xFFFF; h(0x800B0134)=0xFFFF; h(0x800B0144)=0xFFFF; h(0x800B017C)=0xFFFF; h(0x800B018C)=0xFFFF"]
+  - [exe, func_8002AA98, "h(0x8009CE74)=8,0xFF"]
+  - [exe, func_800494AC, "a1=0x10000; w(0x8009CFC4)=0,5,-1; w(0x8009CFC8)=0,1,2,3; w(0x8009CFCC)=1,998,2000; w(0x8009CF0C)=0,1"]
+  - [exe, func_800494AC, "a1=0x10000; w(0x8009CFC4)=-1; w(0x8009CF1C)=1,0; w(0x8009CF30)=0,1; w(0x8009CF34)=0,1; w(0x8009CF38)=0,1; w(0x800A1888)=0,1; w(0x8009CF0C)=0,1"]
+  - [exe, func_800494AC, "a1=0x1000,0x40,0; w(0x8009CF34)=0,1; w(0x8009CF38)=0,1; w(0x8009CF1C)=0,1; w(0x8009CF30)=0,1; w(0x8009CF0C)=0,1"]
+  - [exe, func_800494AC, "a1=0x1000,0x40,0x10000; r(0x80062A34)=0; w(0x8009CF34)=0,1; w(0x8009CF1C)=0,1; w(0x8009CF30)=0,1"]
+  - [exe, func_800494AC, ""]
+  - [exe, func_800DD9E4, "a0=1; h(a1+8)=0,1,2,3,-1"]
+  - [exe, func_800DD9E4, "a0=2; h(a1+8)=0,1,2; h(a1+10)=0,27,28,40,7,8; h(0x800F336C)=4,0; w(0x800F3428)=0,1; out=800CF3AC:1:4"]
+  - [exe, func_800DD9E4, "a0=0,3,-1"]
+  - [exe, func_800DB6BC, "a0=0"]
+  - [exe, func_800DB6BC, "a0=1; w(0x800E27EC)=0,10,24,25,50,71,72,80"]
+  - [exe, func_800DB6BC, "a0=2; w(0x800E27EC)=0,24,30,39,40,60; out=800CF3AC:1:4"]
+  - [exe, func_800DB6BC, "a0=3,-1"]
+  - [exe, func_800DC058, "a0=0,1,2,3,-1;w(a1+8)=0,1,2;w(a1+0xC)=-2,-1,5,0xB,0xC,0x17,0x18;w(0x800E27EC)=0x3F,0x40"]
+  - [exe, func_800D5290, "a0=0,1,2,3,-1; w(0x800E27EC)=0,1,5,6,8,9,0x10,0x11,0x17,0x18,-3,0x2000000; h(0x800F336C)=4,0; w(0x800F3428)=1,0"]
+  - [exe, func_800D5290, "a0=2,1,0; w(0x800E27EC)=3,4,8,9,12,16,17,-4,-1,0x7FFFFFFF,0x80000000,0x400000; h(a1+2)=0,5,0xFFFA,0x8000,0x7FFF; w(a1+8)=0,0x7FFFFFFF,0x80000000,-5"]
+  - [exe, func_800DE0A8, "a0=0,1,2,3,-1;a1=0x80130000;w(0x8009D254)=0x80110000;w(0x80110238)=0x80110400;w(0x800BCFA4)=0x80111000;w(0x800E27EC)=0,1,2,5,6,0x10,0x11,0x18,0x19,0xFFFFFFFF"]
+  - [exe, func_800CAE0C, "h(a2+4)=0,1,0x8001,0xFFFF,0x7FFF; h(a2+8)=0,0x7FFF,0x8000,0x100; h(a2+0xA)=0,-1,0x7FFF; w(a2+0x1C)=0x7FFF0000,0,0x12345678,0x80000000"]
+  - [room_m0156i, func_8018F058, "a0=1,2; h(a1+0x10)=0..5; h(a1+0x12)=0,1,7,8,23; h(0x800F336C)=4,0; w(0x800F3428)=1,0; out=800CFB7C:2,800783E4:4,800CF3AC:1,800CE8F0:3"]
+  - [room_m0156i, func_80192208, "a0=0,1,2; w(0x800E27EC)=1,2,3,32,33,0; w(0x800B0E64)=0,0x80100000"]
+  - [room_m0156i, func_80191B94, "a0=1,2,0; h(a1+0x10)=0,1,2,3,-1; h(a1+0x12)=0,5,19,20,31,32; h(a1+0x6)=0,1; h(0x800F336C)=4,1; w(0x800F3428)=1,0; out=800CFB7C:2,800783E4:4,800CF3AC:1,800CE8F0:3"]
+  - [room_m0162i, func_80192A68, "a0=0,1,2; h(a1+0x10)=0,1,2,3; h(a1+0x12)=0,3,4,15,16; w(0x800E2368)=0x80180000; h(0x80180012)=0,1,2,3; w(0x800F3428)=1,0; h(0x800F336C)=4; out=800CFB7C:2,800783E4:4,800CF3AC:1,800CE8F0:3"]
+  - [room_m0162i, func_801924FC, "a0=1,2,0; h(a1+0x10)=0,1,2,3; w(0x800F32D0)=0x80180000; w(0x80180008)=0x80180100; w(0x80180100)=0x80180200; w(0x80180200)=0x01000000,0x11000000; w(0x800E2368)=0x80180300; w(0x8018030C)=0x100,0; h(a1+0x12)=0,7,8,15,-5; h(a1+0x14)=-1,3; w(0x800E27EC)=1,2,36; h(0x800F336C)=4,1; w(0x800F3428)=1,0; out=800CE870:2,800CFAA8:2,800CFB7C:2"]
+  - [room_m0188i, func_80193300, "a0=1,2,0,3; h(a1+0x10)=0,1,2,3,-1; h(a1+0x12)=0,1,15,16,23,24,-3; h(a1+0x8)=0,31,-33,100; h(a1+0xC)=0,-64,7; h(a1+0x2)=0,-200,300; h(0x800942EC)=0,-100; w(0x800E27EC)=1,7,36; h(0x800F336C)=4,1; w(0x800F3428)=1,0; w(0x800BCFA4)=0x80180000; out=800CF3AC:1"]
+  - [room_m0188i, func_8019251C, "a0=1,2,0; h(a1+0x10)=0,1,2,3,-1; h(a1+0x14)=0,1,2,-1; h(a1+0x12)=0,8,9,15,16,-2; h(a1+0x2)=0,-600,-514,2000; w(0x800E27EC)=1,2,37; h(0x800942EC)=0,100; w(0x800F33E0)=0x80180000; w(0x800F32D0)=0x80180100; w(0x80180108)=0x80180200; w(0x80180200)=0x80180300; w(0x80180300)=0x01000000,0x11000000; w(0x800E2368)=0x80180400; w(0x8018040C)=0x100,0; w(0x8009D254)=0x80180500; w(0x80180500)=0x80180600; h(0x800F336C)=4,1; w(0x800F3428)=1,0; out=800CE870:2"]
+  - [room_m0188i, func_80193BCC, "a0=2,1,0; h(a1+0x10)=0,1,2; h(a1+0x14)=0,3,6,7,9,-1; h(a1+0x12)=0,1,3,4,7,8,23,24; h(0x800F336C)=4,1; w(0x800F3428)=1,0; w(0x800BCFA4)=0x80180000; out=800CE8F0:3,800CF3AC:1"]
+  - [room_m0188i, func_8019479C, "a0=1,2,0; h(a1+0x20)=0,1,2,3; h(a1+0x22)=0,1,7,8,15,16,-1; h(a1+0x2)=0,-100,300; h(a1+0xA)=0,5,-9; h(0x800942EC)=0,100; w(0x800F32D0)=0x80180000; w(0x80180008)=0x80180100; w(0x80180100)=0x80180200; w(0x80180200)=0x01000000,0x11000000; w(0x800E2368)=0x80180300; w(0x8018030C)=0x100,0; w(0x8009D254)=0x80180400; w(0x80180400)=0x80180500; h(0x800F336C)=4,1; w(0x800F3428)=1,0; w(0x800BCFA4)=0x80180600; out=800CE8F0:3,800783E4:4,800CF3AC:1"]
+  - [room_m0188i, func_801951EC, "a0=0,1,2,3; h(a1+0x8)=0,1,6,-1; w(0x800E27EC)=0,1,4; w(0x800F32D0)=0x80180000; w(0x80180008)=0x80180100,0; w(0x80180100)=0x80180200,0; w(0x80180218)=0x80180300; w(0x80180300)=1,2; w(0x800E2368)=0x80180400; w(0x8018040C)=0x100,0; w(0x800F33E0)=0x80180500; out=800CE870:2,800CE9D4:2,800CFB7C:2"]
+  - [room_m0188i, func_801955A0, "a0=1,2,0; h(a1+0x10)=0,1,2; h(a1+0x12)=0,1,15,16,23,24,-3; h(a1+0x8)=0,127,-129,300; h(a1+0xC)=0,-64,255; h(a1+0x2)=0,-200,300; h(a1+0xA)=0,7,-9; h(0x800942EC)=0,-100; w(0x800E27EC)=1,7,36; h(0x800F336C)=4,1; w(0x800F3428)=1,0; out=800CF3AC:1"]
+  - [room_m0188i, func_80195A14, "a0=1,0,2,3; w(0x800E27EC)=0,1,2,3,47,48,49,59,60,61; w(0x800F33E0)=0x80180000; w(0x800F32D0)=0x80180100; out=800CE870:2"]
+  - [room_m0245i, func_801933EC, "a0=1,2,0,3; h(a1+0xA)=0,1,15,16,-3; h(a1+0xC)=0,5,-9; h(a1+0xE)=0,-64,63; h(a1+0x2)=0,-200,300; w(0x800E27EC)=0,1,7; h(0x800F336C)=4,1; w(0x800F3428)=1,0; w(0x800BCFA4)=0x80180600"]
+  # m0245i beam mains: a1 pinned to 0x80180800 (a random d pointer can land in the overlay code the retail interpreter runs; d[0] stores then rewrite it).
+  - [room_m0245i, func_8019368C, "a0=0,1,2,3; a1=0x80180800; h(a1+0x0)=0,8,127,128,-8; w(0x800E27EC)=0,1,2,3,47,48; w(0x800F33E0)=0x80180000; w(0x800F32D0)=0x80180100; h(0x800F336C)=4,1; w(0x800F3428)=1,0; w(0x800BCFA4)=0x80180600; out=800CE8F0:3,800CF3AC:1"]
+  - [room_m0245i, func_80194C54, "a0=1,2,0,3; h(a1+0xA)=0,1,15,16,-3; h(a1+0xC)=0,5,-9; h(a1+0xE)=0,-64,63; h(a1+0x2)=0,-200,300; w(0x800E27EC)=0,1,7; h(0x800F336C)=4,1; w(0x800F3428)=1,0; w(0x800BCFA4)=0x80180600"]
+  - [room_m0245i, func_80194EF4, "a0=0,1,2,3; a1=0x80180800; h(a1+0x0)=0,8,127,128,-8; w(0x800E27EC)=0,1,2,3,47,48; w(0x800F33E0)=0x80180000; w(0x800F32D0)=0x80180100; h(0x800F336C)=4,1; w(0x800F3428)=1,0; w(0x800BCFA4)=0x80180600; out=800CE8F0:3,800CF3AC:1"]
+  - [room_m0245i, func_80192500, "a0=1,2,0; h(a1+0x14)=0,1,2,3; h(a1+0x16)=0,1,3,12,13,19,20,23,24; h(a1+0xE)=0,1,15; h(a1+0x6)=0,1; h(a1+0x10)=0,59,60; w(0x800E27EC)=0,1,2,3,31,32; w(0x800F32D0)=0x80180000; w(0x80180008)=0x80180100; w(0x80180100)=0x80180200; w(0x80180200)=0x01000000,0x11000000; w(0x800E2368)=0x80180300; w(0x8018030C)=0x100,0; w(0x8009D254)=0x80180400; w(0x80180400)=0x80180500; h(0x800F336C)=4,1; w(0x800F3428)=1,0; w(0x800BCFA4)=0x80180600; out=800CE9D4:2,800CFAA8:2,800CE870:2,800CFB7C:2"]
+  - [room_m0245i, func_80193D7C, "a0=1,2,0; h(a1+0x14)=0,1,2,3; h(a1+0x16)=0,1,3,12,13,19,20,23,24; h(a1+0xE)=0,1,15; h(a1+0x6)=0,1; h(a1+0x10)=0,59,60; w(0x800E27EC)=0,1,2,3,31,32; w(0x800F32D0)=0x80180000; w(0x80180008)=0x80180100; w(0x80180100)=0x80180200; w(0x80180200)=0x01000000,0x11000000; w(0x800E2368)=0x80180300; w(0x8018030C)=0x100,0; w(0x8009D254)=0x80180400; w(0x80180400)=0x80180500; h(0x800F336C)=4,1; w(0x800F3428)=1,0; w(0x800BCFA4)=0x80180600; out=800CE9D4:2,800CFAA8:2,800CE870:2,800CFB7C:2"]
+  - [room_m0273i, func_80197BBC, "a0=0,1,2; w(0x800F32D0)=0x80180000; w(0x80180008)=0x80180100; w(0x80180100)=0x80180200; w(0x80180218)=0x80180300; w(0x80180300)=1,2; w(0x8018010C)=0xD0000,0xC0000; h(0x80180116)=0,1,5,9,14,20,40; h(0x8018011A)=0,3,30; w(0x80180338)=0x80180400; w(0x8009D254)=0x80180500; h(0x8019AF5A)=0,1; h(0x8019AF5C)=1,7; h(0x8019AF56)=0,2; h(0x8019AF64)=2,10"]
+  - [room_m0273i, func_8019665C, "a0=1,2,0; a1=0x80180800; h(0x80180806)=0,1,7,8; h(0x80180802)=-200,0,300; h(0x80180812)=0,40; h(0x80180816)=0,1; h(0x800942EC)=0,100; h(0x8019AF62)=-500,500; h(0x8019AF54)=0,3; w(0x8009D254)=0x80180A00; w(0x80180BFC)=0,0x30,0x500; w(0x80180C04)=0,0x40; w(0x80180A00)=0x80180E00; w(0x800F32D0)=0x80180000; w(0x80180008)=0x80180100; w(0x80180100)=0x80180200,0; h(0x800F336C)=4,1; w(0x800F3428)=1,0; out=800CFB7C:2:8"]
+  - [room_m0273i, func_80192838, "a0=0x80180800; w(0x80180808)=0x80180100; h(0x8018084A)=0,1; h(0x80180848)=0,3; w(0x8018010C)=0x0D090000,0x0D080000,0x0D100000,0x0D050000; h(0x80180116)=0,1,3,0x18,0x22,0x32,12; h(0x8018011A)=0,2,0x17,0x21,0x31,12; w(0x80180100)=0x80180200,0; w(0x80180218)=0x80180300; w(0x80180810)=0x80180340; h(0x80180814)=0,2; w(0x8009D254)=0x80180A00; w(0x80180A00)=0,0x80180E00; h(0x80180E0C)=0,5"]
+  # The next three direct e21 for the matched leaves (db9ca12b src/overlays) that
+  # replaced the earlier NON_MATCHING copies of the same functions.
+  - [room_m0075i, func_8018F814, "a0=0,1; out=80071A44:0:16,80078CC4:0:32,800794C4:1:32"]
+  - [room_m0075i, func_8018FC60, "a0=0,1; out=80071A44:0:16,80078CC4:0:32,800794C4:1:32"]
+  - [room_m0063i, func_8018F320, "h(a0+0x1A)=0,1; w(a0+0x84)=0,0x4000000,-0x4000000; w(a0+0x7C)=0,0x80180000; h(a0+0x94)=0,1"]
+  - [room_m0089i, func_80192CD4, "a0=2,0,1,3; h(a1+0x2)=0,1,2,3; h(a1+0x0)=0,5,15,16,17; w(0x800E27EC)=0,7,32,40; h(0x800F336C)=3; w(0x800F3428)=0,1; out=80079754:1:32"]
+  - [room_m0089i, func_80193618, "a0=2,1,0,3; w(0x800E27EC)=1,24,32,33,40,48,49,55,64,0; w(0x800E2368)=0x80180000; w(0x8018000C)=0x100,0; w(0x800F32D0)=0x80180100; w(0x80180108)=0x80180200,0; w(0x80180200)=0x80180300; w(0x80180300)=0x01000000,0x11000000; w(0x80180318)=0x80180400; h(0x80180400)=1,0; w(0x800F33E0)=0x80180500; w(0x8009D254)=0x80180600; w(0x80180600)=0x80180700; h(0x800F336C)=3; w(0x800F3428)=0,1; out=800CF3AC:1"]
+  - [room_m0089i, func_80193200, "a0=1,2,0; h(a1+0x8)=0,1,2; w(0x800E27EC)=0,5,6,15,16,63,64,-3; w(0x800BCFA4)=0x80180000; h(0x800F336C)=4,1; w(0x800F3428)=1,0; out=800CFB7C:2:8"]
+  - [room_m0273i, func_80199C50, "a0=0,1,2; w(0x800F32D0)=0x80180000; w(0x80180008)=0x80180100; w(0x80180100)=0x80180200; w(0x80180218)=0x80180300; w(0x80180300)=1,2; w(0x8018010C)=0x100F0000,0x100E0000,0x0F0F0000; h(0x80180116)=0,0xF,0x16,0x20,15; h(0x8018011A)=0,0xE,0xF,0x20; w(0x80180338)=0x80180400; w(0x8009D254)=0x80180500; h(0x8019AF9A)=0,1,3; h(0x8019AF9C)=0,4; h(0x8019AF9E)=0x20,-0x20; h(0x8019AFA0)=0,2"]
+  - [room_m0273i, func_801986E8, "a0=0,1,2,3; h(0x8019AFA2)=0,1; w(0x800F32D0)=0x80180000; w(0x80180008)=0x80180100; w(0x80180100)=0x80180200; w(0x8018010C)=0x100F0000,0x100E0000; h(0x8019AF96)=3,4,9; h(0x8019AF98)=2,4; w(0x800F33E0)=0x80180600; w(0x8009D254)=0x80180500"]
+  - [room_m0273i, func_801981A4, "a0=1,2,0; a1=0x80180800; h(0x80180812)=0,1,0x100; h(0x80180810)=0,1; h(0x80180802)=-600,0,300; h(0x8018080A)=0,40; h(0x800942EC)=0,100; h(0x8019AFA0)=0,5; w(0x8009D254)=0x80180A00; w(0x80180BFC)=0,0x30,0x500; w(0x80180C04)=0,0x40; w(0x80180A00)=0x80180E00; w(0x800F32D0)=0x80180000; w(0x80180008)=0x80180100; w(0x80180100)=0x80180200,0; h(0x800F336C)=4,1; w(0x800F3428)=1,0; out=800CFB7C:2:8"]
+  - [room_m0273i, func_80198E94, "a0=1,2,0; a1=0x80180800; w(0x800E27EC)=0,1,3,5,8,12,20,24,25,36,40; h(0x80180806)=0,1; h(0x8019AFA0)=0,3; w(0x8009D254)=0x80180A00; w(0x80180BFC)=0,0x30,0x500; w(0x80180C04)=0,0x40; w(0x80180A00)=0x80180E00; w(0x800F32D0)=0x80180000; w(0x80180008)=0x80180100; w(0x80180100)=0x80180200,0; h(0x800F336C)=4,1; w(0x800F3428)=1,0; out=800CFB7C:2:8"]
+  - [room_m0231i, func_80193650, "a0=1,2,0; a1=0x80180800; a2=0x80180900; h(0x80180810)=0,1,2,3,4,5; h(0x80180812)=0,1,5,6,11,12,15,16; h(0x80180802)=-600,0,300; h(0x8018080A)=0,-3,4; h(0x800942EC)=0,100; w(0x800F33E0)=0x80180600; w(0x800E2368)=0x80180700; w(0x8018070C)=0,0x100; w(0x800F32D0)=0x80180000; w(0x80180008)=0x80180100; w(0x80180100)=0x80180200; w(0x80180200)=0x01000000,0x02000000; w(0x8009D254)=0x80180A00; w(0x80180A00)=0x80180E00; w(0x800BCFA4)=0x80180C00; h(0x800F336C)=4,1; w(0x800F3428)=1,0; out=800CFB7C:2:8"]
+  - [room_m0231i, func_80192548, "a0=1,2,0; a1=0x80180800; a2=0x80180900; w(0x800E27EC)=0,5,63,64,-3; w(0x800E2368)=0x80180700; w(0x8018070C)=0,0x100; w(0x800F32D0)=0x80180000; w(0x80180008)=0x80180100; w(0x80180100)=0x80180200; w(0x80180200)=0x01000000,0x02000000; w(0x8009D254)=0x80180A00; w(0x80180A00)=0x80180E00; h(0x800F336C)=4,1; w(0x800F3428)=1,0"]
+# pe-e21dir 2026-10-21 (docs/evidence/e21-directed-20261021/REPORT.md): directed inputs for the seven
+# generated TUs that ran 0 seeds under --min-ok 4 --max-seeds 512 (docs/port/NATIVE_COMPLETION.md,
+# 'Still 0 seeds with 512').  Each line is its own spec and runs the full seed count (default 6); the
+# first term varies fastest, so every line keeps its combination product <= 6.  Buffers live in
+# 0x80130000..0x8017FFFF (below the overlay image at 0x8018EFE8, clear of the stack windows).
+# ovl_0700 func_8018F55C (camera-path spline sample): a1 is a table index, a2 the path table, a3 the
+# VECTOR out, the 5th argument (rot) is the word at 0x801FFF10; record = {pad[3], short count, SVECTOR pts[]}.
+# The two func_80079FB4 calls share one mocked return, so the +-0x1000 wrap and +-0x80 clamp arms stay
+# unreached (REPORT.md 'Harness limits').
+  - [ovl_0700, func_8018F55C, "a0=0,0x1C0,0x280,0xA55,0x7F00FF,0xFF; a1=0; a2=0x80130000; a3=0x80131000; w(0x801FFF10)=0x80131100; w(a2+0)=0x100; h(0x80130106)=5"]
+  - [ovl_0700, func_8018F55C, "a0=0x180; a1=0,1; a2=0x80130000; a3=0x80131000; w(0x801FFF10)=0x80131100; w(a2+0)=0x100; w(a2+4)=0x100; h(0x80130106)=3,4,8"]
+  - [ovl_0700, func_8018F55C, "a0=0x1FF; a1=0; a2=0x80130000; a3=0x80131000; w(0x801FFF10)=0x80131100; w(a2+0)=0x100; h(0x80130106)=0,1,0xFFFF,0x7FFF"]
+  - [ovl_0700, func_8018F55C, "a0=0x140,0x5A0,0x7FFF,0x1B00; a1=1; a2=0x80130000; a3=0x80131000; w(0x801FFF10)=0x80131100; w(a2+4)=0x300; h(0x80130306)=6"]
+# ovl_0700 func_80191C94 (PE.IMG range loads with retry-on-error polls): only a poll of 0 ends the loops;
+# the three `r == -1 -> goto retry` arms need a per-call return sequence (REPORT.md 'Harness limits').
+  - [ovl_0700, func_80191C94, "r(0x8006E6A8)=0,1,0xFFFFFFFE; r(0x8006E7E8)=0; h(0x8019C1F0)=0,1"]
+# ovl_03D2 func_8018F958 (title sprite max blend): a0 = {pad[6], img, level, y0}; a2/a3 are word strides.
+  - [ovl_03D2, func_8018F958, "a0=0x80130000; a1=0x80160000; a2=0x44; a3=0x58; w(a0+0x18)=0x80150000; w(a0+0x1C)=0x100; w(a0+0x20)=0,10,59,60,61,84"]
+  - [ovl_03D2, func_8018F958, "a0=0x80130000; a1=0x80160000; a2=0x44; a3=0x58; w(a0+0x18)=0x80150000; w(a0+0x20)=30; w(a0+0x1C)=0x37,0xFF,0x01000000,0,0x180"]
+  - [ovl_03D2, func_8018F958, "a0=0x80130000; a1=0x80160000; a2=0x44; a3=0x58; w(a0+0x18)=0x80150000; w(a0+0x1C)=0x100; w(a0+0x20)=100,-5,-20,85,0x54,0x55"]
+# ovl_03D2 func_8018FBC0 (title task constructor): a0 is a kind index; a real free-list node, and the
+# tail pointer D_801D137C both set and clear.
+  - [ovl_03D2, func_8018FBC0, "a0=0,1,2,3,4,5; w(0x801D136C)=0x80131000; w(0x80131000)=0x80131100; w(0x801D137C)=0x80132000"]
+  - [ovl_03D2, func_8018FBC0, "a0=6,7,8,9,0x40,0; w(0x801D136C)=0x80131000; w(0x80131000)=0x80131100; w(0x801D137C)=0"]
+# ovl_03D2 func_80192CE8 (title loop, CD load + poll retry): the CD issue and poll must return 0 (a poll
+# of -1 retries, anything else non-zero spins); a0 is a slot index; the 0x800B0DBA byte / 0x800B0DBC
+# halfword drive the retry-count loop, func_80192934 the clear arm, 0x8009D26C the mask arm (it always
+# carries 4 or 0x20000000 when the arm is taken, or the loop never clears 0x800B0DBA and spins).
+  - [ovl_03D2, func_80192CE8, "a0=0,1,2,3; r(0x8006E6A8)=0; r(0x8006E7E8)=0; h(0x800B0DBA)=0"]
+  - [ovl_03D2, func_80192CE8, "a0=1; r(0x8006E6A8)=0; r(0x8006E7E8)=0; h(0x800B0DBA)=1,2; h(0x800B0DBC)=0,0xFFFF,0x8000"]
+  - [ovl_03D2, func_80192CE8, "a0=2; r(0x8006E6A8)=0; r(0x8006E7E8)=0; r(0x80192934)=0,0x100,0x7F00; h(0x800B0DBA)=1,3; h(0x800B0DBC)=1"]
+  - [ovl_03D2, func_80192CE8, "a0=3; r(0x8006E6A8)=0; r(0x8006E7E8)=0; r(0x80192934)=1,0xFF,0x80,0x7F,-1,3; w(0x8009D26C)=4; h(0x800B0DBA)=2; h(0x800B0DBC)=1399"]
+  - [ovl_03D2, func_80192CE8, "a0=0; r(0x8006E6A8)=0; r(0x8006E7E8)=0; r(0x80192934)=1; w(0x8009D26C)=4,0x20000000,0x20000004,0xFFFFFFFB,0xFFFFFFFF,0x20000008; h(0x800B0DBA)=2; h(0x800B0DBC)=0x578"]
+  - [ovl_03D2, func_80192CE8, "a0=1; r(0x8006E6A8)=0; r(0x8006E7E8)=0; r(0x80192934)=1; w(0x8009D26C)=4; h(0x800B0DBA)=2; h(0x800B0DBC)=1400,1399,1,0x7FFF,2,0x578"]
+# room_m0017i func_8018F580 (model draw, GTE nclip): the existing line above leaves 3 of 7 seeds faulting on random
+# idx/vertex/z indices and reaches 230 of 369 retail words; these lines pin the four index tables, eight
+# vertices (front-facing triple 0,1,2,3 and back-facing triple 4,5,6,7) and the z table.  M1/M2/M4: one
+# entry per loop, M3: two per loop with mixed winding; M4 sweeps otz across both `< 0x1000` boundaries.
+  - [room_m0017i, func_8018F580, "a0=0x80130000; w(a0+0)=0x80130400; w(a0+0x10)=0x80131000; w(a0+0x54)=0x80134000; w(0x800B0E38)=0x80150000; w(0x800B0E3C)=0x80158000; h(0x80130408)=1; h(0x8013040A)=1; h(0x8013040C)=1; h(0x8013040E)=1; w(0x80131004)=0x10000; w(0x80131008)=0x30002; w(0x80131010)=0x10000; w(0x80131014)=0x30002; w(0x8013101C)=0x10000; w(0x80131020)=0x30002; w(0x80131028)=0x10000; w(0x8013102C)=0x30002; w(0x800B1644)=0x0; w(0x800B1648)=0x1000000; w(0x800B164C)=0x100; w(0x800B1650)=0x1000100; w(0x800B1654)=0x0; w(0x800B1658)=0x100; w(0x800B165C)=0x1000000; w(0x800B1660)=0x1000100; w(0x800A636C)=0x100,0x80,0x7F0; w(0x800A6370)=0x100; w(0x800A6374)=0x100; w(0x800A6378)=0x100; w(0x800A637C)=0x100; w(0x800A6380)=0x100; w(0x800A6384)=0x100; w(0x800A6388)=0x100; w(0x8009CDDC)=0,1"]
+  - [room_m0017i, func_8018F580, "a0=0x80130000; w(a0+0)=0x80130400; w(a0+0x10)=0x80131000; w(a0+0x54)=0x80134000; w(0x800B0E38)=0x80150000; w(0x800B0E3C)=0x80158000; h(0x80130408)=1; h(0x8013040A)=1; h(0x8013040C)=1; h(0x8013040E)=1; w(0x80131004)=0x50004; w(0x80131008)=0x70006; w(0x80131010)=0x50004; w(0x80131014)=0x70006; w(0x8013101C)=0x50004; w(0x80131020)=0x70006; w(0x80131028)=0x50004; w(0x8013102C)=0x70006; w(0x800B1644)=0x0; w(0x800B1648)=0x1000000; w(0x800B164C)=0x100; w(0x800B1650)=0x1000100; w(0x800B1654)=0x0; w(0x800B1658)=0x100; w(0x800B165C)=0x1000000; w(0x800B1660)=0x1000100; w(0x800A636C)=0x100,0x80,0x7F0; w(0x800A6370)=0x100; w(0x800A6374)=0x100; w(0x800A6378)=0x100; w(0x800A637C)=0x100; w(0x800A6380)=0x100; w(0x800A6384)=0x100; w(0x800A6388)=0x100; w(0x8009CDDC)=0,1"]
+  - [room_m0017i, func_8018F580, "a0=0x80130000; w(a0+0)=0x80130400; w(a0+0x10)=0x80131000; w(a0+0x54)=0x80134000; w(0x800B0E38)=0x80150000; w(0x800B0E3C)=0x80158000; h(0x80130408)=2; h(0x8013040A)=2; h(0x8013040C)=2; h(0x8013040E)=2; w(0x80131004)=0x10000; w(0x80131008)=0x30002; w(0x80131010)=0x50004; w(0x80131014)=0x70006; w(0x8013101C)=0x50004; w(0x80131020)=0x70006; w(0x80131028)=0x10000; w(0x8013102C)=0x30002; w(0x80131034)=0x50004; w(0x80131038)=0x70006; w(0x80131040)=0x10000; w(0x80131044)=0x30002; w(0x8013104C)=0x10000; w(0x80131050)=0x30002; w(0x80131058)=0x50004; w(0x8013105C)=0x70006; w(0x800B1644)=0x0; w(0x800B1648)=0x1000000; w(0x800B164C)=0x100; w(0x800B1650)=0x1000100; w(0x800B1654)=0x0; w(0x800B1658)=0x100; w(0x800B165C)=0x1000000; w(0x800B1660)=0x1000100; w(0x800A636C)=0x100,-0x300,0x400; w(0x800A6370)=0x100; w(0x800A6374)=0x100; w(0x800A6378)=0x100; w(0x800A637C)=0x100; w(0x800A6380)=0x100; w(0x800A6384)=0x100; w(0x800A6388)=0x100; w(0x8009CDDC)=0,1"]
+  - [room_m0017i, func_8018F580, "a0=0x80130000; w(a0+0)=0x80130400; w(a0+0x10)=0x80131000; w(a0+0x54)=0x80134000; w(0x800B0E38)=0x80150000; w(0x800B0E3C)=0x80158000; h(0x80130408)=1; h(0x8013040A)=1; h(0x8013040C)=1; h(0x8013040E)=1; w(0x80131004)=0x10000; w(0x80131008)=0x30002; w(0x80131010)=0x10000; w(0x80131014)=0x30002; w(0x8013101C)=0x10000; w(0x80131020)=0x30002; w(0x80131028)=0x10000; w(0x8013102C)=0x30002; w(0x800B1644)=0x0; w(0x800B1648)=0x1000000; w(0x800B164C)=0x100; w(0x800B1650)=0x1000100; w(0x800B1654)=0x0; w(0x800B1658)=0x100; w(0x800B165C)=0x1000000; w(0x800B1660)=0x1000100; w(0x800A636C)=0xBDFF,0xBE00,0xFCFF,0xFD00,-0x400,0x20000; w(0x800A6370)=0x100; w(0x800A6374)=0x100; w(0x800A6378)=0x100; w(0x800A637C)=0x100; w(0x800A6380)=0x100; w(0x800A6384)=0x100; w(0x800A6388)=0x100; w(0x8009CDDC)=0"]
+# room_m0273i func_80193114 (weighted pick): the existing line above reaches 57 of 62 words in its first 6
+# combinations (a0 0..2, band 0); these sweep the y bands, the (x >> 10) & 3 index and the t = byte * 100 / 256
+# thresholds through func_80052B2C.  The two words at 0x801931B8 are the signed-divide bias of a non-negative
+# product (dead in retail).
+  - [room_m0273i, func_80193114, "a0=0,1,2; a1=0x80130000; w(a1+0)=0x80130100; w(a1+4)=0x80130200; w(0x80130100)=0x400; w(0x80130200)=0x300; r(0x80052B2C)=0,0xFF"]
+  - [room_m0273i, func_80193114, "a0=2; a1=0x80130000; w(a1+0)=0x80130100; w(a1+4)=0x80130200; w(0x80130100)=0xC00; w(0x80130200)=0x27F,0x280,0x5FF,0x600,0x7FFF,-1; r(0x80052B2C)=0x80"]
+  - [room_m0273i, func_80193114, "a0=1; a1=0x80130000; w(a1+0)=0x80130100; w(a1+4)=0x80130200; w(0x80130100)=0,0x400,0x800,0xC00,0xFFFFFC00,0x7FFFFFFF; w(0x80130200)=0x700; r(0x80052B2C)=0xFF"]
+  - [room_m0273i, func_80193114, "a0=0; a1=0x80130000; w(a1+0)=0x80130100; w(a1+4)=0x80130200; w(0x80130100)=0; w(0x80130200)=0x300; r(0x80052B2C)=0,40,130,200,255,5"]
+
+# func_8003B97C (matched): per-actor lighting.  Entity at a0=0x80130000: header 0x80131000 (part_count byte +2), parts
+# 0x80132000 (12-byte records: vertex_start, vertex_count, visible byte +4), vertices 0x80133000 (each 8-byte vertex's
+# pad +6 is a D_80091A58 normal index), vertex colours 0x80134000 (tag bytes +3/+7/+11), 32-byte part matrices
+# 0x80135000, view RT at a1.  Unseeded fields read the EXE image (mostly 0), so the RT and part matrices are seeded
+# non-degenerate.  Random RAM alone covers only the early returns (26/217 words).
+# A: one visible part; every colour-tag arm (+3, +7, +11, none); one and two triangles; table normals; two shades.
+  - [exe, func_8003B97C, "a0=0x80130000; a1=0x80136000; w(a0+0)=0x80131000; h(a0+0xBA)=1; w(a0+4)=0x80132000; w(a0+8)=0x80133000; w(a0+0xC)=0x80134000; w(a0+0x84)=0x80135000; w(a1+0)=0xF4B00B50; w(a1+4)=0x0B500100; w(a1+8)=0xFF000B50; w(a1+0xC)=0x02000080; w(a1+0x10)=0x00000FC0; w(0x80135000)=0x01000C00; w(0x80135004)=0xFE000300; w(0x80135008)=0x00400A00; w(0x8013500C)=0x0F00FFC0; w(0x80135010)=0x00000800; h(0x80131002)=1; h(0x80132000)=0; h(0x80132004)=1; h(0x8013300E)=1; h(0x80133016)=2; h(0x8013301E)=5; h(0x80133026)=6; h(0x8013302E)=7; w(0x8009CDA0)=0x30808080; h(0x80133006)=0,3; h(0x80132002)=3,6; w(0x80134000)=0x00112233,0x80112233; w(0x80134004)=0x00445566,0x01445566; w(0x80134008)=0x00778899,0xFF778899; h(a0+0x88)=0x10,0xFF"]
+# B: part_count 0..3 (0 = retail still stores the base colour and BK before the count test); visible 1 vs not;
+# a second part with 0 or 3 vertices; a third part at vertex 9; each part has its own matrix, normals and colour tag.
+  - [exe, func_8003B97C, "a0=0x80130000; a1=0x80136000; w(a0+0)=0x80131000; h(a0+0xBA)=1; w(a0+4)=0x80132000; w(a0+8)=0x80133000; w(a0+0xC)=0x80134000; w(a0+0x84)=0x80135000; w(a1+0)=0xF4B00B50; w(a1+4)=0x0B500100; w(a1+8)=0xFF000B50; w(a1+0xC)=0x02000080; w(a1+0x10)=0x00000FC0; w(0x80135000)=0x01000C00; w(0x80135004)=0xFE000300; w(0x80135008)=0x00400A00; w(0x8013500C)=0x0F00FFC0; w(0x80135010)=0x00000800; w(0x80135020)=0x03000200; w(0x80135024)=0x0100FF00; w(0x80135028)=0x0D000080; w(0x8013502C)=0x00300F00; w(0x80135030)=0x00000400; w(0x80135040)=0x00100FF0; w(0x80135044)=0x0F000020; w(0x80135048)=0x00F00100; w(0x8013504C)=0x0E00FE00; w(0x80135050)=0x00000C00; h(a0+0x88)=0x24; w(0x8009CDA0)=0x30808080; h(0x80132000)=0; h(0x80132002)=3; h(0x8013200C)=6; h(0x80132018)=9; h(0x8013201A)=3; h(0x80133006)=1; h(0x8013300E)=2; h(0x80133016)=3; h(0x80133036)=4; h(0x8013303E)=5; h(0x80133046)=6; h(0x8013304E)=7; h(0x80133056)=8; h(0x8013305E)=9; w(0x80134018)=0x01102030; w(0x8013402C)=0x55AABBCC; h(0x80131002)=0,1,2,3; h(0x80132004)=1,0; h(0x8013200E)=3,0; h(0x80132010)=1,0x0100; h(0x8013201C)=1,0"]
+# C: the early returns (no header; draw_count 0 or negative) next to an empty model.
+  - [exe, func_8003B97C, "a0=0x80130000; a1=0x80136000; w(a0+0)=0,0x80131000; h(a0+0xBA)=0,1,0xFFFF; h(0x80131002)=0; h(a0+0x88)=0x10"]
+# D: saturating view matrices (IR clamps and the GTE FLAG word) with one visible part and a colour tag on or off.
+  - [exe, func_8003B97C, "a0=0x80130000; a1=0x80136000; w(a0+0)=0x80131000; h(a0+0xBA)=1; w(a0+4)=0x80132000; w(a0+8)=0x80133000; w(a0+0xC)=0x80134000; w(a0+0x84)=0x80135000; w(a1+0)=0xF4B00B50; w(a1+4)=0x0B500100; w(a1+8)=0xFF000B50; w(a1+0xC)=0x02000080; w(a1+0x10)=0x00000FC0; w(0x80135000)=0x01000C00; w(0x80135004)=0xFE000300; w(0x80135008)=0x00400A00; w(0x8013500C)=0x0F00FFC0; w(0x80135010)=0x00000800; h(0x80131002)=1; h(0x80132000)=0; h(0x80132002)=3; h(0x80132004)=1; h(0x80133006)=4; h(0x8013300E)=5; h(0x80133016)=6; w(0x8009CDA0)=0x30808080; w(a1+0)=0x7FFF7FFF,0x80008000; w(a1+4)=0x7FFF7FFF,0x80008000; w(a1+8)=0x7FFF7FFF,0x80018001; w(a1+0xC)=0x7FFF7FFF; w(a1+0x10)=0x00007FFF; w(0x80134000)=0x00112233,0x80112233; h(a0+0x88)=0x10,0xFF"]
+  - [exe, func_8003B97C, ""]
+  - [exe, func_8003B97C, "a0=0; a1=0x80136000; w(0)=0"]

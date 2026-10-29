@@ -634,13 +634,13 @@ static void test_PA_handhi_card_rest(void)
     g_bootstrap_arg4_call_count = 0;
     ASSERT(func_80085D84(4) == 4 && g_bootstrap_arg4_call_count == 0,
            "80085D84: unchanged value makes no call");
-    /* Changed: store, then func_80085DC4 -> func_80073CC4(9, a0); a0 is the
-     * live $a0 (pe_dis.sh 0x80085D84 0x3C).  Source 9 reaches pc_port's
-     * func_800740D0 source cut, which logs (source, handler). */
+    /* Changed: store, then register the live argument as source 9. */
+    PE_StoreU16(0x800945E4u, 1u);
+    PE_StoreU32(0x8009460Cu, 0u);
     ASSERT(func_80085D84(7) == 4 && PE_LoadU32(0x8009B438u) == 7u,
            "80085D84: returns old, stores new");
-    ASSERT(g_bootstrap_arg4_call_count == 1 && g_bootstrap_arg4_calls[0].arg0 == 9u &&
-           g_bootstrap_arg4_calls[0].arg1 == 7u, "80085D84: forwards a0 as the handler");
+    ASSERT(PE_LoadU32(0x8009460Cu) == 7u,
+           "80085D84: forwards a0 as the source-9 handler");
     PASS();
 }
 

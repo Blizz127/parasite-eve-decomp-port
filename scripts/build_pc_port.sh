@@ -160,12 +160,14 @@ settled=0
 for attempt in 1 2 3; do
     echo
     echo "-- [1/5] generating decomp-derived port TUs (attempt $attempt)"
-    python3 "$GEN"
+    # --e21: matched EXE leaves no hand port defines, refused by the verbatim
+    # path for pointer-model reasons, are lowered to guest-memory C.
+    python3 "$GEN" --e21
     # Overlay leaves -> pc_port/game/decomp_ovl/<ovl>/ (namespaced symbols).
     python3 "$GEN_OVL"
     echo
     echo "-- [2/5] verifying generated TUs against src/"
-    if python3 "$GEN" --verify && python3 "$GEN_OVL" --verify; then
+    if python3 "$GEN" --e21 --verify && python3 "$GEN_OVL" --verify; then
         settled=1
         break
     fi

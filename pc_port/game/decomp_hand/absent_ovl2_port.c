@@ -11,12 +11,14 @@
  * the callee's retail VMA.  Every callee argument list below is the matched
  * C's explicit one; `func_800CEDA8(1, ix * 2)` passes one argument because
  * func_800CEDA8's matched C takes one (the extra register is dead — same
- * ruling as absent_ovl_port.c).  func_800CF5B0 and func_800CEAE8 have no
- * pc_port implementation and are loud boundaries with the guest arguments.
+ * ruling as absent_ovl_port.c).  func_800CF5B0 (generated from its matched C
+ * by gen_decomp_ports --e21) and func_800CEAE8 (func_800CEB8C_port.c) are
+ * native calls.
  *
  * int products are formed with 32-bit wraparound (retail `mult`/`mflo`).
  */
 #include "pe_guest_decomp.h"
+void func_800CF5B0(uint32_t a_input, uint32_t a_output);   /* generated (gen_decomp_ports --e21) */
 
 #define O2_FRAME()     ((int)PE_LoadU32(0x800E27ECu))
 #define O2_POOL()      PE_LoadU32(PE_LoadU32(0x800F33E0u) + 8u)
@@ -338,7 +340,7 @@ int func_800D8E74(int a0, pe_addr_t a1)
  * (rand & 0xFF) + 500, p[3] = (rand & 3) + 0x16, p[2] = the angle word,
  * angle += (rand & 0x1F) + 0x8AA; ends at 0x50.  Mode 2 below 0x51: two
  * func_800D004C bursts and a func_800D0728 ring (D_800F3374 = 0x3C), then
- * D_800F3374 = 0x40 and func_800CF5B0(a1, 0) — boundary. */
+ * D_800F3374 = 0x40 and func_800CF5B0(a1, 0). */
 int func_800DACA4(int a0, pe_addr_t a1)
 {
     const pe_addr_t pos = PE_OVL2_POS, blk = PE_OVL2_BLK, blk2 = PE_OVL2_BLK2;
@@ -380,7 +382,7 @@ int func_800DACA4(int a0, pe_addr_t a1)
             func_800D0728(pos, 590, 670, 0x10, 0u, s1v, s1v, 0u, blk, s0v, 3);
         }
         O2_SET16(0x800F3374u, 0x40);
-        PE_Decomp_Boundary("func_800CF5B0", 0x800CF5B0u, 2u, a1, 0u, 0u, 0u);
+        func_800CF5B0(a1, 0u);   /* src/func_800DACA4.c: func_800CF5B0(a1, 0) */
         break;
     default:
         return 0;
@@ -608,8 +610,7 @@ int func_800DEA30(int a0, pe_addr_t a1)
                     O2_SET16(v + 0u, O2_RAND() % 48 - 24);
                     O2_SET16(v + 4u, -(O2_RAND() % 80));
                     O2_SET16(v + 2u, O2_RAND() % 48 - 32);
-                    PE_Decomp_Boundary("func_800CEAE8", 0x800CEAE8u, 3u,
-                                       PE_LoadU32(O2_ACTOR() + 0x238u), v, v, 0u);
+                    func_800CEAE8(PE_LoadU32(O2_ACTOR() + 0x238u), v, v);
                     O2_SET16(p + 6u, O2_S16(v + 0u));
                     O2_SET16(p + 8u, O2_S16(v + 2u));
                     O2_SET16(p + 10u, O2_S16(v + 4u));

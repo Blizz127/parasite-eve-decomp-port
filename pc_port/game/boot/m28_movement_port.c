@@ -6,6 +6,7 @@
 #include "pe_port_compat.h"
 #include "pe_sdk.h"
 #include "game_port.h"
+#include "pe_guestcode.h"
 
 int PE_M28MovementOverlay(void)
 {
@@ -193,10 +194,13 @@ static int movement_update(pe_addr_t slot,uint32_t relocation)
         PE_StoreU32(slot+12u,0x80191894u+relocation);
     } else if(callback==0x80191894u+relocation)movement_step(slot,0,relocation);
     else if(callback==0x80191D18u+relocation)movement_step(slot,1,relocation);
-    else if(callback!=0x80191D10u+relocation) {
-        Bootstrap_ReturnVoid("M28_movement_callback","original movement effect");
-        PE_Port_RequestStop(PE_PORT_STOP_UNRESOLVED_BOUNDARY);
-    }
+    /* Original 801917FC (m32 801917EC): lw v0,12(a0); jalr v0 with a0 = slot,
+     * v0 discarded, return 0. Any other callback takes that jalr through the
+     * guest-code registry; no C for it stops by name. a1..a3 are residue from
+     * two calls up (the update pass's jalr at 8006FBEC sets only a0): host 0. */
+    else if(callback!=0x80191D10u+relocation)
+        (void)PE_GuestHook_Call("M28_movement_callback",relocation?"func_801917EC":"func_801917FC",
+                                callback,1u,slot,0u,0u,0u,NULL);
     return 0;
 }
 

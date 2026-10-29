@@ -209,6 +209,10 @@ bool PE_Disc_ReadUserData(const PE_Disc *d, uint32_t lba, uint32_t offset,
 
     if (!d || !out) return false;
     if (offset >= PE_DISC_USER_SECTOR) return false;
+    /* Validate the entire logical range before copying any bytes. Widen
+     * before arithmetic so large lengths/LBAs cannot wrap into the image. */
+    uint64_t start=(uint64_t)lba*PE_DISC_USER_SECTOR+offset;
+    if(start+len>(uint64_t)d->user_sectors*PE_DISC_USER_SECTOR) return false;
     while (len > 0) {
         uint32_t chunk = PE_DISC_USER_SECTOR - offset;
         if (chunk > len) chunk = len;
@@ -234,7 +238,7 @@ static uint32_t PE_Iso_Le32(const uint8_t *p)
 static bool PE_Iso_ExtentInRange(const PE_Disc *d, uint32_t extent,
                                  uint32_t size)
 {
-    uint64_t last = (uint64_t)extent + (size + PE_DISC_USER_SECTOR - 1) /
+    uint64_t last = (uint64_t)extent + ((uint64_t)size + PE_DISC_USER_SECTOR - 1) /
                     PE_DISC_USER_SECTOR;
     if (size == 0) last = (uint64_t)extent;
     return last <= d->user_sectors;

@@ -69,6 +69,8 @@ void func_80196498(void)
         PE_StoreU16(PE_LoadU32(slot)+0x2Eu,PE_LoadU16(record+26u));
         PE_StoreU16(PE_LoadU32(slot)+0x2Cu,2048);
     }
+    /* Original locals left on the scratchpad stack: sp+184=520, sp+192=positions+84. */
+    PE_TransitionMenuTailConstructed(positions+84u);
     pe_addr_t resource=func_8006EC6C(0x8019CE10u,0);if(PE_Port_StopEpoch()!=epoch)return;
     pe_addr_t other=func_8006EC6C(0x8019CE10u,1);if(PE_Port_StopEpoch()!=epoch)return;
     PE_StoreU32(0x801EA260u,func_80190AEC(0x8019C340u,other));

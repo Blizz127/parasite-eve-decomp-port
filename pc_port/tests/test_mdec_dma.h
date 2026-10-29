@@ -13,6 +13,10 @@ static void test_DAY2_mdec_dma(void)
     for(unsigned k=0;k<sizeof(MDECIO_output)/sizeof(MDECIO_output[0]);k++) {
         ResetTestState();PE_GPU_WriteDPCR(0x12345678u);
         func_8010C01C(MDECIO_output[k].destination,MDECIO_output[k].words);PE_MDEC_GetState(&state);
+        /* Block counts 0 (hardware 0x10000) or above 0xFFFF are refused before
+         * any register write since ce5e8629e (MDEC_output_block_count). */
+        {uint32_t blocks=MDECIO_output[k].words>>5u;
+         if(!blocks||blocks>0xFFFFu){ASSERT(PE_Port_ShouldStop() && PE_GPU_ReadDPCR()==0x12345678u && !state.completed_output_count,"refused MDEC output block count touched registers");continue;}}
         ASSERT(!PE_Port_ShouldStop() && PE_GPU_ReadDPCR()==MDECIO_output[k].dpcr && state.dma1_chcr==MDECIO_output[k].chcr &&
             state.dma1_madr==(MDECIO_output[k].madr&0xFFFFFFu) && state.dma1_bcr==MDECIO_output[k].bcr && !state.completed_output_count,"libpress output differs from original register graph");
     }

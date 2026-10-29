@@ -55,6 +55,7 @@ int func_8006F8EC(unsigned int index)
         return func_800D4704(slot);
     if (fn==0x800C9B68u || fn==0x800CD8C8u || fn==0x800CE144u) return PE_EffectStackWeaponDraw(fn,slot);
     PE_EffectStackInvalidate();
+    PE_EffectCallback_SlotAbi(code);          /* retail: a0 = slot, a1 = min(code, 85) */
     return PE_EffectCallback(fn,2,slot,0u);
 }
 
@@ -77,6 +78,7 @@ int func_80069594(void)
         unsigned code=PE_LoadU8(PE_LoadU32(GA_D_800942E4)+i*0xA0Cu+1u);
         if (!(D_8009D1A0&0x100u) || (code-0x55u)<0x1Eu)
             (void)func_8006F9F0(i);
+        if (PE_Port_ShouldStop()) break;
     }
     PE_EffectStackEnd();return 0;
 }

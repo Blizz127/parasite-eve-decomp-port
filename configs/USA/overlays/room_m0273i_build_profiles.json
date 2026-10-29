@@ -18,7 +18,8 @@
     ],
     "era_o2_g0_no_schedule_insns": [
       "func_8019A5D4",
-      "func_8019A398"
+      "func_8019A398",
+      "func_80196348"
     ],
     "era_o2_g0_narrow_shifted_reg_load": [
       "func_8019A290",

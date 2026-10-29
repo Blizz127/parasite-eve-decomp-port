@@ -4,6 +4,7 @@
 #include "psx_compat.h"
 #include "pe_port_compat.h"
 #include "pe_sdk.h"
+#include "game_port.h"
 
 static pe_addr_t range_edge(pe_addr_t vertices, pe_addr_t palette,
                             pe_addr_t xy, pe_addr_t z, pe_addr_t ot,
@@ -110,8 +111,11 @@ void func_800347B4(void)
         (uint32_t)(int32_t)(int16_t)PE_LoadU16(PE_LoadU32(record+0x68u)+2u);
     if (count<10u) { radius=((range<<16u)*count)/10u; angle=count<<6u; }
     else { radius=range<<16u; angle=(count<<4u)+10u; }
-    if (!count) func_8006DE80(0x457,0,(int16_t)PE_LoadU16(aya+0x2Au),
-        (int16_t)PE_LoadU16(aya+0x2Eu),(int16_t)PE_LoadU16(aya+0x32u));
+    if (!count) {
+        func_8006DE80(0x457,0,(int16_t)PE_LoadU16(aya+0x2Au),
+            (int16_t)PE_LoadU16(aya+0x2Eu),(int16_t)PE_LoadU16(aya+0x32u));
+        if (PE_Port_ShouldStop()) return;
+    }
     func_800661A4();
     {
         uint32_t bank=(uint32_t)PE_LoadU32(0x8009CDDCu), used=PE_LoadU32(0x8009CDD8u);

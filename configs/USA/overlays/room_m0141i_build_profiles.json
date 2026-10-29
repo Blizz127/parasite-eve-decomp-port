@@ -6,6 +6,9 @@
   "assignments": {
     "era_o2_g0_narrow_shifted_word_load": [
       "func_801911F0"
+    ],
+    "room_m0141i_dispatch_8018F054_8018F06C_div": [
+      "func_8019054C"
     ]
   },
   "local_profiles": {
@@ -17,6 +20,18 @@
       ],
       "environment": {
         "MASPSX_NARROW_SHIFTED_WORD_LOAD": "1"
+      }
+    },
+    "room_m0141i_dispatch_8018F054_8018F06C_div": {
+      "toolchain": "era",
+      "flags": [
+        "-O2",
+        "-G0"
+      ],
+      "environment": {
+        "MASPSX_THREE_WORD_SYMBOL_STORE": "1",
+        "MASPSX_DISPATCH_FOLD": "jtbl_8018F054,jtbl_8018F06C",
+        "MASPSX_EXPAND_DIV": "1"
       }
     }
   }

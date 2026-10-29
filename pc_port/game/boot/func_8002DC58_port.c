@@ -22,7 +22,9 @@ int func_80027A08(pe_addr_t actor)
             pe_addr_t weapon=PE_LoadU32(PE_LoadU32(0x8009D278u)+0x68u);
             if ((int16_t)PE_LoadU16(weapon+6u)==6) {
                 if (PE_LoadU32(action)==actor) {
-                    PE_StoreU32(0x8009D208u,(uint32_t)func_8006F39C(0x5Bu,actor));
+                    int effect = func_8006F39C(0x5Bu,actor);
+                    if (PE_Port_ShouldStop()) return 0;
+                    PE_StoreU32(0x8009D208u,(uint32_t)effect);
                     PE_StoreU8(0x8009D23Cu,0u);
                 }
             } else {
@@ -137,7 +139,9 @@ void func_8002DC58(void)
                     func_8001A680_command_cut(actor,(uint16_t)(int16_t)(int8_t)PE_LoadU8(body+6u));
                 else if (PE_LoadU32(actor+28u)!=0x10000u) PE_StoreU32(actor+28u,0x10000u);
             }
-            if (!(uint8_t)func_80027A08(actor)) ready=0;
+            int hit_ready=func_80027A08(actor);
+            if (PE_Port_ShouldStop()) return;
+            if (!(uint8_t)hit_ready) ready=0;
         }
         if (!ready) return;
         func_800866A4(0u,255u);

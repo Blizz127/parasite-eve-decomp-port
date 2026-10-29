@@ -45,6 +45,7 @@
  */
 #include "psx_compat.h"
 #include "pe_port_compat.h"
+#include "game_port.h"
 
 #define GA_D_8009CE04 0x8009CE04u
 #define GA_D_8009CDFC 0x8009CDFCu
@@ -315,10 +316,18 @@ void func_800125E0(void)
     unsigned int count;
     unsigned int i;
 
+    if (PE_Port_ShouldStop()) return;
     func_80074DC0(0);
+    if (PE_Port_ShouldStop()) return;
     header = pe_kseg0(PE_LoadU32(GA_D_8009CE04));
     desc = pe_kseg0(PE_LoadU32(header));
     count = PE_LoadU8(desc);
-    for (i = 0; i < count; i++)
+    for (i = 0; i < count; i++) {
         (void)func_80035038(desc + 1u + i * 2u, 0u, 1u);
+        if (PE_Port_ShouldStop()) return;
+        /* Retail reloads the published list and its count after each spawn. */
+        header = pe_kseg0(PE_LoadU32(GA_D_8009CE04));
+        desc = pe_kseg0(PE_LoadU32(header));
+        count = PE_LoadU8(desc);
+    }
 }

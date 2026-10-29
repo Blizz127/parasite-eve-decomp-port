@@ -22,12 +22,26 @@
 
 #include <stdint.h>
 #include "pe_guest_ram.h"
+#include "pe_plat/cd.h"
+#include "pe_plat/state.h"
+#include "pe_plat/gpu_address.h"
+#include "pe_plat/gpu_primitive.h"
+#include "pe_plat/gte.h"
+#include "pe_plat/libc.h"
+#include "pe_plat/bios_file.h"
+#include "pe_plat/bios_string.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 int func_8007B290(uint32_t mode, pe_addr_t result);
+int func_8007BDDC(int mode);
+int func_8007A910(int mode);
+int func_80080B24(int mode);
+void func_80085DC4(int callback);
+uint32_t func_80085E54(pe_addr_t source, uint32_t size);
+int func_80085F14(int mode);
 int func_8007A488(int mode, pe_addr_t pe_result);
 void func_8007C564(void);
 void func_8007C13C(void);
@@ -79,7 +93,7 @@ typedef struct {
     int32_t mac0;     /* C2DR 24 scalar result */
     uint32_t otz;     /* C2DR 7 averaged depth */
     uint32_t sxy[3], sz[4]; /* projection FIFOs */
-    uint32_t projection_flags; /* RTPS/RTPT result; other commands do not retain FLAG here */
+    uint32_t projection_flags; /* Most recent native GTE command FLAG result. */
     int16_t v0[3];    /* C2DR 0-1 VXY0/VZ0 */
     int16_t v1[3];    /* C2DR 2-3 VXY1/VZ1 */
     int16_t v2[3];    /* C2DR 4-5 VXY2/VZ2 */
@@ -122,6 +136,15 @@ void PE_GTE_RTPT_coordinates(uint32_t xy[3], uint32_t z[3]);
 void PE_GTE_AVSZ3(const uint32_t z[3]);
 void PE_GTE_AVSZ4(const uint32_t z[4]);
 int32_t PE_GTE_NCLIP(void);
+/* Register-level COP2 access for lowered inline GTE asm (E21b): psx-spx
+ * register semantics over g_pe_gte (data $0-$31 via mtc2/mfc2/lwc2/swc2,
+ * control $0-$31 via ctc2/cfc2).  PE_GTE_Command runs a cop2 command word
+ * (low 25 bits): all 22 documented commands; unknown operations abort. */
+uint32_t PE_GTE_ReadData(uint32_t reg);
+void PE_GTE_WriteData(uint32_t reg, uint32_t value);
+uint32_t PE_GTE_ReadCtrl(uint32_t reg);
+void PE_GTE_WriteCtrl(uint32_t reg, uint32_t value);
+void PE_GTE_Command(uint32_t cmd);
 
 /* ── memory-card BIOS / libcard (pc_port/platform/pe_bios_card.c) ──── */
 int  func_800726F4(uint32_t handle);                 /* B(0Bh) TestEvent */
@@ -258,7 +281,19 @@ void func_80080998(pe_addr_t pe_a0, pe_addr_t pe_a1);
 int func_8007FC64(pe_addr_t pe_result);
 int func_8007F418(uint32_t sequence,pe_addr_t response);
 int func_80080DC4(int command,pe_addr_t param,pe_addr_t response);
+/* CdGetSector: one DMA3 sector-buffer transfer (game/boot/cd_stream_port.c). */
+int func_8007BF44(unsigned int a0,unsigned int a1);
 int  func_80080D5C(int command, pe_addr_t param, pe_addr_t result);
+/* 1 when a CD provider serves XA-ADPCM streaming through the libcd queue
+ * (Setfilter, ReadS in XA mode, GetlocP, Stop); see pe_libcd.c. */
+int PE_Cd_XaServiceAvailable(void);
+/* 1 when the active disc has the file a guest name string names (pe_libcd.c). */
+int PE_Cd_FilePresent(pe_addr_t guest_name);
+/* Mid-game register-level device attachment for a CD-XA consumer: the two
+ * hooks host-mode DsInit skips, saved and restored (game/boot/cd_stream_port.c). */
+typedef struct { pe_addr_t irq2, vsync0; int attached; } PeCdAttach;
+int  PE_Cd_AttachDevice(PeCdAttach *saved);
+void PE_Cd_DetachDevice(const PeCdAttach *saved);
 uint32_t PE_Cd_GetSetlocRaw(void);    /* host telemetry: last proven CdlLOC */
 int func_800824C8(int value);
 pe_addr_t func_800824F0(pe_addr_t callback);
@@ -270,8 +305,18 @@ int  func_800811E4(pe_addr_t fp);    /* read poll: 0 done, -1 timeout */
 pe_addr_t func_8007E6B0(void);       /* request-slot ring allocator */
 void func_80080950(pe_addr_t pe_a0, pe_addr_t pe_a1); /* 4-byte copy-or-clear */
 void func_8007C214(void);            /* streaming DMA-completion callback */
+/* func_8007A930 / func_8007AA34: object-like macros in pe_plat/cd.h bind these
+ * retail names to the pe_plat_cd_* entries; these lines stay the canonical
+ * host prototypes (the generator reads them) and redeclare the pe_plat entries. */
 pe_addr_t func_8007A930(int arg0, pe_addr_t pe_arg1);
 int func_8007AA34(pe_addr_t pe_a0);
+/* The CdStatus / CdMode / CdLastCom getters likewise: no generated TU is left
+ * to read their host signature from, so these keep their guest-code registry
+ * rows (gen_overlay_ports.py build_dispatch).  func_8007A354 (CdLastPos) has
+ * its canonical prototype in game/decomp_hand/hand_hi_protos.h. */
+uint8_t func_8007A324(void);
+uint8_t func_8007A334(void);
+uint8_t func_8007A344(void);
 int func_8007C2A0(int a0);
 /* matched src/func_8007A4BC.c: `func_8009AFB8_t func_8007A4BC(func_8009AFB8_t)`;
  * a PS1 function pointer is a 32-bit guest code address (pe_guestcode.h). */

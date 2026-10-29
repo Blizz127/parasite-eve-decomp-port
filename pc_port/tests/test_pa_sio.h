@@ -40,7 +40,7 @@ static void test_PA_sio_registers(void)
     ASSERT(PE_LoadU16(0x1F801048u) == 0x000Du && PE_LoadU16(0x1F80104Eu) == 0x0088u,
            "MODE / BAUD read back");
     PE_StoreU16(0x1F801048u, 0xFFFFu);
-    ASSERT(PE_LoadU16(0x1F801048u) == 0x01FFu, "MODE bits 9-15 always zero");
+    ASSERT(PE_LoadU16(0x1F801048u) == 0x013Fu, "SIO0 MODE bits 6-7 and 9-15 always zero");
     /* TXEN off: no transfer */
     PE_StoreU16(0x1F80104Au, 0x0002u);
     PE_StoreU8(0x1F801040u, 0x81u);
@@ -48,6 +48,7 @@ static void test_PA_sio_registers(void)
     /* TXEN + DTR (/CS low): the byte goes out, FFh (High-Z) comes back */
     PE_StoreU16(0x1F80104Au, 0x1003u);
     ASSERT(PE_LoadU16(0x1F80104Au) == 0x1003u, "CTRL reads back");
+    ASSERT(PE_LoadU8(0x1F801040u) == 0xFFu, "enabling TXEN completes the queued byte");
     PE_StoreU8(0x1F801040u, 0x81u);
     ASSERT((PE_LoadU16(0x1F801044u) & 0x0007u) == 0x0007u, "TXRDY, RXRDY, TXU after the byte");
     ASSERT(!(PE_LoadU16(0x1F801044u) & 0x0280u), "no /ACK: DSR and IRQ stay clear");
@@ -67,7 +68,7 @@ static void test_PA_sio_registers(void)
     /* unmodelled SIO registers stay loud */
     PA_SIO_EXPECT_ABORT(PE_StoreU16(0x1F801044u, 0u), "STAT is read-only");
     PA_SIO_EXPECT_ABORT((void)PE_LoadU16(0x1F80104Cu), "SIO0 0x1F80104C aborts");
-    PA_SIO_EXPECT_ABORT((void)PE_LoadU32(0x1F801040u), "DATA 32-bit preview aborts");
+    PA_SIO_EXPECT_ABORT((void)PE_LoadU16(0x1F801041u), "unaligned DATA halfword aborts");
     PASS();
 }
 
@@ -93,7 +94,8 @@ static void test_PA_sio_830DC(void)
      * *(+0x40) = ~a1, wait TXRDY, RCNT2 timeout, DATA = ~a1. */
     PE_StoreU32(0x800BD02Cu, 0x3Cu);
     PE_StoreU32(0x800A76D0u, PE_Rcnt2_ReadCounter());
-    ASSERT(func_800830DC(PA_SIO_S, -2) == 0xFF, "a1 < 0 returns the DATA byte");
+    /* A never-filled RX FIFO reads 00h (16e6859b5; psx-spx SIO). */
+    ASSERT(func_800830DC(PA_SIO_S, -2) == 0x00, "a1 < 0 returns the DATA byte");
     ASSERT(PE_LoadU8(PA_SIO_S + 0x44u) == 0xFFu && PE_LoadU8(PA_SIO_S + 0x45u) == 1u &&
            PE_LoadU8(PA_SIO_C) == 1u, "a1 < 0 record fields, *(+0x40) = ~a1");
     ASSERT(PE_LoadU16(0x1F801044u) & 2u, "the ~a1 byte went out (FFh received)");

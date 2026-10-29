@@ -50,6 +50,16 @@ static void test_decoder(void)
     CHECK(HostPad_DeviceHeld(&d) == (HOST_PAD_LEFT | HOST_PAD_DOWN));
     HostPad_DeviceEvent(&d, JS_EVENT_AXIS, 0, 0);
     HostPad_DeviceEvent(&d, JS_EVENT_AXIS, 1, 0);
+    /* Opt-in ANALOG STICK: the analog mask drops the left stick only. */
+    HostPad_DeviceEvent(&d, JS_EVENT_AXIS, 0, -30000);
+    HostPad_DeviceEvent(&d, JS_EVENT_AXIS, 1, 30000);
+    HostPad_DeviceEvent(&d, JS_EVENT_AXIS, 7, -32767);
+    CHECK(HostPad_DeviceHeld(&d) == (HOST_PAD_LEFT | HOST_PAD_DOWN | HOST_PAD_UP));
+    CHECK(HostPad_DeviceHeldAnalog(&d) == HOST_PAD_UP);
+    HostPad_DeviceEvent(&d, JS_EVENT_AXIS, 0, 0);
+    HostPad_DeviceEvent(&d, JS_EVENT_AXIS, 1, 0);
+    HostPad_DeviceEvent(&d, JS_EVENT_AXIS, 7, 0);
+    CHECK(HostPad_DeviceHeldAnalog(&d) == 0);
     /* D-pad hat. */
     HostPad_DeviceEvent(&d, JS_EVENT_AXIS, 6, 32767);
     CHECK(HostPad_DeviceHeld(&d) == HOST_PAD_RIGHT);

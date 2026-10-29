@@ -87,6 +87,8 @@ Later additions (see docs/ai_context/PC_PORT_FROM_DECOMP.md §3):
       `&D_X[k]`, `D_X + k` become retail guest addresses where the callee's
       host parameter takes one;
   E18 no leaf struct with pointer members (guest layout has 4-byte pointers).
+  E23 no multi-dimensional array extern (PE_DECOMP_ARRAY is one-dimensional;
+      such a leaf is E21-lowered instead).
   RECT a leaf-local `typedef struct { short x, y, w, h; } RECT;` is the
       psx_compat.h RECT (identical layout) and is replaced by a comment.
   E20 a leaf whose own canonical pc_port header prototype differs from the
@@ -163,9 +165,154 @@ ASM_FENCE_RE = re.compile(
     r"\(\s*\"\"\s*(?::[^;()]*(?:\([^;()]*\)[^;()]*)*)?\)\s*;")
 
 
+# A declarator list (`register int x asm("$12"), y asm("$13");`) carries one
+# pin per declarator; ASM_PIN_RE only reaches the first.
+ASM_PIN_DECL_RE = re.compile(r"\bregister\b[^;{}]*;")
+ASM_PIN_ONLY_RE = re.compile(r"\s*(?:__asm__|asm)\s*\(\s*\"\$[0-9A-Za-z]+\"\s*\)")
+
+
+# E2b tied register move: `asm("" : "=r"(a) : "0"(b))` with a != b is not a
+# fence — the output is tied to the input, so it computes `a = b` (vendor
+# leaves use it to copy a parameter into a pinned register).  It is rewritten
+# to that assignment before the fences are removed; with a == b it stays a
+# fence.
+# A tied input may also be a side-effect-free constant: an integer literal or
+# the address of a named object (`"0"(1)`, `"0"(&D_80192E8C)`,
+# `"1"(&D_800F3368.f8)`).  cc1 loads it into the output register (a reload),
+# so the statement computes `out = constant` exactly like a named input.
+# Several outputs, each tied to its own input, are a parallel move
+# (`asm("" : "=r"(a), "=r"(b) : "0"(c), "1"(d))` -> `a = c; b = d;`); an
+# output tied to itself is a pin and assigns nothing.  Untied inputs
+# ("r"/"m"/"i") only order the statement for cc1 and compute nothing.  The
+# rewrite is refused (the statement stays a fence, and a pin it reads stays
+# refused by the E2b guard) when an output is read as another output's input
+# (the sequential assignments would differ from the parallel move), when an
+# output is not tied to any input, or when an operand has another form.
+_TIED_VAL_RE = re.compile(r"[A-Za-z_]\w*|-?\s*(?:0[xX][0-9A-Fa-f]+|\d+)[uUlL]*"
+                          r"|&\s*[A-Za-z_]\w*(?:\s*\.\s*[A-Za-z_]\w*)*")
+_EMPTY_ASM_RE = re.compile(r"(?:__asm__|\basm)\s*(?:__volatile__|volatile)?\s*\(\s*\"\"\s*:")
+_OPERAND_RE = re.compile(r'\s*"([^"]*)"\s*\((.*)\)\s*', re.S)
+
+
+def _top_split(sec: str, sep: str) -> list[str]:
+    out, depth, cur = [], 0, []
+    for ch in sec:
+        if ch in "([":
+            depth += 1
+        elif ch in ")]":
+            depth -= 1
+        if ch == sep and depth == 0:
+            out.append("".join(cur))
+            cur = []
+        else:
+            cur.append(ch)
+    out.append("".join(cur))
+    return out
+
+
+def _tied_norm(v: str) -> str:
+    return re.sub(r"\s+", "", v)
+
+
+def _tied_rewrite(body: str) -> str | None:
+    secs = _top_split(body, ":")
+    if len(secs) not in (2, 3) or not secs[0].strip():
+        return None
+    outs = []
+    for op in _top_split(secs[0], ","):
+        m = _OPERAND_RE.fullmatch(op)
+        if not m or m.group(1) not in ("=r", "=&r") or not re.fullmatch(r"\s*[A-Za-z_]\w*\s*", m.group(2)):
+            return None
+        outs.append(m.group(2).strip())
+    tied: dict[int, str] = {}
+    for op in _top_split(secs[1], ",") if secs[1].strip() else []:
+        m = _OPERAND_RE.fullmatch(op)
+        if not m:
+            return None
+        c, e = m.group(1), m.group(2).strip()
+        if c.isdigit():
+            k = int(c)
+            if k >= len(outs) or k in tied or not _TIED_VAL_RE.fullmatch(e):
+                return None
+            tied[k] = _tied_norm(e)
+        elif c not in ("r", "m", "i"):
+            return None
+    if len(set(outs)) != len(outs) or set(tied) != set(range(len(outs))):
+        return None
+    for k, v in tied.items():
+        if any(v == o for j, o in enumerate(outs) if j != k):
+            return None
+    moves = [f"{o} = {tied[k]};" for k, o in enumerate(outs) if tied[k] != o]
+    return " ".join(moves) + " /* E2b: tied register move */" if moves else None
+
+
+def rewrite_tied_moves(text: str) -> str:
+    out, pos = [], 0
+    for m in _EMPTY_ASM_RE.finditer(text):
+        if m.start() < pos:
+            continue
+        depth, i = 1, text.index("(", m.start()) + 1
+        while i < len(text) and depth:
+            if text[i] == '"':
+                i += 1
+                while i < len(text) and text[i] != '"':
+                    i += 2 if text[i] == "\\" else 1
+            elif text[i] == "(":
+                depth += 1
+            elif text[i] == ")":
+                depth -= 1
+            i += 1
+        tail = re.match(r"\s*;", text[i:])
+        if depth or not tail:
+            continue
+        rep = _tied_rewrite(text[m.end():i - 1])
+        if rep is not None:
+            out.append(text[pos:m.start()])
+            out.append(rep)
+            pos = i + tail.end()
+    out.append(text[pos:])
+    return "".join(out)
+
+
+ASM_OUT_BEFORE_RE = re.compile(r"\"=&?r\"\s*\(\s*$")
+
+
+def asm_output_write(text: str, pos: int, var: str) -> bool:
+    """True when the use of `var` at text[pos] is an asm output operand
+    (`"=r"(var)`) of a statement that does not also take `var` as an input:
+    the asm writes it there, it does not read it."""
+    if not ASM_OUT_BEFORE_RE.search(text[max(0, pos - 24):pos]):
+        return False
+    head = None
+    for h in re.finditer(r"\b(?:__asm__|asm)\s*(?:__volatile__|volatile)?\s*\(", text[:pos]):
+        head = h
+    if head is None:
+        return False
+    depth, i = 1, head.end()
+    while i < len(text) and depth:
+        if text[i] == '"':
+            i += 1
+            while i < len(text) and text[i] != '"':
+                i += 2 if text[i] == "\\" else 1
+        elif text[i] == "(":
+            depth += 1
+        elif text[i] == ")":
+            depth -= 1
+        i += 1
+    if not (head.end() <= pos < i):
+        return False
+    secs = re.split(r":(?![^(]*\))", re.sub(r'"(?:[^"\\]|\\.)*"', '""', text[head.end():i - 1]))
+    inputs = secs[2] if len(secs) > 2 else ""
+    return not re.search(rf"\b{re.escape(var)}\b", inputs)
+
+
 def strip_era_asm(text: str) -> str:
     """Remove E2b register pins and empty-template asm fences (see above)."""
+    text = rewrite_tied_moves(text)
     text = ASM_PIN_RE.sub(r"\1", text)
+    text = ASM_PIN_DECL_RE.sub(
+        lambda m: (ASM_PIN_ONLY_RE.sub("", m.group(0))
+                   if len(ASM_PIN_ONLY_RE.findall(m.group(0))) >= 2 else m.group(0)), text)
     return ASM_FENCE_RE.sub("/* era asm fence removed (E2b) */", text)
 NUM_RE = re.compile(r"0x[0-9A-Fa-f]{8}\b")
 FUNC_NAME_RE = re.compile(r"\b(func_[0-9A-Fa-f]{8})\b")
@@ -490,6 +637,212 @@ def parse_matched() -> dict[str, dict]:
     return out
 
 
+# Retail routines replaced by independent pe_plat implementations (no
+# generated func_XXXXXXXX TU).  name -> providing pe_plat source.  The retail
+# name is bound to the pe_plat entry by an object-like macro in the provider's
+# header (PE_PLAT_HEADERS), so pc_port_definitions() reports the provider to
+# every consumer: this generator's conflict skip, the overlay passes and the
+# guest-code dispatch registry of gen_overlay_ports.py.
+PE_PLAT_REPLACED = {
+    "func_8007FA2C": "pc_port/game/boot/cd_stream_port.c",  # CD startup state
+    "func_8007A4D0": "pc_port/game/boot/cd_stream_port.c",  # CD command control
+    "func_8007A60C": "pc_port/game/boot/cd_stream_port.c",  # asynchronous CD command control
+    "func_8007A740": "pc_port/game/boot/cd_stream_port.c",  # CD command control and wait
+    "func_8007A3CC": "pc_port/game/boot/cd_stream_port.c",  # CD latch reset wrapper
+    "func_8007A8EC": "pc_port/game/boot/cd_stream_port.c",  # DMA3 callback wrapper
+    "func_80080404": "pc_port/game/boot/cd_stream_port.c",  # CD command progression
+    "func_8008080C": "pc_port/game/boot/cd_stream_port.c",  # decode CD response status
+    "func_8007C544": "pc_port/game/boot/func_8007A214_port.c",  # stream range setter
+    "func_8007CE80": "pc_port/game/boot/cd_stream_port.c",  # stream word copy
+    "func_8007D15C": "pc_port/platform/pe_libsnd.c",  # SPU DMA event installer
+    "func_8007DCAC": "pc_port/platform/pe_plat_state.c",  # SPU modeled delay
+    "func_8007D054": "pc_port/platform/pe_libsnd.c",  # SPU default initialization
+    "func_8007D074": "pc_port/platform/pe_libsnd.c",  # SPU initialization wrapper
+    "func_8007D1D4": "pc_port/platform/pe_plat_state.c",  # SPU model initialization
+    "func_8007D454": "pc_port/platform/pe_plat_state.c",  # SPU programmed I/O write
+    "func_80085984": "pc_port/platform/pe_plat_state.c",  # SPU shutdown wrapper
+    "func_80085F74": "pc_port/platform/pe_plat_state.c",  # SPU common attributes
+    "func_800862F4": "pc_port/platform/pe_plat_state.c",  # SPU voice volume
+    "func_80085C44": "pc_port/platform/pe_plat_state.c",  # SPU control-bit update
+    "func_80085A64": "pc_port/platform/pe_plat_state.c",  # SPU reverb enable
+    "func_80085EB4": "pc_port/platform/pe_plat_state.c",  # SPU transfer address wrapper
+    "func_80085B34": "pc_port/platform/pe_plat_state.c",  # SPU raw-address heap query
+    "func_80085BB4": "pc_port/platform/pe_plat_state.c",  # SPU heap query
+    "func_80085A04": "pc_port/platform/pe_plat_state.c",  # SPU heap configuration
+    "func_80089EB8": "pc_port/platform/pe_plat_state.c",  # SPU control level
+    "func_8007DD14": "pc_port/platform/pe_plat_state.c",  # SPU DMA callback forwarding
+    "func_80089F28": "pc_port/platform/pe_plat_state.c",  # SPU paired values
+    "func_80085D84": "pc_port/platform/pe_plat_state.c",  # SPU IRQ callback setter
+    "func_80085DC4": "pc_port/platform/pe_plat_state.c",  # SPU IRQ callback forwarding
+    "func_80085F14": "pc_port/platform/pe_plat_state.c",  # SPU transfer mode
+    "func_80085E54": "pc_port/game/boot/func_800850F4_port.c",  # existing SPU write adapter
+    "func_80085DF4": "pc_port/game/boot/func_800850F4_port.c",  # SPU read adapter
+    "func_8007BDDC": "pc_port/platform/pe_plat_cd_sync.c",  # CD data sync
+    "func_8007A910": "pc_port/platform/pe_plat_cd_sync.c",  # CD sync forwarding ABI
+    "func_80080B24": "pc_port/platform/pe_plat_cd_sync.c",  # DS sync forwarding ABI
+    "func_80089F08": "pc_port/platform/pe_plat_state.c",  # SPU voice field
+    "func_8007DC04": "pc_port/platform/pe_plat_state.c",  # DMA control priority
+    "func_8007DAE0": "pc_port/platform/pe_plat_state.c",  # SPU value write
+    "func_80075C04": "pc_port/platform/pe_plat_gpu_primitive.c",  # draw-offset packet
+    "func_8007FBC0": "pc_port/platform/pe_plat_cd.c",  # CD handler slot
+    "func_8007FBCC": "pc_port/platform/pe_plat_cd.c",  # CD handler slot
+    "func_8007FBD8": "pc_port/platform/pe_plat_cd.c",  # CD handler slot
+    "func_8007FBE4": "pc_port/platform/pe_plat_cd.c",  # CD handler slot
+    "func_8007C130": "pc_port/platform/pe_plat_cd.c",  # CD driver callback
+    "func_80080930": "pc_port/platform/pe_plat_cd.c",  # CD read state
+    "func_800812F4": "pc_port/platform/pe_plat_cd.c",  # CD guarded state
+    "func_8007DB24": "pc_port/platform/pe_plat_state.c",  # SPU address alignment
+    "func_8007DC84": "pc_port/platform/pe_plat_state.c",  # SPU DMA enable
+    "func_8007DBC8": "pc_port/platform/pe_plat_state.c",  # SPU address units
+    "func_8007DC5C": "pc_port/platform/pe_plat_state.c",  # SPU DMA priority
+    "func_80076B58": "pc_port/platform/pe_plat_state.c",  # GPU word transfer
+    "func_80076BE0": "pc_port/platform/pe_plat_state.c",  # GPU query
+    "func_8007633C": "pc_port/platform/pe_plat_state.c",  # GPU status read
+    "func_80076B20": "pc_port/platform/pe_plat_state.c",  # GPU control write
+    "func_80076B44": "pc_port/platform/pe_plat_state.c",  # GPU control cache
+    "func_80073DF8": "pc_port/platform/pe_plat_state.c",  # interrupt mask read
+    "func_80085F44": "pc_port/platform/pe_plat_state.c",  # SPU callback registration
+    "func_80085814": "pc_port/platform/pe_plat_state.c",  # counter setup
+    "func_800858E8": "pc_port/platform/pe_plat_state.c",  # counter start
+    "func_80085918": "pc_port/platform/pe_plat_state.c",  # counter stop
+    "func_800858B0": "pc_port/platform/pe_plat_state.c",  # counter read
+    "func_8008594C": "pc_port/platform/pe_plat_state.c",  # counter reset
+    "func_8007F7A8": "pc_port/platform/pe_plat_cd.c",  # DS disc type
+    "func_8007C444": "pc_port/platform/pe_plat_cd.c",  # clear ring status
+    "func_80078C94": "pc_port/platform/pe_plat_gte.c",  # matrix translation
+    "func_8007A400": "pc_port/platform/pe_plat_cd.c",  # command name
+    "func_8007A434": "pc_port/platform/pe_plat_cd.c",  # interrupt name
+    "func_80071944": "pc_port/platform/pe_plat_gpu_address.c",  # optional texture chunk
+    "func_80071964": "pc_port/platform/pe_plat_gpu_address.c",  # pixel chunk
+    "func_80071994": "pc_port/platform/pe_plat_gpu_address.c",  # pixel data
+    "func_80080950": "pc_port/platform/pe_plat_cd.c",  # four-byte state copy
+    "func_80080998": "pc_port/platform/pe_plat_cd.c",  # eight-byte state copy
+    "func_80081254": "pc_port/platform/pe_plat_cd.c",  # data callback
+    "func_800824B4": "pc_port/platform/pe_plat_cd.c",  # DS sync callback
+    "func_800824C8": "pc_port/platform/pe_plat_cd.c",  # DS ready callback
+    "func_800824DC": "pc_port/platform/pe_plat_cd.c",  # DS start callback
+    "func_8007A4A8": "pc_port/platform/pe_plat_cd.c",  # sync callback
+    "func_8007A4BC": "pc_port/platform/pe_plat_cd.c",  # ready callback
+    "func_8007A488": "pc_port/platform/pe_plat_cd.c",  # CD ready
+    "func_8007FC64": "pc_port/platform/pe_plat_cd.c",  # sync poll
+    "func_8007FC88": "pc_port/platform/pe_plat_cd.c",  # ready poll
+    "func_8007A88C": "pc_port/platform/pe_plat_cd.c",  # CD mix
+    "func_8007A8AC": "pc_port/platform/pe_plat_cd.c",  # CD get sector
+    "func_8007A8CC": "pc_port/platform/pe_plat_cd.c",  # CD get sector 2
+    "func_80080AC4": "pc_port/platform/pe_plat_cd.c",  # DS mix
+    "func_80080AE4": "pc_port/platform/pe_plat_cd.c",  # DS get sector
+    "func_80080B04": "pc_port/platform/pe_plat_cd.c",  # DS get sector 2
+    "func_800816F4": "pc_port/platform/pe_plat_cd.c",  # fixed-length filename match
+    "func_800749D8": "pc_port/platform/pe_plat_gpu_primitive.c",  # display environment
+    "func_80077CB4": "pc_port/platform/pe_plat_gpu_primitive.c",  # packet append
+    "func_80077A28": "pc_port/platform/pe_plat_libc.c",  # byte fill
+    "func_80074330": "pc_port/platform/pe_plat_libc.c",  # word clear
+    "func_80077B04": "pc_port/platform/pe_plat_gpu_primitive.c",  # semi-transparency
+    "func_80077B34": "pc_port/platform/pe_plat_gpu_primitive.c",  # texture shade
+    "func_80077B84": "pc_port/platform/pe_plat_gpu_primitive.c",  # poly G3
+    "func_80077BE4": "pc_port/platform/pe_plat_gpu_primitive.c",  # poly GT4
+    "func_80077C24": "pc_port/platform/pe_plat_gpu_primitive.c",  # tile 1
+    "func_80077C84": "pc_port/platform/pe_plat_gpu_primitive.c",  # draw page
+    "func_80076150": "pc_port/platform/pe_plat_gpu_primitive.c",  # draw mode
+    "func_800762A0": "pc_port/platform/pe_plat_gpu_primitive.c",  # draw offset
+    "func_80077B64": "pc_port/platform/pe_plat_gpu_primitive.c",  # poly F3
+    "func_80077BA4": "pc_port/platform/pe_plat_gpu_primitive.c",  # poly FT4
+    "func_80077BC4": "pc_port/platform/pe_plat_gpu_primitive.c",  # poly G4
+    "func_80077C04": "pc_port/platform/pe_plat_gpu_primitive.c",  # sprite
+    "func_80077C44": "pc_port/platform/pe_plat_gpu_primitive.c",  # tile
+    "func_80077C64": "pc_port/platform/pe_plat_gpu_primitive.c",  # line F2
+    "func_80077A64": "pc_port/platform/pe_plat_gpu_address.c",  # texture page
+    "func_80077AA4": "pc_port/platform/pe_plat_gpu_address.c",  # palette address
+    "func_80074CB8": "pc_port/platform/pe_plat_state.c",  # graphics debug
+    "func_8007DEA4": "pc_port/platform/pe_plat_state.c",  # pad init flag
+    "func_8007FC34": "pc_port/platform/pe_plat_cd.c",  # position byte 4
+    "func_8007FC44": "pc_port/platform/pe_plat_cd.c",  # position byte 5
+    "func_8007FC08": "pc_port/platform/pe_plat_cd.c",  # last command
+    "func_8007F7C8": "pc_port/platform/pe_plat_cd.c",  # DS last command
+    "func_8007FC18": "pc_port/platform/pe_plat_cd.c",  # command mode
+    "func_80074A14": "pc_port/platform/pe_plat_state.c",  # set video mode
+    "func_80081E5C": "pc_port/platform/pe_plat_cd.c",  # DS ready mode
+    "func_80073DE8": "pc_port/platform/pe_plat_state.c",  # callback state
+    "func_80074A28": "pc_port/platform/pe_plat_state.c",  # video mode
+    "func_8007DEB0": "pc_port/platform/pe_plat_state.c",  # pad init flag
+    "func_8007F788": "pc_port/platform/pe_plat_cd.c",  # DS status
+    "func_800822AC": "pc_port/platform/pe_plat_cd.c",  # error active
+    "func_8007F778": "pc_port/platform/pe_plat_cd.c",  # queue length
+    "func_8007FC28": "pc_port/platform/pe_plat_cd.c",  # position pointer
+    "func_8007FC54": "pc_port/platform/pe_plat_cd.c",  # status
+    "func_8007FCAC": "pc_port/platform/pe_plat_cd.c",  # disc type
+    "func_80080940": "pc_port/platform/pe_plat_cd.c",  # read enabled
+    "func_80080B44": "pc_port/platform/pe_plat_cd.c",  # DsIntToPos
+    "func_80080C48": "pc_port/platform/pe_plat_cd.c",  # DsPosToInt
+    "func_80080CC8": "pc_port/platform/pe_plat_cd.c",  # DsSetDebug
+    "func_8007A3EC": "pc_port/platform/pe_plat_cd.c",  # CdSetDebug
+    "func_800724F4": "pc_port/platform/pe_plat_libc.c",  # byte swap
+    "func_80072734": "pc_port/platform/pe_bios_card.c",
+    "func_80072744": "pc_port/platform/pe_bios_card.c",
+    "func_80072754": "pc_port/platform/pe_bios_card.c",
+    "func_80072764": "pc_port/platform/pe_bios_card.c",
+    "func_80072774": "pc_port/platform/pe_bios_card.c",
+    "func_80072784": "pc_port/platform/pe_bios_card.c",
+    "func_80072794": "pc_port/platform/pe_bios_card.c",
+    "func_800727A4": "pc_port/platform/pe_bios_card.c",
+    "func_80072A54": "pc_port/platform/pe_bios_string.c",
+    "func_80071A04": "pc_port/platform/pe_bios_string.c",
+    "func_80071A14": "pc_port/platform/pe_bios_string.c",
+    "func_80072314": "pc_port/platform/pe_bios_string.c",
+    "func_80071A34": "pc_port/platform/pe_bios_string.c",
+    "func_80071A44": "pc_port/platform/pe_bios_string.c",
+    "func_80071A24": "pc_port/platform/func_80071A24_port.c",
+    "func_80036DC8": "pc_port/platform/pe_plat_libc.c",  # sound startup
+    "func_80072334": "pc_port/platform/pe_plat_libc.c",  # guest byte copy
+    "func_800725DC": "pc_port/platform/pe_plat_libc.c",  # startup guard
+    "func_8007A930": "pc_port/platform/pe_plat_cd.c",   # CdIntToPos
+    "func_8007AA34": "pc_port/platform/pe_plat_cd.c",   # CdPosToInt
+    "func_8007A324": "pc_port/platform/pe_plat_cd.c",   # CdStatus
+    "func_8007A334": "pc_port/platform/pe_plat_cd.c",   # CdMode
+    "func_8007A344": "pc_port/platform/pe_plat_cd.c",   # CdLastCom
+    "func_8007A354": "pc_port/platform/pe_plat_cd.c",   # CdLastPos
+}
+PE_PLAT_HEADERS = {"pc_port/platform/pe_libsnd.c": "pc_port/include/pe_plat/state.h",
+                   "pc_port/game/boot/func_8007A214_port.c": "pc_port/include/pe_plat/cd_stream.h",
+                   "pc_port/game/boot/cd_stream_port.c": "pc_port/include/pe_plat/cd_stream.h",
+                   "pc_port/platform/pe_plat_cd.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/game/boot/func_800850F4_port.c": "pc_port/include/pe_plat/state.h",
+                   "pc_port/platform/pe_plat_cd_sync.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_gte.c": "pc_port/include/pe_plat/gte.h",
+                   "pc_port/platform/pe_plat_gpu_primitive.c": "pc_port/include/pe_plat/gpu_primitive.h",
+                   "pc_port/platform/pe_plat_gpu_address.c": "pc_port/include/pe_plat/gpu_address.h",
+                   "pc_port/platform/pe_plat_state.c": "pc_port/include/pe_plat/state.h",
+                   "pc_port/platform/pe_plat_libc.c": "pc_port/include/pe_plat/libc.h",
+                   "pc_port/platform/pe_bios_card.c": "pc_port/include/pe_plat/bios_file.h",
+                   "pc_port/platform/pe_bios_string.c": "pc_port/include/pe_plat/bios_string.h",
+                   "pc_port/platform/func_80071A24_port.c": "pc_port/include/pe_plat/bios_string.h"}
+
+
+def pe_plat_providers() -> dict[str, str]:
+    """PE_PLAT_REPLACED, after checking that every provider is really there.
+
+    Each name must be bound by `#define func_X pe_plat_Y` in its provider's
+    header, and `pe_plat_Y` must have a non-static definition in the provider
+    source.  Otherwise the translation would be skipped with nothing in its
+    place, so stop loudly instead.
+    """
+    for name, src in sorted(PE_PLAT_REPLACED.items()):
+        hdr = PE_PLAT_HEADERS.get(src)
+        if hdr is None or not (REPO_ROOT / src).is_file() or not (REPO_ROOT / hdr).is_file():
+            raise SystemExit(f"gen_decomp_ports: ERROR: {name} is PE_PLAT_REPLACED by {src}, "
+                             f"but the provider or its header ({hdr}) is missing")
+        htext = strip_comments((REPO_ROOT / hdr).read_text(encoding="utf-8", errors="replace"))
+        bound = re.search(rf"^[ \t]*#[ \t]*define[ \t]+{name}[ \t]+(pe_plat_\w+)[ \t]*$",
+                          htext, re.MULTILINE)
+        stext = strip_comments((REPO_ROOT / src).read_text(encoding="utf-8", errors="replace"))
+        if not bound or not re.search(
+                rf"^(?![ \t]*static\b)[A-Za-z_][\w \t\*]*\b{bound.group(1)}[ \t]*\([^;{{}}]*\)\s*\{{",
+                stext, re.MULTILINE):
+            raise SystemExit(f"gen_decomp_ports: ERROR: {name} is PE_PLAT_REPLACED by {src}, "
+                             f"but {hdr} does not bind it to a pe_plat entry {src} defines")
+    return dict(PE_PLAT_REPLACED)
+
+
 def pc_port_definitions() -> dict[str, set[str]]:
     """func_* symbol -> set of pc_port source files that define it."""
     defined: dict[str, set[str]] = {}
@@ -509,6 +862,10 @@ def pc_port_definitions() -> dict[str, set[str]]:
             if re.match(r"\s*static\b", m.group(0)):
                 continue
             defined.setdefault(m.group(1), set()).add(rel)
+    # A pe_plat replacement provides its retail name with or without a
+    # translated TU (none is generated for it).
+    for name, src in pe_plat_providers().items():
+        defined.setdefault(name, set()).add(src)
     return defined
 
 
@@ -541,6 +898,28 @@ def inline_shims() -> dict[str, dict]:
                     continue
                 out.setdefault(m.group(2), {"ret": m.group(1).strip(),
                                             "params": split_top(m.group(3))})
+    return out
+
+
+# A Psy-Q SDK entry the port reimplements on the host under its own name
+# (psyq_port_guard forbids defining func_<psyq address>).  pe_port_compat.h
+# marks it `/* host-replacement: func_X ... */` right before the host
+# prototype; lowered code (rooms, subsystem overlays, E21 EXE leaves) then
+# calls the host function directly.
+HOST_REPL_RE = re.compile(
+    r"/\*\s*host-replacement:\s*(func_[0-9A-Fa-f]{8})\b.*?\*/\s*"
+    r"([A-Za-z_][\w \t\*]*?)\b(PE_\w+)\s*\(([^;{}()]*)\)\s*;", re.S)
+
+
+def host_replacements() -> dict[str, dict]:
+    """func_X -> host signature plus {'host': PE_name, 'decl': prototype}."""
+    text = (REPO_ROOT / "pc_port/include/pe_port_compat.h").read_text(
+        encoding="utf-8", errors="replace")
+    out: dict[str, dict] = {}
+    for m in HOST_REPL_RE.finditer(text):
+        ret, host, prm = m.group(2).strip(), m.group(3), m.group(4).strip()
+        out[m.group(1)] = {"ret": ret, "params": split_top(prm), "host": host,
+                           "decl": f"{ret} {host}({prm or 'void'});"}
     return out
 
 
@@ -777,22 +1156,165 @@ def neutralize_host_typedefs(text: str) -> str:
         "/* RECT: psx_compat.h (int16_t x, y, w, h — identical layout) */", text)
 
 
+ERA_LONG_RE = re.compile(r"\blong\s+long\b|\blong\s+int\b|\blong\b")
+
+
+def era_ilp32(text: str) -> str:
+    """gcc-2.7.2-psx is ILP32: `long` is 32 bits.  A verbatim body compiled on
+    an LP64 host would widen it; ovl_03C5 80121A00 and ovl_03D2 801922F4 read
+    DRAWENV through `PE_DECOMP_ARRAY(0x800BCDC8u, DRAWENV)`, and the
+    struct's `unsigned long dr_env[16]` made it 160 bytes instead of retail's
+    0x5C, so `D_800BCDC8[i] = D_801D13AC[i]` copied at the wrong stride over
+    D_800BCE80.  Outside `long long` (64-bit on both), `long` is spelled `int`.
+    The E21 lowering already types `long` as 4 bytes (guest_lower)."""
+    return ERA_LONG_RE.sub(lambda m: m.group(0) if m.group(0).split()[-1] == "long"
+                           and len(m.group(0).split()) == 2 else "int", text)
+
+
+SIGNED32 = {"int", "signed", "signed int", "int32_t", "s32"}
+UNSIGNED32 = {"unsigned", "unsigned int", "uint32_t", "pe_addr_t", "u32"}
+LEAF_CALLEE_DECL_RE = re.compile(
+    r"^[ \t]*(?:extern[ \t]+)?([A-Za-z_][\w \t\*]*?)[ \t]*\b(func_[0-9A-Fa-f]{8})[ \t]*\(([^;{}]*)\)[ \t]*;",
+    re.M)
+
+
+def _code_mask(text: str) -> list[bool]:
+    """True at every offset inside a comment or a string/char literal."""
+    mask, i, n = [False] * len(text), 0, len(text)
+    while i < n:
+        c = text[i]
+        if text.startswith("/*", i):
+            j = text.find("*/", i + 2)
+            j = n if j < 0 else j + 2
+        elif text.startswith("//", i):
+            j = text.find("\n", i)
+            j = n if j < 0 else j
+        elif c in "\"'":
+            j = i + 1
+            while j < n and text[j] != c:
+                j += 2 if text[j] == "\\" else 1
+            j = min(n, j + 1)
+        else:
+            i += 1
+            continue
+        for k in range(i, j):
+            mask[k] = True
+        i = j
+    return mask
+
+
+STMT_WORDS = {"return", "if", "else", "while", "for", "do", "switch", "case", "goto", "sizeof"}
+
+
+def leaf_callee_decls(text: str) -> list:
+    """Function declarations (`T func_X(...);`) at file scope, or block-scope
+    ones that say `extern`; a statement such as `return func_X(o);` is not."""
+    mask = _code_mask(text)
+    depth, depth_at = 0, [0] * (len(text) + 1)
+    for i, c in enumerate(text):
+        depth_at[i] = depth
+        if not mask[i]:
+            depth += c == "{"
+            depth -= c == "}"
+    out = []
+    for m in LEAF_CALLEE_DECL_RE.finditer(text):
+        words = m.group(1).split()
+        if not words or words[0] in STMT_WORDS or mask[m.start(2)]:
+            continue
+        if depth_at[m.start(2)] == 0 or "extern" in m.group(0).split("(")[0].split():
+            out.append(m)
+    return out
+
+
+def cast_leaf_call_returns(name: str, text: str, sigs: dict[str, dict]) -> str:
+    """E22: neutralize_declarations replaces a leaf's own callee declaration by
+    the host prototype, so the host type decides how the caller reads the
+    result.  When the two 32-bit return types differ only in signedness (the
+    leaves' `unsigned int func_800C6CE0()` vs pe_port_compat.h's `int`; rand
+    `func_80071A54`, `int` in the leaves and `unsigned int` on the host), a
+    comparison or division on the result flips between retail and the port.
+    Every call whose value is used is cast back to the leaf's type; a callee
+    the leaf calls without a declaration is C89 implicit `int`.  Statement
+    calls, declarations and bare function names are left alone."""
+    code = strip_comments(text)
+    declared: dict[str, str] = {}
+    for m in leaf_callee_decls(code):
+        declared.setdefault(m.group(2), _norm_type(m.group(1)))
+    defined = set(re.findall(r"^[ \t]*[A-Za-z_][\w \t\*]*?\b(func_[0-9A-Fa-f]{8})\s*\([^;{}()]*\)\s*\{",
+                             code, re.M))
+    called = set(re.findall(r"\b(func_[0-9A-Fa-f]{8})\s*\(", code)) - defined - {name}
+    casts: dict[str, str] = {}
+    for fn in sorted(called):
+        s = sigs.get(fn)
+        if not s:
+            continue
+        lt, ht = declared.get(fn, "int"), _norm_type(s["ret"])
+        if (lt in SIGNED32 and ht in UNSIGNED32) or (lt in UNSIGNED32 and ht in SIGNED32):
+            casts[fn] = lt
+    if not casts:
+        return text
+    mask = _code_mask(text)
+    decl_spans = [(m.start(), m.end()) for m in leaf_callee_decls(text)]
+    edits = []
+    cast_names: set[str] = set()
+    for m in re.finditer(r"\b(" + "|".join(casts) + r")\s*\(", text):
+        st = m.start()
+        if mask[st] or any(a <= st < b for a, b in decl_spans):
+            continue
+        depth, j = 0, m.end() - 1
+        while j < len(text):
+            if not mask[j]:
+                if text[j] == "(":
+                    depth += 1
+                elif text[j] == ")":
+                    depth -= 1
+                    if depth == 0:
+                        break
+            j += 1
+        if j >= len(text):
+            continue
+        prev = text[:st].rstrip()
+        nxt = text[j + 1:].lstrip()
+        if nxt.startswith(";") and (not prev or prev[-1] in ";{})" or re.search(r"\belse$", prev)):
+            continue          # statement call (also after `if (...)` / `else`): the value is unused
+        edits.append((st, j + 1, casts[m.group(1)]))
+        cast_names.add(m.group(1))
+    # Nested casts (`f(g(h(x)))`): every prefix and suffix is an insertion at
+    # an original offset, applied from the highest offset down.
+    ins = sorted([(en, 0, ")") for st, en, lt in edits] +
+                 [(st, 1, f"(({lt})/* E22 leaf type */") for st, en, lt in edits], reverse=True)
+    for pos, _k, s_ in ins:
+        text = text[:pos] + s_ + text[pos:]
+    if not edits:
+        return text            # only statement calls: nothing read the result
+    note = "; ".join(f"{fn}: leaf {lt}, host {_norm_type(sigs[fn]['ret'])}"
+                     for fn, lt in casts.items() if fn in cast_names)
+    return f"/* E22 call-site casts to the leaf's return type ({note}) */\n" + text
+
+
 def analyze(name: str, src_text: str, matched: dict,
             known: set[str], existing_macros: set[str],
             proto: dict[str, int], sigs: dict[str, dict]) -> dict:
+    src_text = era_ilp32(src_text)
+    src_text = cast_leaf_call_returns(name, src_text, sigs)
     # E2b guard: a pin *without* an initialiser that is read before it is
     # written captures a live retail register — that is semantics, not a hint.
+    pin_text = rewrite_tied_moves(strip_comments(src_text))
     for m in re.finditer(
             r"\bregister\b[^;{}()=]*?\b([A-Za-z_]\w*)\s*(?:__asm__|asm)\s*"
-            r"\(\s*\"\$[0-9A-Za-z]+\"\s*\)\s*;", strip_comments(src_text)):
-        rest = strip_comments(src_text)[m.end():]
+            r"\(\s*\"\$[0-9A-Za-z]+\"\s*\)\s*;", pin_text):
+        rest = pin_text[m.end():]
         # A struct member of the same name (`a.w.lo`, `p->lo`) is not the pin.
         use = re.search(rf"(?<![.\w])(?<!->)\s*\b{re.escape(m.group(1))}\b", rest)
-        if use and not re.match(r"\s*=(?!=)", rest[use.end():]):
+        if use and not re.match(r"\s*=(?!=)", rest[use.end():]) and \
+                not asm_output_write(rest, use.end() - len(m.group(1)), m.group(1)):
             return {"eligible": False,
                     "reason": f"pinned register {m.group(1)} read before written"}
     src_text = rewrite_code_addresses(strip_era_asm(src_text))
     src_text = neutralize_host_typedefs(src_text)
+    src_text = rewrite_array_address_casts(src_text)
+    src_text = rewrite_callee_word_stores(src_text)
+    src_text = rewrite_code_pointer_members(src_text)
     src_text, why = rewrite_guest_calls(src_text, name)
     if why:
         return {"eligible": False, "reason": why}
@@ -819,6 +1341,17 @@ def analyze(name: str, src_text: str, matched: dict,
         if re.search(r"\*\s*[A-Za-z_]\w*\s*(?:\[[^\]]*\])?\s*[;,]", m.group(1)):
             return {"eligible": False,
                     "reason": "leaf struct with pointer members (guest layout)"}
+
+    # E23 — a multi-dimensional array extern (`extern unsigned char
+    # D_800BCDC8[][92];`) cannot be a PE_DECOMP_ARRAY of its element type:
+    # that macro is one-dimensional, so `D_800BCDC8[k]` (row k, a 92-byte
+    # DRAWENV whose address retail passes) became the byte at offset k.
+    # ovl_0457 801247F4 (the credits frame flip, op table 1 entry 6) handed
+    # PutDispEnv/DrawOTagEnv `movzbl` byte values instead of env addresses.
+    # Such a leaf goes to the E21 lowering, which computes guest addresses.
+    for m in re.finditer(r"\bextern\b[^;{}()]*?\b(D_[0-9A-Fa-f]{8})\s*(?:\[[^\]]*\]\s*){2,};", stripped):
+        return {"eligible": False,
+                "reason": f"multi-dimensional array extern {m.group(1)}"}
 
     hdr = HDR_RE.search(stripped)
     if hdr is None:
@@ -943,7 +1476,7 @@ def analyze(name: str, src_text: str, matched: dict,
     _all_locals, host_locals = local_objects(
         body_text if body_text is not None else stripped)
     ptr_locals = pointer_locals(body_text if body_text is not None else stripped)
-    hostptr_args: set[tuple[str, int]] = set()
+    hostptr_args: set[tuple] = set()
     # A pointer *parameter* is not host memory at a call site: the E7b wrapper
     # forwards it as `pe_<name>`, the guest address the callee's `pe_addr_t`
     # parameter wants.  It is still a host pointer as an assignment *target*
@@ -996,7 +1529,9 @@ def analyze(name: str, src_text: str, matched: dict,
                         re.match(r"&\s*[A-Za-z_]\w*\s*(->|\[)", bare)):
                     # a pointer local, or &p->f / &p[k] through one: guest
                     # memory, forwarded as PE_HostToGuest(...)
-                    hostptr_args.add((callee, split_top(args).index(arg)))
+                    hostptr_args.add((callee, split_top(args).index(arg), arg.strip())
+                                     if callee == "func_80071A74" else
+                                     (callee, split_top(args).index(arg)))
                     continue
                 if (root and root.group(1) in _all_locals) or bare in host_locals:
                     return {"eligible": False,
@@ -1024,7 +1559,8 @@ def analyze(name: str, src_text: str, matched: dict,
                 if bare in ptr_locals:
                     # a host pointer local into guest RAM: pass its guest
                     # address (PE_HostToGuest aborts loudly on host stack)
-                    hostptr_args.add((callee, i))
+                    hostptr_args.add((callee, i, arg.strip())
+                                     if callee == "func_80071A74" else (callee, i))
                     continue
                 return {"eligible": False,
                         "reason": f"host pointer {bare} passed to {callee} "
@@ -1298,6 +1834,100 @@ def neutralize_declarations(body: str, shimmed_data: set[str],
         pos = end
     out.append(body[pos:])
     return "".join(out)
+
+
+ARRAY_EXTERN_RE = re.compile(
+    r"^[ \t]*extern\b[^;()]*?\b(D_[0-9A-Fa-f]{8})\s*\[[^\]]*\]\s*;", re.M)
+
+
+def rewrite_array_address_casts(text: str) -> str:
+    """`(int)D_X` on an extern *array* is the array's guest address.
+
+    In retail C the array name decays to its address, and the integer cast
+    keeps the 32-bit value.  Host-side the name is a 64-bit host pointer, so
+    E16 would reject the cast as a narrowing.  The address is the symbol's
+    own VMA, so substitute the literal.  Only a bare symbol is rewritten: an
+    indexed `(int)D_X[k]` casts the element, and a call or member access is
+    left for the other rules.
+    """
+    arrays = set(ARRAY_EXTERN_RE.findall(strip_comments(text)))
+    if not arrays:
+        return text
+    cast = re.compile(
+        r"\(\s*((?:(?:unsigned|signed)[ \t]+)?(?:int|long)|unsigned|uint32_t|pe_addr_t)\s*\)"
+        r"\s*(D_[0-9A-Fa-f]{8})\b(?!\s*[\[(.]|\s*->)")
+
+    def sub(m: re.Match) -> str:
+        sym = m.group(2)
+        if sym not in arrays:
+            return m.group(0)
+        return f"({m.group(1)})0x{sym[2:].upper()}u /* guest address of {sym} */"
+    return cast.sub(sub, text)
+
+
+def rewrite_callee_word_stores(text: str) -> str:
+    """`*func_X(args) = v;` where func_X is declared to return `int *`.
+
+    The callee returns a 32-bit guest address (the host prototype is
+    pe_addr_t), so the store goes through the guest-RAM accessor:
+    `PE_StoreU32(func_X(args), (uint32_t)(v));`.  This is the effect-slot
+    init idiom `*func_800C22F8() = (int)D_X;` (slot reset, then install the
+    slot's script).  Only word pointees (int / unsigned int) are rewritten.
+    """
+    stripped = strip_comments(text)
+    word_ret = set(re.findall(
+        r"extern\s+(?:unsigned\s+)?int\s*\*\s*(func_[0-9A-Fa-f]{8})\s*\(", stripped))
+    if not word_ret:
+        return text
+    stmt = re.compile(
+        r"(?m)^([ \t]*)\*\s*(func_[0-9A-Fa-f]{8})\s*\(([^;()]*)\)\s*=\s*([^;=][^;]*);")
+
+    def sub(m: re.Match) -> str:
+        if m.group(2) not in word_ret:
+            return m.group(0)
+        return (f"{m.group(1)}PE_StoreU32((pe_addr_t){m.group(2)}({m.group(3)}), "
+                f"(uint32_t)({m.group(4).strip()}));")
+    text = stmt.sub(sub, text)
+    # Reads: a unary `*func_X(args)` (after an operator / open paren / return,
+    # never a binary multiply) loads the word at the returned guest address.
+    load = re.compile(
+        r"((?:[(=,!?:;{}&|]|\breturn\b)\s*)\*\s*(func_[0-9A-Fa-f]{8})\s*\(([^;()]*)\)")
+
+    def lsub(m: re.Match) -> str:
+        if m.group(2) not in word_ret:
+            return m.group(0)
+        return f"{m.group(1)}((int)PE_LoadU32((pe_addr_t){m.group(2)}({m.group(3)})))"
+    return load.sub(lsub, text)
+
+
+def rewrite_code_pointer_members(text: str) -> str:
+    """Function-pointer members of a leaf struct hold 32-bit guest code
+    addresses (`void (*fn)();` in the room Obj records).  Retyped as
+    `unsigned int`, the struct has the guest layout on the host too.  An
+    assignment `x = func_X;` of a code address becomes the literal VMA, which
+    the native dispatch later resolves through the guest-code registry.
+    A leaf that *calls* through such a member is left unchanged (E18/indirect
+    call still reject it): that call has to go through PE_GuestCall.
+    """
+    members: set[str] = set()
+    member_re = re.compile(
+        r"(?<![\w*])(?:const\s+)?[A-Za-z_][\w \t]*?\(\s*\*\s*([A-Za-z_]\w*)\s*\)\s*\([^;{}()]*\)\s*;")
+
+    def body_sub(m: re.Match) -> str:
+        def msub(mm: re.Match) -> str:
+            members.add(mm.group(1))
+            return f"unsigned int {mm.group(1)}; /* guest code address */"
+        return m.group(0)[: m.start(1) - m.start(0)] + member_re.sub(msub, m.group(1)) + \
+            m.group(0)[m.end(1) - m.start(0):]
+    out = re.sub(r"\bstruct\s*\w*\s*\{([^{}]*)\}", body_sub, text)
+    if not members:
+        return text
+    stripped = strip_comments(out)
+    if any(re.search(rf"(?:->|\.)\s*{re.escape(n)}\s*\(", stripped) for n in members):
+        return text
+    return re.sub(r"=\s*(func_([0-9A-Fa-f]{8}))\s*;",
+                  lambda m: f"= 0x{m.group(2).upper()}u; /* guest code address of {m.group(1)} */",
+                  out)
 
 
 def guest_address_expr(sym: str, decl: str, index: str | None,
@@ -1691,8 +2321,12 @@ def host_to_guest_args(body: str, plan: dict) -> str:
         return body
 
     def wrap(c, i, a):
-        if (c, i) not in want:
+        if (c, i) not in want and (c, i, a.strip()) not in want:
             return None
+        # printf's variadic positions mix host pointers and integers, so
+        # its records include the exact expression. Fixed-signature callees
+        # keep position records, which also adapt pointer arithmetic at
+        # other call sites (p + offset, rather than just a bare local).
         # (callee, index) is recorded from a host pointer local at ONE call
         # site; another call of the same callee may pass a call result there
         # (`f(t)` ... `f(g())`).  A call result is already a guest value
@@ -1710,6 +2344,21 @@ def canonical_for(plan: dict, proto: dict[str, int]) -> set[str]:
     derived = set(plan.get("derived_all", ()))
     return ({c for c in proto if c not in derived}
             | set(plan.get("host_override", ())))
+
+
+# These EXE BIOS trampolines have native bindings in pe_guestcode.c, but
+# intentionally have no func_ host symbol (printf is variadic, puts is void).
+# Route verbatim callers through the same registry as indirect callers.
+BIOS_TTY_VECTORS = {"func_80071A74", "func_80073C5C"}
+
+
+def render_bios_tty_binding(callee: str) -> str:
+    return (
+        f"/* native BIOS TTY vector via the guest-code registry */\n"
+        f"#define {callee}(...) PE_GuestCallN(__func__, 0x{callee[5:]}u, "
+        "sizeof((uintptr_t[]){__VA_ARGS__}) / sizeof(uintptr_t), "
+        "(uintptr_t[]){__VA_ARGS__})\n"
+    )
 
 
 def render(name: str, plan: dict, matched: dict, known_funcs: set[str],
@@ -1734,6 +2383,9 @@ def render(name: str, plan: dict, matched: dict, known_funcs: set[str],
         " */\n"
     )
     lines.append('#include "pe_guest_decomp.h"\n')
+    if any(PE_PLAT_HEADERS.get(PE_PLAT_REPLACED.get(c)) ==
+           "pc_port/include/pe_plat/cd_stream.h" for c in plan["callees"]):
+        lines.append('#include "pe_plat/cd_stream.h"\n')
 
     emitted_data = False
     for sym, decl in plan["externs"]:
@@ -1758,6 +2410,9 @@ def render(name: str, plan: dict, matched: dict, known_funcs: set[str],
         lines.append("")
 
     for callee in plan["boundaries"]:
+        if callee in BIOS_TTY_VECTORS:
+            lines.append(render_bios_tty_binding(callee))
+            continue
         lines.append(
             f"/* boundary: {callee} has no pc_port implementation yet */"
         )
@@ -1926,6 +2581,24 @@ def return_root(text: str, roots: set[str]) -> str | None:
     return found.pop() if len(found) == 1 else None
 
 
+def returns_symbol_addresses(text: str) -> bool:
+    """Every non-null `return` of the leaf takes a data symbol's address
+    (`&D_X` or `&D_X[k]`, optionally cast).  A bare `D_X` is not accepted:
+    for a pointer global it is the root's value, not a constant."""
+    text = strip_comments(text)
+    rets = [_strip_parens(m.group(1)) for m in re.finditer(r"\breturn\b([^;]*);", text)]
+    rets = [r for r in rets if r not in ("", "0", "NULL")
+            and not re.fullmatch(r"\(\s*\w[\w\s\*]*\)\s*0", r)]
+    if not rets:
+        return False
+    for r in rets:
+        r = re.sub(r"^\(\s*[A-Za-z_][\w\s]*\*+\s*\)\s*", "", r)        # pointer cast
+        r = _strip_parens(r)
+        if not re.fullmatch(r"&\s*D_[0-9A-Fa-f]{8}(?:\s*\[[^\]]*\])?", r):
+            return False
+    return True
+
+
 def ptr_roots_expr(plan: dict, pparams_names: set[str] | None = None) -> list[str]:
     """Guest-address expression(s) of the pointer root(s) a pointer-return
     leaf's result derives from, for PE_DecompReturnSegment.  With several
@@ -1935,6 +2608,11 @@ def ptr_roots_expr(plan: dict, pparams_names: set[str] | None = None) -> list[st
     exprs = {sym: f"PE_LoadU32(0x{sym[2:]}u)" for sym in plan.get("d_syms_used", [])
              if classify_data(plan["data_types"][sym], sym) == "ptrglobal"}
     exprs.update({p: f"pe_{p}" for p in sorted(pparams_names or ())})
+    if exprs and returns_symbol_addresses(plan.get("body", "")):
+        # Every result is a data symbol's own address (m0432i 80199048
+        # `return &D_801994F4;`): retail returns that KSEG0 constant whatever
+        # the segment of an unrelated pointer global the body reads.
+        return []
     if len(exprs) > 1:
         r = return_root(plan.get("body", ""), set(exprs))
         if r is not None:
@@ -2429,6 +3107,9 @@ def render_wrapper(name: str, plan: dict, leaf: dict, report: Path,
         " */\n"
     )
     lines.append('#include "pe_guest_decomp.h"\n')
+    if any(PE_PLAT_HEADERS.get(PE_PLAT_REPLACED.get(c)) ==
+           "pc_port/include/pe_plat/cd_stream.h" for c in plan["callees"]):
+        lines.append('#include "pe_plat/cd_stream.h"\n')
     lines.append("")
 
     typedefs = extract_typedefs(stripped)
@@ -2462,6 +3143,9 @@ def render_wrapper(name: str, plan: dict, leaf: dict, report: Path,
         lines.append("\n")
 
     for callee in plan["boundaries"]:
+        if callee in BIOS_TTY_VECTORS:
+            lines.append(render_bios_tty_binding(callee))
+            continue
         lines.append(f"/* boundary: {callee} has no pc_port implementation yet */\n")
         arity_n = plan["boundary_arity"][callee]
         if arity_n == 0:
@@ -2604,6 +3288,35 @@ def find_compiler() -> str | None:
     return None
 
 
+# Worker limit for compile_check().  The pool is sized from the operator's JOBS
+# (the variable scripts/build_pc_port.sh passes to cmake as -j), never from the
+# host CPU count: a big machine is not a grant to use all of it.  Unset JOBS
+# selects COMPILE_JOBS_DEFAULT.  A request above COMPILE_JOBS_MAX (the old hard
+# ceiling) runs at the ceiling, which is never more than was asked for.  Any
+# other value that is not a plain positive decimal integer stops the run
+# instead of guessing a limit.
+COMPILE_JOBS_DEFAULT = 4
+COMPILE_JOBS_MAX = 16
+
+
+def compile_jobs(environ=None) -> int:
+    """compile_check()'s worker count from JOBS; SystemExit on an unusable value."""
+    raw = (os.environ if environ is None else environ).get("JOBS")
+    if raw is None:
+        return COMPILE_JOBS_DEFAULT
+    text = raw.strip()
+    digits = text.lstrip("0")
+    if not re.fullmatch(r"[0-9]+", text) or not digits:
+        raise SystemExit(f"gen_decomp_ports: JOBS={raw!r} is not a usable worker "
+                         "limit; set a positive integer, or unset JOBS for the "
+                         f"default of {COMPILE_JOBS_DEFAULT}")
+    # Three or more significant digits is >= 100, past the ceiling (and too
+    # long to hand to int() unchecked: it refuses very long digit strings).
+    if len(digits) > 2:
+        return COMPILE_JOBS_MAX
+    return min(int(digits), COMPILE_JOBS_MAX)
+
+
 def compile_check(cc: str, items: list[tuple[str, str]]) -> dict[str, str]:
     """Syntax-check each (name, rendered source); return name -> first error.
 
@@ -2611,8 +3324,9 @@ def compile_check(cc: str, items: list[tuple[str, str]]) -> dict[str, str]:
     fooled: the eligibility rules say *why* a leaf is not host-representable,
     but only the compiler proves the emitted TU actually builds.  A leaf whose
     TU does not compile is reported and not written, so the generated tree is
-    always buildable.
+    always buildable.  At most compile_jobs() checks run at once.
     """
+    workers = compile_jobs()
     cmd_head = [cc, "-std=gnu11", "-fsyntax-only", *COMPILE_DEFINES]
     for inc in COMPILE_INCLUDES:
         cmd_head += ["-I", str(REPO_ROOT / inc)]
@@ -2634,12 +3348,171 @@ def compile_check(cc: str, items: list[tuple[str, str]]) -> dict[str, str]:
                     break
             return name, first or "compile failed"
 
-    workers = min(16, (os.cpu_count() or 4))
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
         for name, err in pool.map(one, items):
             if err:
                 failures[name] = err
     return failures
+
+
+# ── E21 for EXE leaves ───────────────────────────────────────────────────
+# The overlay generator lowers room leaves that the verbatim path refuses for
+# host/guest pointer-model reasons to explicit guest-memory C
+# (guest_lower.py).  The same lowering applies to matched EXE leaves; this
+# path takes only leaves no pc_port file defines (a hand port stays the
+# authority until it is retired by its own change), never a Psy-Q SDK entry
+# (psyq_port_guard forbids func_<psyq address> definitions), and only when a
+# canonical header prototype, if one exists, agrees with the lowered
+# signature (parameter count, void or not), so hand callers link correctly.
+PSYQ_CLASSIFICATION = Path("configs/USA/psyq_classification.tsv")
+_E21_PUBLIC_RE = r"^(\w[\w \*]*?)\s+{}\(([^)]*)\)\s*\{{"
+
+
+def psyq_names() -> set[str]:
+    out: set[str] = set()
+    path = REPO_ROOT / PSYQ_CLASSIFICATION
+    if not path.is_file():
+        return out
+    lines = path.read_text(encoding="utf-8").splitlines()
+    head = lines[0].split("\t") if lines else []
+    if "name" not in head or "library" not in head:
+        return out
+    ni, li = head.index("name"), head.index("library")
+    for ln in lines[1:]:
+        cols = ln.split("\t")
+        if len(cols) > max(ni, li) and cols[li] not in ("game", "-", ""):
+            out.add(cols[ni])
+    return out
+
+
+def e21_render(name: str, text: str, leaf: dict, known: set, sigs: dict, dsigs: dict,
+               source: str) -> str | None:
+    """One leaf's E21 TU text, or None when it does not lower or its public
+    signature would disagree with a canonical prototype."""
+    import guest_lower as gl
+    # host replacements: the lowering calls the PE_ host function by name (a
+    # verbatim TU would call func_X, which the port never defines)
+    repl = {n: s for n, s in host_replacements().items() if n not in known}
+    low_sigs = {**sigs, **repl}
+    try:
+        res = gl.lower_leaf(name, text, known | set(repl), low_sigs, strip_asm=strip_era_asm)
+    except gl.LowerError:
+        return None
+    protos = []
+    for c in res["callees"]:
+        sg = repl.get(c) or dsigs.get(c) or sigs.get(c)
+        if sg is None:
+            return None
+        prm = ", ".join(sg["params"]) or "void"
+        protos.append(sg.get("decl") or f"{sg['ret']} {c}({prm});")
+    txt = gl.render_lowered(name, leaf, res, protos,
+                            (EVIDENCE_DIR / name / "REPORT.md").as_posix())
+    head = "GENERATED by tools/analysis/gen_decomp_ports.py from src/" + f"{name}.c"
+    if head in txt:
+        txt = txt.replace(head, "GENERATED by tools/analysis/gen_decomp_ports.py --e21 from " + source, 1)
+    else:
+        txt = txt.replace("GENERATED by tools/analysis/gen_decomp_ports.py",
+                          "GENERATED by tools/analysis/gen_decomp_ports.py --e21", 1)
+    m = None
+    for m in re.finditer(_E21_PUBLIC_RE.format(re.escape(name)), txt, re.M):
+        pass
+    canon = sigs.get(name)
+    if canon is not None and m is not None:
+        lp = [x for x in split_top(m.group(2)) if x.strip() not in ("", "void")]
+        cp = [x for x in canon["params"] if x.strip() not in ("", "void")]
+        if len(lp) != len(cp) or (m.group(1).strip() == "void") != (canon["ret"].strip() == "void"):
+            return None
+    return txt
+
+
+def e21_lower_skipped(skipped: dict, matched: dict, defs: dict, known: set,
+                      sigs: dict, dsigs: dict) -> dict[str, str]:
+    """{name: rendered E21 TU} for skipped matched leaves that lower."""
+    import guest_lower as gl
+    reasons = gl.LOWER_REASONS
+    psyq = psyq_names()
+    own = (OUT_DIR / "x").parent.as_posix()
+    out: dict[str, str] = {}
+    for name, reason in sorted(skipped.items()):
+        if not reason.startswith(reasons) or name in psyq:
+            continue
+        if any(not f.startswith(own + "/") for f in defs.get(name, ())):
+            continue          # a hand port defines it
+        src = REPO_ROOT / SRC_DIR / f"{name}.c"
+        if not src.exists():
+            continue
+        txt = e21_render(name, src.read_text(encoding="utf-8", errors="replace"),
+                         matched[name], known, sigs, dsigs, f"src/{name}.c")
+        if txt is not None:
+            out[name] = txt
+    return out
+
+
+# NON_MATCHING EXE leaves: behaviour C (proven by tools/analysis/e21_leaf.py
+# exe, not a byte match), mostly for EXE functions that are asm in disc1.yaml.
+# configs/USA/overlays/nonmatching.yaml lists them under the overlay id `exe`
+# with their SLUS file offset and size; the C is src/nonmatching/exe/<name>.c.
+# An entry may also shadow a matched `c` leaf that neither the verbatim path
+# nor the E21 lowering takes (func_8004A9A0, func_800DD9E4, func_800DB6BC):
+# the matched leaf stays the byte-exact authority, and the NON_MATCHING TU is
+# the one emitted, because e21_lower_nonmatching's plans are applied last.
+NONMATCH_EXE_DIR = Path("src/nonmatching/exe")
+EXE_FILE_VRAM = 0x80010000 - 0x800          # SLUS file offset 0 -> this VMA
+
+
+def nonmatching_exe_leaves() -> dict[str, dict]:
+    path = REPO_ROOT / "configs/USA/overlays/nonmatching.yaml"
+    out: dict[str, dict] = {}
+    if not path.is_file():
+        return out
+    for m in re.finditer(r"^\s*-\s*\[\s*exe\s*,\s*(func_[0-9A-F]{8})\s*,\s*(0x[0-9A-Fa-f]+)\s*,"
+                         r"\s*(0x[0-9A-Fa-f]+)\s*\]", path.read_text(encoding="utf-8"), re.M):
+        off, size = int(m.group(2), 16), int(m.group(3), 16)
+        out[m.group(1)] = {"name": m.group(1), "vram": EXE_FILE_VRAM + off, "file_offset": off,
+                           "file_size": size, "words": size // 4, "nonmatching": True}
+    return out
+
+
+def exe_context() -> tuple[dict, set, dict, dict]:
+    """(defs, known, sigs, dsigs) exactly as one main() round computes them,
+    for rendering a single EXE leaf outside the generator (e21_leaf.py exe)."""
+    defs = pc_port_definitions()
+    known = set(defs)
+    protos = canonical_protos()
+    sigs = canonical_signatures()
+    for n, s in inline_shims().items():
+        known.add(n)
+        protos.setdefault(n, len([p for p in s["params"] if p.strip() not in ("", "void")]))
+        sigs.setdefault(n, s)
+    header_protos = set(protos)
+    dsigs = {n: s for n, s in derived_signatures().items() if n not in header_protos}
+    for n, s in dsigs.items():
+        protos.setdefault(n, len(s["params"]))
+        sigs.setdefault(n, {"ret": s["ret"], "params": s["params"]})
+    _ADDR_SIGS.clear()
+    _ADDR_SIGS.update(sigs)
+    _ADDR_KNOWN.clear()
+    _ADDR_KNOWN.update(known)
+    return defs, known, sigs, dsigs
+
+
+def e21_lower_nonmatching(defs: dict, known: set, sigs: dict, dsigs: dict) -> dict[str, str]:
+    """{name: rendered E21 TU} for the NON_MATCHING EXE leaves (never a
+    Psy-Q entry, never over a hand port)."""
+    psyq = psyq_names()
+    own = (OUT_DIR / "x").parent.as_posix()
+    out: dict[str, str] = {}
+    for name, leaf in sorted(nonmatching_exe_leaves().items()):
+        if name in psyq or any(not f.startswith(own + "/") for f in defs.get(name, ())):
+            continue
+        src = REPO_ROOT / NONMATCH_EXE_DIR / f"{name}.c"
+        if not src.exists():
+            continue
+        txt = e21_render(name, src.read_text(encoding="utf-8", errors="replace"), leaf,
+                         known, sigs, dsigs, f"{NONMATCH_EXE_DIR.as_posix()}/{name}.c (NON_MATCHING)")
+        if txt is not None:
+            out[name] = txt
+    return out
 
 
 def main() -> int:
@@ -2659,6 +3532,12 @@ def main() -> int:
                     help="cap the number of leaves emitted (0 = all)")
     ap.add_argument("--verbose", action="store_true",
                     help="with --check, print every skipped leaf and reason")
+    ap.add_argument("--e21", action="store_true",
+                    help="also lower matched EXE leaves the verbatim path refuses "
+                         "for host/guest pointer-model reasons to explicit "
+                         "guest-memory C (tools/analysis/guest_lower.py), as "
+                         "gen_overlay_ports.py does for room code; only leaves no "
+                         "pc_port file defines, never a Psy-Q SDK entry")
     ap.add_argument("--no-compile-check", action="store_true",
                     help="do not syntax-check each rendered TU with the host "
                          "compiler before emitting it (the gate that keeps "
@@ -2727,6 +3606,12 @@ def main() -> int:
             plans[name] = plan
             eligible.append(name)
 
+        e21_plans = e21_lower_skipped(skipped, matched, defs, known, sigs, dsigs) if args.e21 else {}
+        for name in e21_plans:
+            skipped.pop(name, None)
+        if args.e21:
+            e21_plans.update(e21_lower_nonmatching(defs, known, sigs, dsigs))
+
         if args.only:
             wanted = set(args.only)
             eligible = [n for n in eligible if n in wanted]
@@ -2752,7 +3637,9 @@ def main() -> int:
         total_words = sum(matched[n]["words"] for n in eligible)
         if args.check:
             print(f"gen_decomp_ports: eligible {len(eligible)} leaves "
-                  f"({total_words} words); ineligible {len(skipped)}")
+                  f"({total_words} words); ineligible {len(skipped)}"
+                  + (f"; E21-lowered {len(e21_plans)}: {' '.join(sorted(e21_plans))}"
+                     if args.e21 else ""))
             if args.verbose:
                 for name in sorted(skipped):
                     print(f"  skip {name}: {skipped[name]}")
@@ -2773,6 +3660,10 @@ def main() -> int:
                 conflicts.append(f"{name}: also defined in {', '.join(sorted(others))}")
                 continue
             rendered.append((name, render(name, plans[name], matched, known, protos)))
+        for name in sorted(e21_plans):
+            if args.only and name not in set(args.only):
+                continue
+            rendered.append((name, e21_plans[name]))
 
         uncompilable: dict[str, str] = {}
         if not args.no_compile_check:

@@ -51,6 +51,7 @@ int func_80026824(int initial_mode)
             PE_StoreU32(slot,PE_LoadU32(0x8009D254u));PE_StoreU16(slot+4u,(uint16_t)command);
             PE_StoreU16(slot+6u,(uint16_t)(int16_t)(int8_t)PE_LoadU8(0x8009D2D8u));
             func_800254BC(command);
+            if (PE_Port_ShouldStop()) return mode;
             PE_StoreU8(0x8009D2D8u,0u);PE_StoreU8(0x8009CE40u,0u);
             PE_StoreU8(0x8009CE3Cu,(uint8_t)(PE_LoadU8(0x8009CE3Cu)+1u));mode=-1;
         } else {
@@ -62,6 +63,7 @@ int func_80026824(int initial_mode)
     }
     if (mode==2) {
         func_800258CC((int8_t)PE_LoadU8(0x8009CE40u));
+        if (PE_Port_ShouldStop()) return mode;
         if (PE_LoadU32(0x8009D1F4u)&0x200u) {
             pe_addr_t target=PE_LoadU32(0x8009E000u+(uint32_t)(int32_t)(int8_t)PE_LoadU8(0x8009CE44u)*12u);
             PE_StoreU8(0x8009CE40u,0u);append_item_command(target,PE_LoadU16(0x8009CE50u));

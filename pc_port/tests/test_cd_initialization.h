@@ -1,4 +1,43 @@
 #include "retail_cd_initialization_cases.h"
+#include "pe_plat/cd_stream.h"
+static void test_cd_native_state_initializer(void)
+{
+    static const uint32_t ranges[][2]={{0x9B554u,0x50u}};
+    TEST("cd_native_state_initializer");
+    for (unsigned k=0;k<sizeof(CDINIT_states)/sizeof(CDINIT_states[0]);k++) {
+        ResetTestState();
+        for (unsigned i=0;i<0x50u;i++) PE_StoreU8(0x8009B554u+i,(uint8_t)(CDINIT_states[k].seed+i*17u));
+        (void)PE_GuestCall("CD startup state",0x8007FA2Cu,0u,0u,0u,0u,0u);
+        ASSERT(!PE_Port_ShouldStop() && hit_camera_hash(ranges,1)==CDINIT_states[k].hash,
+               "native CD startup state differs from original fixture");
+    }
+    PASS();
+}
+
+static int cd_init_quit_on_pending_irq(void)
+{
+    return PE_CdReg_ReadU8(0x1F801800u) == 1u &&
+           (PE_CdReg_ReadU8(0x1F801803u) & 7u) != 0u;
+}
+
+static void test_cd_init_pending_irq_stop(void)
+{
+    TEST("cd_init_pending_irq_stop");
+    ResetTestState();
+    B558_PlantPointers();
+    PE_StoreU16(0x800945E4u, 1u);
+    PE_StoreU16(0x80094614u, 9u);
+    PE_StoreU8(0x8009B294u, 0xA5u);
+    PE_CdReg_WriteU8(0x1F801803u, 1u);
+    PE_Port_SetQuitPoll(cd_init_quit_on_pending_irq);
+    int result = func_8007BBFC();
+    PE_Port_SetQuitPoll(NULL);
+    ASSERT(result == -1 && PE_Port_GetStopReason() == PE_PORT_STOP_HOST_QUIT &&
+           PE_LoadU8(0x8009B294u) == 0xA5u,
+           "CD initialization did not stop at pending IRQ before later setup");
+    PASS();
+}
+
 static void test_DAY2_cd_initialization(void)
 {
     TEST("DAY2_cd_initialization");

@@ -109,8 +109,10 @@ int func_80191B64(pe_addr_t state)
         if (a0 == (int32_t)h1) {
             int32_t b = (int32_t)(int16_t)PE_LoadU16(0x801D0DE2u);
             uint32_t h2 = (uint32_t)PE_LoadU16(slot + 18u);
+            /* Same size: retail's beq at 0x80191CC0 targets the x latch
+             * at 0x80191D38, not the y copy at 0x80191D8C. */
             if (b == (int32_t)h2)
-                goto copy_dims;
+                goto latch_x;
         }
     }
     /* CC8 rect fill: (0,0,[B0DBB]?480:320,480), then refresh DE0/DE2. */
@@ -132,7 +134,8 @@ int func_80191B64(pe_addr_t state)
         PE_StoreU16(0x801D0DE0u, PE_LoadU16(slot + 16u));
         PE_StoreU16(0x801D0DE2u, PE_LoadU16(slot + 18u));
     }
-    /* D38 signed/unsigned dimension latch. */
+    /* D38 signed/unsigned dimension latch, on every call. */
+latch_x:
     if (PE_LoadU8(0x800B0DBBu) != 0u) {
         int32_t v = (int32_t)(int16_t)PE_LoadU16(0x801D0DE0u);
         uint32_t x = (uint32_t)v + (uint32_t)v + (uint32_t)v;
@@ -145,7 +148,6 @@ int func_80191B64(pe_addr_t state)
         PE_StoreU16((pe_addr_t)(s1 + 34), (uint16_t)v);
         PE_StoreU16((pe_addr_t)(s1 + 26), (uint16_t)v);
     }
-copy_dims:
     {
         uint32_t v1 = (uint32_t)PE_LoadU16(0x801D0DE2u);
         PE_StoreU16((pe_addr_t)(s1 + 36), (uint16_t)v1);

@@ -5,7 +5,7 @@
 
 extern int func_800C251C();
 extern int func_800C2758();
-extern void func_8018F12C();
+extern int func_8018F12C(void *o);
 extern char D_80192B5C[];
 extern char D_80192B9C[];
 extern char D_80192BBC[];

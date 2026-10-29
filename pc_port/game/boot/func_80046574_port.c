@@ -133,10 +133,13 @@ static pe_addr_t equipment_ram(pe_addr_t p) {return p<0x200000u?p|0x80000000u:p;
 static uint32_t equipment_word(pe_addr_t p,unsigned off) {return PE_LoadU32(equipment_ram(p+off));}
 static void equipment_store(pe_addr_t p,unsigned off,uint32_t value) {PE_StoreU32(equipment_ram(p+off),value);}
 void func_80048254(void); /* port7_port.c (src/func_80048254.c) */
-static void equipment_upgrade_boundary(const char *name)
-{
-    Bootstrap_ReturnVoid(name,"equipment tool menu");PE_Port_RequestStop(PE_PORT_STOP_UNRESOLVED_BOUNDARY);
-}
+/* Tool-mode (D_8009CF1C) callees, all native: generated pc_port/game/decomp
+ * (func_80047678, func_80047FE0) and decomp_hand (absent_lo_window_port.c
+ * func_80047560, port6_port.c func_80048918). */
+void func_80047678(void);
+int func_80047FE0(int a0, int a1, int a2);
+void func_80047560(void);
+void func_80048918(int a0, int a1, int a2);
 /* func_800631C0: ported from the matching decomp -- generated TU pc_port/game/decomp/func_800631C0_port.c (src/func_800631C0.c); hand port retired after differential verification (docs/evidence/portverify/REPORT.md). */
 
 int func_80045D0C(pe_addr_t window,uint32_t event)
@@ -151,7 +154,7 @@ int func_80045D0C(pe_addr_t window,uint32_t event)
         equipment_store(list,68u,0u);func_80062CB8(list);func_800525EC();return 1;
     }
     if (event&64u) {
-        if (PE_LoadU32(0x8009CF1Cu)) {equipment_upgrade_boundary("func_80047678");return 1;}
+        if (PE_LoadU32(0x8009CF1Cu)) {func_80047678();return 1;}
         func_80062F3C(7u);func_80062F1C(window);other=func_80062A34(1u,6u);
         if (other) {func_80062F1C(other);func_800439D8();func_80052634();}
         return 1;
@@ -168,13 +171,17 @@ int func_80045D0C(pe_addr_t window,uint32_t event)
 
 int func_8004620C(pe_addr_t window,uint32_t event)
 {
+    /* src/func_8004620C.c: with the tool window (2/0x0B) open, its handler
+     * func_80047FE0 runs first and a nonzero result skips the Back arm. */
     pe_addr_t list=func_80062A20(window,0u),tools=func_80062A34(2u,11u),other;
-    if (tools) {equipment_upgrade_boundary("func_80047FE0");return 1;}
-    if (event&64u) {
-        func_80062F3C(7u);func_80062F1C(window);func_80062F3C(5u);func_800439D8();func_80052634();return 1;
+    int handled=0;
+    if (tools) handled=func_80047FE0((int)list,(int)tools,(int)event);
+    if (!handled && (event&64u)) {
+        if (!tools) {func_80062F3C(7u);func_80062F1C(window);func_80062F3C(5u);func_800439D8();func_80052634();}
+        return 1;
     }
     if (event&0x1000u) {
-        equipment_store(list,68u,~0u);other=func_80062A34(2u,5u);
+        equipment_store(list,68u,~0u);other=tools?func_80062A34(2u,0x1Bu):func_80062A34(2u,5u);
         if (other) {PE_StoreU32(other+68u,0u);PE_StoreU32(other+72u,PE_LoadU32(other+88u)-1u);func_80062CB8(other);}
         func_8005267C();
     }
@@ -197,47 +204,4 @@ refresh:
     if (PE_LoadU32(0x8009CF18u)) {func_8005E114(1);PE_StoreU32(0x8009CFB0u,1u);}
 }
 
-static void equipment_confirmation(pe_addr_t owner,int32_t selected)
-{
-    pe_addr_t window=func_80062D2C(41u,owner,0u,1u),list=func_8006322C(41u,window,window);
-    uint32_t width;
-    PE_StoreU32(window+48u,0x80044E14u);PE_StoreU32(window+44u,0x80044E98u);
-    PE_StoreU32(list+48u,0x8004F950u);PE_StoreU32(0x8009CF14u,5u);func_80062CB8(list);
-    func_80052E30(PE_LoadU32(0x8009CF10u));PE_StoreU8(0x800A1980u,255u);
-    func_80052C08(0x800A1980u,func_8005DC4C(0u));PE_StoreU32(0x8009CFA0u,0u);
-    width=func_8005F1A0(0x800A1980u);width=(int32_t)width<120?120u:func_8005F1A0(0x800A1980u);
-    PE_StoreU32(window+52u,width+20u);PE_StoreU32(window+56u,50u);
-    PE_StoreU32(window+24u,(uint32_t)((int32_t)(300u-width)>>1));
-    PE_StoreU32(list+24u,(uint32_t)((int32_t)(PE_LoadU32(window+52u)-128u)>>1));
-    PE_StoreU32(0x8009CFA8u,0x80046574u);PE_StoreU32(list+28u,PE_LoadU32(window+56u)-20u);
-    func_80052BCC(0x800A1980u,func_8005DC4C(113u));func_80052C08(0x800A1980u,func_80053068(selected));
-    width=func_8005F1A0(0x800A1980u);width=(int32_t)width<120?120u:func_8005F1A0(0x800A1980u);
-    window=func_80062A34(1u,41u);PE_StoreU32(window+52u,width+20u);
-    PE_StoreU32(window+24u,(uint32_t)((int32_t)(300u-width)>>1));list=func_80062A34(2u,41u);
-    PE_StoreU32(list+24u,(uint32_t)((int32_t)(PE_LoadU32(window+52u)-128u)>>1));
-}
-
-int func_800466C0(pe_addr_t window,uint32_t event)
-{
-    pe_addr_t list=func_80062A20(window,0u),other;
-    if (event&0x10000u) {
-        int32_t selected=func_800556E8(func_80063428(list));
-        if (PE_LoadU32(0x8009CF1Cu)) {equipment_upgrade_boundary("func_80047560");return 1;}
-        if (func_80054240(selected)) {func_800526C4();return 1;}
-        if (func_8005B89C()) equipment_confirmation(list,selected);
-        else func_80046574(window,1u);
-        func_800525EC();return 1;
-    }
-    if (!(event&0x1040u)) return 0;
-    if (PE_LoadU32(0x8009CF0Cu)) {
-        func_80062F3C(53u);equipment_store(list,68u,~0u);equipment_store(list,92u,0u);
-        func_80062CB8(func_80062A34(2u,54u));func_80052634();return 1;
-    }
-    if (!(event&64u)) return 1;
-    func_80062F3C(53u);
-    if (PE_LoadU32(0x8009CF1Cu)) {equipment_upgrade_boundary("func_80048918");return 1;}
-    equipment_store(list,68u,~0u);other=func_80062A34(2u,6u);
-    if (other==func_80062CC4()) equipment_store(other,68u,!equipment_word(other,104u));
-    else other=func_80062A34(2u,5u);
-    func_80062CB8(other);func_80052634();return 1;
-}
+/* func_800466C0: ported from the matching decomp -- generated TU pc_port/game/decomp/func_800466C0_port.c (src/func_800466C0.c); hand port retired after differential verification (docs/port/NATIVE_COMPLETION.md, "Hand ports retired"). */

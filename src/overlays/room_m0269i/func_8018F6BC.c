@@ -6,7 +6,7 @@ extern char *D_8009D254;
 extern unsigned int D_800BCF88;
 extern void func_80020CE4();
 extern void func_8003E0FC();
-extern void func_8001AA78();
+extern void func_8001AA78(void *);
 
 int func_8018F6BC(unsigned char *a0)
 {
@@ -31,7 +31,7 @@ int func_8018F6BC(unsigned char *a0)
         q = D_8009D254;
         *(int *)(q + 0x28) <<= 16;
         *(int *)(q + 0x30) <<= 16;
-        func_8001AA78();
+        func_8001AA78(q);
         u = D_8009D254;
         *(int *)(u + 0x68) = 0;
         *(int *)(u + 0x6C) = 0;

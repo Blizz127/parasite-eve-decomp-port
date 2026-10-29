@@ -175,6 +175,34 @@ overlays:
     text_end: 0x3500
     config: configs/USA/overlays/room_m0022i.yaml
     build_profiles: configs/USA/overlays/room_m0022i_build_profiles.json
+  room_m0437i:
+    kind: room
+    description: room m0437i chunk 2 (room tier target)
+    room_slot: 436
+    sector_start: 0x18889
+    sector_end: 0x18924
+    size: 0x4D800
+    vram: 0x8018EFE8
+    sha1: a0a02f111c74a9632338601524712fc1ab5eaf6b
+    blob: build/extracted/disc1/peimg/room_m0437i_c2.bin
+    text_start: 0x1E4
+    text_end: 0x4108
+    config: configs/USA/overlays/room_m0437i.yaml
+    build_profiles: configs/USA/overlays/room_m0437i_build_profiles.json
+  room_m0159i:
+    kind: room
+    description: room m0159i chunk 2 (room tier target)
+    room_slot: 158
+    sector_start: 0xB1D9
+    sector_end: 0xB216
+    size: 0x1E800
+    vram: 0x8018EFE8
+    sha1: c13dd0cba30ed3212775339101e27a52f3a747b3
+    blob: build/extracted/disc1/peimg/room_m0159i_c2.bin
+    text_start: 0x20
+    text_end: 0xE54
+    config: configs/USA/overlays/room_m0159i.yaml
+    build_profiles: configs/USA/overlays/room_m0159i_build_profiles.json
   room_m0430i:
     kind: room
     description: room m0430i chunk 2 (room tier target)

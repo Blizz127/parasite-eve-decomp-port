@@ -1,5 +1,71 @@
 # Changelog
 
+## 2026-10-29 — source sync, no new build
+
+Source only. No binary, release, tag or asset. Synced from the development
+tree at `41ecb77e3` (previous source sync: `2918a7f0`, 2026-10-07) with the
+same rule as before: unchanged public files are replaced, curated files get
+the change as a patch, and files that define Psy-Q SDK functions, include
+backend headers, or carry retail-derived test data stay unpublished.
+
+**Decompilation**
+
+- Matching EXE functions published as C: 1772 -> 1773 (one new game
+  function since the previous sync). Psy-Q functions stay unpublished; their
+  bytes still come from your disc at build time.
+- Overlay C spans published: 3321 -> 3498 (room and subsystem overlays).
+- New `src/nonmatching/`: native-port C for functions that are not
+  byte-matched yet. Each is checked by differential tests against the
+  original code; none counts as matching progress.
+
+**Native PC port (source)**
+
+- The game binary still runs only native C: no MIPS interpreter or CPU
+  emulation in production. The original-code interpreters exist only in test
+  programs as references. An unported call stops with
+  `CPU_BOUNDARY/REFUSED`; it is never emulated.
+- Large hardware-model work: GPU (status, DMA, image uploads, CLUT cache),
+  SPU (ADPCM, envelopes, reverb, noise), MDEC, CD, timer 1, SIO0 and DMA
+  controllers, each with focused checks.
+- Missing-code stops now propagate through the loaders, battle and render
+  paths instead of continuing on stale state.
+
+**Not published in this sync (held)**
+
+- 17 new `pe_plat_*` SDK-replacement sources and headers. Some were written
+  from matched Psy-Q source and are quarantined in the development tree;
+  the rest wait for a provenance audit.
+- Enhancement and assist features (volume, presentation scale and
+  similar), as before.
+- Nine curated files whose change didn't apply cleanly as a patch (for
+  example `pc_port/CMakeLists.txt` and `pc_port/tests/test_native.c`), and
+  two analysis harnesses that define Psy-Q functions.
+- The published tree alone doesn't build the PC port; it never did.
+
+**Validation (development tree, 2026-10-29)**
+
+- Native test suite: 1871 run, 1865 passed, 0 failed, 6 skipped (the tests of
+  the quarantined adapters).
+- Day 1 with pad input only (no memory writes) wins the first Eve fight and
+  reaches the sewer alligator's second phase, then loses: the automated
+  player runs out of healing. This is an assisted route, not someone
+  playing.
+- Days 2 to 5: warp-started assisted segments reach story flag 0x278 (past
+  the Disc 2 change) with no missing-code stop. These are coverage
+  diagnostics, not play.
+- Not run on real hardware or by hand.
+- Published tree checks: `psyq_port_guard.py --strict` 0 findings;
+  `retail_data_guard.py --strict` on all 715 added or changed files, no
+  retail bytes; private-content scan clean.
+- Turnkey matching build from this exact tree, run from a clean copy with
+  the documented Docker steps: `VERIFY_US=PASS`, retail SHA-1
+  `452fb033f2eaa4b18aa20a5bca60b8125af3a37b` reproduced, all 1773 packed C
+  spans equal retail.
+
+Public binaries stay held: the PC-port runtime still links 280
+Psy-Q-classified functions (the Psy-Q guard's runtime allowlist rows),
+which the project is replacing with its own code.
+
 ## 2026-10-08 — native-only room code (release `native-only-ab6de50b`)
 
 - Room functions that read pointers from room data, call through code

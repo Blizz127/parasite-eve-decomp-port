@@ -46,6 +46,11 @@ for entry in (10,11):
     for state in (1,2,4,5,6,7):case(entry,state=state)
 for bank in (0,1):
     for fill in (0,0x55,0xA7,0xFF):case(12,bank=bank,descriptor_fill=fill)
+# func_8004DCA4 with a nonzero mode: func_80054294() (D_8009D068) picks
+# func_80048918(0, -2, -1) or func_8005C488 (appended so the cases above keep
+# their indices and patch ranges).
+for alternate in (0,1):
+    for existing in (0,13,23,19):case(mode=1,alternate=alternate,existing=existing)
 
 def fixture(exe,c):
     r,s,_=display_fixture(exe,dict(c,entry=10))
@@ -68,6 +73,7 @@ def fixture(exe,c):
     sw(0x9CEE4,c.get('step',1));sw(0x9CEEC,c.get('light',72));sw(0x9CEDC,c.get('height',1))
     put(0xA1878,bytes(i*23 for i in range(12)))
     sw(0xB0E50,0x80150000);sw(0xB0E54,0x80154000)
+    if c.get('mode'):sw(0x9D068,c.get('alternate',0))
     if c['entry']==12:
         put(0xA2180,bytes((c['descriptor_fill'],))*240)
         sw(0xB0E38,0x80164000);sw(0xB0E3C,0x80168000)
@@ -77,7 +83,7 @@ def fixture(exe,c):
     if c.get('confirm'):
         sw(0x9D0E8,1);sw(0x9D0F0,32);sw(0x9D26C,0)
         sw(word(0x9D15C)+68,0)
-    args=((0,),(0x80149E00,),(),(),(),(),(c.get('style',0),),(),(),(1,),
+    args=((c.get('mode',0),),(0x80149E00,),(),(),(),(),(c.get('style',0),),(),(),(1,),
           (0x800A76D8,),(),())[c['entry']]
     for a,n in RANGES:s[a:a+n]=r[a:a+n]
     return r,s,tuple(v&0xFFFFFFFF for v in args)

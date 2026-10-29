@@ -3,12 +3,13 @@
  * crossing, and 1C7DC wall slide. Uses the map's 22/28-byte triangles,
  * shared edge records and actor radius; no scene-specific barriers.
  *
- * Includes 1AE40's cached-wall gate and 1D170's script polygon boundary.
+ * Includes 1AE40's cached-wall gate; script polygons use native 1A9F8/1D170.
  * Invalid/absent mesh records are ignored for resource-free VM fixtures.
  */
 #include "psx_compat.h"
 #include "pe_port_compat.h"
 #include "pe_sdk.h"
+#include "game_port.h"
 
 #define MESH_P  0x8009D1FCu
 #define PLANES  0x8009D1D8u
@@ -167,6 +168,7 @@ static void floor_slide(pe_addr_t actor)
     unsigned step, dir;
     PE_StoreU32(INPUT, PE_LoadU32(INPUT) | 8u);
     for (step=0;;step++) {
+        if (PE_Port_ShouldStop()) return;
         for (dir=0; dir<4u; dir++) {
             uint32_t x=base_x, z=base_z, offset=step<<16;
             int32_t distance;
@@ -274,6 +276,7 @@ void func_8001AE40(pe_addr_t actor)
         unsigned wall;
         if (!is_aya) goto reject;
         floor_slide(actor);
+        if (PE_Port_ShouldStop()) return;
         x=floor_s16(actor+0x2Au); z=floor_s16(actor+0x32u);
         floor_clear_visited();
         wall=PE_LoadU16(WALL_ID);
@@ -285,6 +288,7 @@ void func_8001AE40(pe_addr_t actor)
                 if (floor_edges(x,z,rec,0)) goto reject;
             }
             floor_slide(actor);
+            if (PE_Port_ShouldStop()) return;
             x=floor_s16(actor+0x2Au); z=floor_s16(actor+0x32u);
             floor_clear_visited();
             if (!floor_edges(x,z,rec,0)) goto reject;
@@ -338,106 +342,10 @@ reject:
     PE_StoreU32(actor+0x98u,PE_LoadU32(actor+0x98u)|0x80000u);
 }
 
-/* 1CE88: radius contact with the closed script polygon. Coordinates are
- * signed high halves of 16.16 points; return the contacted edge's index. */
-static int floor_polygon_contact(int32_t x, int32_t z, pe_addr_t points, unsigned count)
-{
-    /* Original's two unused endpoint reads precede this empty-list return. */
-    if (!count) return -1;
-    int32_t px=floor_s16(points+count*8u-6u);
-    int32_t pz=floor_s16(points+count*8u-2u);
-    int32_t radius=PE_LoadU16(RADIUS);
-    for (unsigned i=0;i<count;i++) {
-        int32_t qx=floor_s16(points+i*8u+2u), qz=floor_s16(points+i*8u+6u);
-        int32_t dx=px-qx, dz=pz-qz, ax=x-qx, az=z-qz;
-        int32_t in[3]={dx,0,dz}, normal[3];
-        uint32_t sum;
-        int32_t length, distance, along;
-        px=qx; pz=qz;
-        if ((qx<x-radius && qx+dx<x-radius) ||
-            (x+radius<qx && x+radius<qx+dx) ||
-            (qz<z-radius && qz+dz<z-radius) ||
-            (z+radius<qz && z+radius<qz+dz)) continue;
-        length=(int32_t)func_80078004((uint32_t)floor_add(floor_mul(dx,dx),floor_mul(dz,dz)));
-        distance=floor_abs(floor_div(floor_sub(floor_mul(az,dx),floor_mul(ax,dz)),length));
-        if (radius<distance) continue;
-        if (!PE_NormalizeVectorRetail(in,normal,&sum)) return -1;
-        along=(int32_t)(func_8003708C((uint32_t)normal[0]<<4,(uint32_t)ax<<16)
-                      +func_8003708C((uint32_t)normal[2]<<4,(uint32_t)az<<16));
-        if (along<0) {
-            along=floor_add(floor_mul(ax,ax),floor_mul(az,az));
-            if (floor_mul(radius,radius)<along) continue;
-        }
-        if (length<(along>>16)) {
-            ax=x-(qx+dx); az=z-(qz+dz);
-            if (floor_mul(radius,radius)<floor_add(floor_mul(ax,ax),floor_mul(az,az))) continue;
-        }
-        return (int)i;
-    }
-    return -1;
-}
-
-/* 1CBA0: project onto the contacted edge, then search +x,-x,+z,-z
- * by increasing whole units until radius clearance is strict. */
-static void floor_polygon_slide(pe_addr_t actor, pe_addr_t points, unsigned count, int edge)
-{
-    pe_addr_t point=points+(uint32_t)edge*8u;
-    int32_t qx=floor_s16(point+2u), qz=floor_s16(point+6u);
-    pe_addr_t previous=edge>0?point-8u:points+(count-1u)*8u;
-    int32_t px=floor_s16(previous+2u), pz=floor_s16(previous+6u);
-    int32_t in[3]={qx-px,0,qz-pz}, normal[3];
-    uint32_t sum, tx, tz, along, base_x, base_z;
-    int32_t dx=px-qx, dz=pz-qz, length, radius=PE_LoadU16(RADIUS);
-    if (!PE_NormalizeVectorRetail(in,normal,&sum)) return;
-    tx=(uint32_t)normal[0]<<4; tz=(uint32_t)normal[2]<<4;
-    along=func_8003708C(tx,PE_LoadU32(actor+0x28u)-PE_LoadU32(actor+0x40u))
-         +func_8003708C(tz,PE_LoadU32(actor+0x30u)-PE_LoadU32(actor+0x48u));
-    base_x=PE_LoadU32(actor+0x40u)+func_8003708C(tx,along);
-    base_z=PE_LoadU32(actor+0x48u)+func_8003708C(tz,along);
-    length=(int32_t)func_80078004((uint32_t)floor_add(floor_mul(dx,dx),floor_mul(dz,dz)));
-    for (unsigned step=0;;step++) {
-        for (unsigned dir=0;dir<4u;dir++) {
-            uint32_t x=base_x,z=base_z,offset=step<<16;
-            if (dir==0) x+=offset;
-            else if (dir==1) x-=offset;
-            else if (dir==2) z+=offset;
-            else z-=offset;
-            int32_t distance=floor_abs(floor_div(floor_sub(
-                floor_mul(((int32_t)z>>16)-qz,dx),
-                floor_mul(((int32_t)x>>16)-qx,dz)),length));
-            if (radius<distance) {
-                PE_StoreU32(actor+0x28u,x);
-                PE_StoreU32(actor+0x30u,z);
-                return;
-            }
-        }
-    }
-}
-
-/* Complete 1D170 call graph, enabled by D2E8 bit 4 at 1AA0C. */
-static void floor_polygon_boundary(void)
-{
-    pe_addr_t actor=PE_LoadU32(AYA),points=PE_LoadU32(0x8009D2F8u);
-    unsigned count=PE_LoadU16(0x8009D264u);
-    int32_t radius=floor_mul(PE_LoadU16(actor+0x224u),PE_LoadU16(actor+0x26u));
-    if (radius<0) radius=floor_add(radius,4095);
-    PE_StoreU16(RADIUS,(uint16_t)(radius>>12));
-    int edge=(int16_t)floor_polygon_contact(floor_s16(actor+0x2Au),floor_s16(actor+0x32u),points,count);
-    if (edge<0) return;
-    floor_polygon_slide(actor,points,count,edge);
-    if ((int16_t)floor_polygon_contact(floor_s16(actor+0x2Au),floor_s16(actor+0x32u),points,count)>=0) {
-        PE_StoreU32(actor+0x28u,PE_LoadU32(actor+0x40u));
-        PE_StoreU32(actor+0x2Cu,PE_LoadU32(actor+0x44u));
-        PE_StoreU32(actor+0x30u,PE_LoadU32(actor+0x48u));
-    }
-}
-
+/* Historical test/compatibility entry: use the full native polygon graph.
+ * Its DIV guards trap as retail does; do not substitute a quotient here. */
+void func_8001A9F8(void);
 void func_8001A9F8_floor_cut(void)
 {
-    if (PE_LoadU32(INPUT)&4u) floor_polygon_boundary();
-    pe_addr_t actor=PE_LoadU32(0x8009D20Cu);
-    while (actor) {
-        if (!(PE_LoadU32(actor+0x98u)&0x80u)) func_8001AE40(actor);
-        actor=PE_LoadU32(actor+4u);
-    }
+    func_8001A9F8();
 }

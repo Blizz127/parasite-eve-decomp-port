@@ -52,21 +52,24 @@ static void test_DAY1_transition_display(void)
 
 static void test_DAY1_transition_display_boundary(void)
 {
-    int mask;
+    int mask, stop_policy;
     TEST_RETAIL_DISC1("DAY1_transition_display_boundary"); TEST_RETAIL_FIXUPS(RETAILFIX_dispenv);
     ResetTestState();HostFB_Init();PE_GPU_Init();B54KR_SeedGpuStatic();
     PE_StoreU32(0x800B0E38u,0x80140000u);PE_StoreU32(0x800B0E3Cu,0x80145000u);
     PE_StoreU32(0x800B0E4Cu,0x80100000u);PE_StoreU32(0x8019C9C0u,0xDEADBEEFu);
     PE_StoreU32(0x8019C200u,0xA5A5A5A5u);
     PE_StoreU32(0x80095730u,0xBADu);
-    func_8019BD78();HostFB_GetState(NULL,NULL,NULL,&mask);
+    /* The unregistered jtb[11] stops under the production boundary policy. */
+    stop_policy=PE_Decomp_BoundaryStopEnabled();PE_Decomp_SetBoundaryStop(1);
+    func_8019BD78();PE_Decomp_SetBoundaryStop(stop_policy);HostFB_GetState(NULL,NULL,NULL,&mask);
     ASSERT(PE_Port_ShouldStop() && mask==0 && PE_LoadU32(0x8019C9C0u)==0xDEADBEEFu &&
            PE_LoadU32(0x8019C200u)==0xA5A5A5A5u && PE_LoadU32(0x800A3300u)==0,
            "setup advanced beyond unresolved first OTC call");
     ASSERT(PE_LoadU32(0x8019C1FCu)==0x80140000u && PE_LoadU32(0x8019C274u)==0x80145000u,
            "setup lost original prefix before OTC call");
     PE_Port_RunControlReset();PE_StoreU32(0x8019C9C0u,0x8019C270u);
-    PE_StoreU32(0x8019C270u,0x12345678u);func_8019BF50();
+    PE_StoreU32(0x8019C270u,0x12345678u);
+    PE_Decomp_SetBoundaryStop(1);func_8019BF50();PE_Decomp_SetBoundaryStop(stop_policy);
     ASSERT(PE_Port_ShouldStop() && PE_LoadU32(0x8019C270u)==0x12345678u,
            "bank reset advanced beyond unresolved OTC call");
     PASS();

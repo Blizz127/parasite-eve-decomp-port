@@ -2,6 +2,7 @@
  * 120D8.s, 42664.s, 43CE4.s, 44AA0.s, 48530.s and 486D8.s. */
 #include "psx_compat.h"
 #include "pe_port_compat.h"
+#include "game_port.h"
 
 extern unsigned int func_80052F70(void);
 extern pe_addr_t func_8005DB44(unsigned int index);
@@ -88,6 +89,7 @@ void func_80023E14(int32_t item)
     p=PE_LoadU32(0x8009D278u);
     func_8006DE80(item<13?0x4B4:0x4B5,field,(int16_t)PE_LoadU16(actor+42u),
         (int16_t)PE_LoadU16(actor+46u),(int16_t)PE_LoadU16(actor+50u));
+    if (PE_Port_ShouldStop()) return;
     if (item>=6 && item<=9) {
         static const unsigned heal[]={45,90,180,400};
         PE_StoreU16(p+12u,(uint16_t)(PE_LoadU16(p+12u)+heal[item-6]));

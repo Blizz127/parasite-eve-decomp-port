@@ -32,7 +32,10 @@ def main():
             regs=execute(r,pc,initial_regs=initial,stop_at=stops)
             pc=stops.last
             if not pc:break
-            if pc in (0x80071A74,0x80073C5C,0x80170000):boundary=(1 if pc==0x80071A74 else 2 if pc==0x80073C5C else 3);break
+            # The two void TTY diagnostics run natively (76406ad80/0b955d3a8):
+            # return to the caller like the port; only the dirty jump stops.
+            if pc in (0x80071A74,0x80073C5C):pc=regs[31];initial=dict(enumerate(regs));continue
+            if pc==0x80170000:boundary=3;break
             if pc in (0x8007AAE0,0x8007AB08,0x8007AB18):regs[2]=pending
             elif pc==0x8007AB3C:regs[2]=1|(0x20 if pos<size else 0)
             elif pc==0x8007AB5C:regs[2]=payload[pos];pos+=1

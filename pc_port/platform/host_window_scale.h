@@ -72,4 +72,34 @@ static void HostWindow_ScaleBGRA(uint8_t *out, int width, int height,
         }
     }
 }
+
+/* Fullscreen policy: an explicit --fullscreen wins; PE_FULLSCREEN=0/1
+ * overrides; otherwise go fullscreen when running inside Gamescope or Steam
+ * Game Mode / Big Picture (Steam Deck, Bazzite, SteamOS), where a windowed
+ * 960x720 window would be scaled with a border around it.  env(name) returns
+ * the value or NULL (getenv in the host; a table in tests). */
+typedef const char *(*HostWindowEnvFn)(const char *name);
+static inline int HostWindow_EnvIn(const char *v, const char *needle)
+{
+    size_t n = strlen(needle);
+    for (; v && *v; v++) {
+        size_t i = 0;
+        while (i < n && v[i] && (v[i] | 0x20) == (needle[i] | 0x20)) i++;
+        if (i == n) return 1;
+    }
+    return 0;
+}
+static inline int HostWindow_WantFullscreen(int requested, HostWindowEnvFn env)
+{
+    const char *o = env("PE_FULLSCREEN"), *v;
+    if (requested) return 1;
+    if (o && *o) return *o != '0';
+    if ((v = env("GAMESCOPE_WAYLAND_DISPLAY")) && *v) return 1;
+    if (HostWindow_EnvIn(env("XDG_CURRENT_DESKTOP"), "gamescope")) return 1;
+    if (HostWindow_EnvIn(env("XDG_SESSION_DESKTOP"), "gamescope")) return 1;
+    if ((v = env("SteamDeck")) && *v == '1') return 1;
+    if ((v = env("SteamGamepadUI")) && *v == '1') return 1;
+    if ((v = env("SteamTenfoot")) && *v == '1') return 1;
+    return 0;
+}
 #endif

@@ -223,10 +223,20 @@ static McPort *load_port(int port)
     } else {
         FILE *f = fopen(p->path, "rb");
         if (!f) {
+            /* An existing card that cannot be read must never be replaced
+             * by a blank one. Leave it unloaded so a later call retries. */
+            if (errno != ENOENT) {
+                set_error("open", p->path);
+                p->loaded = 0;
+                return NULL;
+            }
             /* Missing image: create a freshly formatted card. */
             PE_Memcard_FormatImage(p->image);
-            if (save_image(p))
-                fprintf(stderr, "[MEMCARD] created formatted card image %s\n", p->path);
+            if (!save_image(p)) {
+                p->loaded = 0;
+                return NULL;
+            }
+            fprintf(stderr, "[MEMCARD] created formatted card image %s\n", p->path);
         } else {
             size_t n = fread(p->image, 1, PE_MC_IMAGE_SIZE, f);
             int extra = fgetc(f) != EOF;

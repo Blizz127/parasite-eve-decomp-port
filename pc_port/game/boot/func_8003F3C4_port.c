@@ -94,15 +94,22 @@ void func_800696F0(void)
     if (D_8009D1A0 & 0x80u) {
         pe_addr_t package, header, entry;
         uint32_t packed;
-        for (i = 0; i < 8u; i++) effect_module_finish(i);
+        for (i = 0; i < 8u; i++) {
+            effect_module_finish(i);
+            if (PE_Port_ShouldStop()) return;
+        }
         effect_module_finish(0x55u);
+        if (PE_Port_ShouldStop()) return;
         package = PE_LoadU32(0x800B0E64u);
         header = package + PE_LoadU32(package + 4u);
         packed = PE_LoadU32(header + 4u);
         entry = package + (packed & 0x3FFFFFu);
         for (i = 0; i < (PE_LoadU32(header + 4u) >> 22u); i++, entry += 12u) {
             unsigned int code = PE_LoadU8(entry + 7u);
-            if (code - 8u < 0x4Du) effect_module_finish(code);
+            if (code - 8u < 0x4Du) {
+                effect_module_finish(code);
+                if (PE_Port_ShouldStop()) return;
+            }
         }
         D_8009D1A0 &= ~0x80u;
     }
@@ -265,11 +272,15 @@ static void pe_3f3c4_ce90_once(void)
      * shape; dest_change's own load path publishes for everything else. */
     if (pe_3f3c4_kseg(chunk) && PE_LoadU32(GA_D_800B162C) == 0u &&
         PE_LoadU32(GA_OVERLAY + 0x944u) == 0u &&
-        pe_3f3c4_kseg(chunk + (PE_LoadU32(chunk + 4u) & 0x003FFFFFu)))
+        pe_3f3c4_kseg(chunk + (PE_LoadU32(chunk + 4u) & 0x003FFFFFu))) {
         func_8006B4F8_12574_publish_cut();
+        if (PE_Port_ShouldStop()) return;
+    }
     stream = func_8003F074_371b0_a0();
-    if (pe_3f3c4_kseg(stream))
+    if (pe_3f3c4_kseg(stream)) {
         func_800371B0(stream);
+        if (PE_Port_ShouldStop()) return;
+    }
     pe_3f3c4_loaded_dest = D_8009D280;
 }
 
@@ -310,9 +321,11 @@ static void pe_3f3c4_host_pad(void)
     uint16_t raw;
 
     if (PE_Port_HasPadSource()) {
-        /* BIOS pad buffer: successful reply, ID 41h (digital, one word).
-         * The window supplies buttons only; never retain an analog ID. */
-        PE_StoreU16(0x800BE9A0u,0x4100u);
+        /* BIOS pad buffer: successful reply, ID 41h (digital, one word),
+         * rewritten every tick so no stale ID survives.  The opt-in ANALOG
+         * STICK (pe_plat/enhance.h) replies ID 73h with the window's stick
+         * bytes instead; off, the store is exactly 0x4100. */
+        (void)PE_Port_StorePadId();
         raw = PE_Port_ReadPadRaw();
     }
     else if (pe_3f3c4_message_state2())
@@ -355,6 +368,17 @@ static void pe_3f3c4_host_pad(void)
 #define GA_D_800BCFE8 0x800BCFE8u
 #define GA_OT_TABLE   0x800B0E38u   /* s0 + 0x160 */
 
+/* 1 when the last call returned only because of the one-pass host
+ * adaptation (retail would still be inside its D1C4 == D280 loop at 3F684);
+ * 0 for every real retail return.  1220C uses it to keep code that retail
+ * runs only after the field exits (the volume gate) at that point. */
+int PE_Field_PassContinues;
+
+uint32_t PE_Field_LoadedDestForTest(void)
+{
+    return pe_3f3c4_loaded_dest;
+}
+
 void func_8003F3C4(void)
 {
     uint32_t bits;
@@ -362,6 +386,8 @@ void func_8003F3C4(void)
     uint32_t d1a0;
     uint32_t a1;
     uint32_t a0;
+
+    PE_Field_PassContinues = 0;
 
     /* A destination cached against a previous RAM image is not loaded
      * after reset, even when New Game chooses the same token. */
@@ -375,7 +401,9 @@ void func_8003F3C4(void)
      * what makes the first New-Game tick sound, because ce90_once reads
      * the chunk-2 header the load has just filled. */
     pe_3f3c4_dest_change();
+    if (PE_Port_ShouldStop()) return;
     pe_3f3c4_ce90_once();
+    if (PE_Port_ShouldStop()) return;
     /* 3F3E8: `bne D1C4, D280 -> 3F68C`.  1220C stores D1C4 = D280
      * immediately before the jal, so on entry D1C4 == dest0; the snapshot
      * is compared instead of the native D_8009D1C4 so tests that drive the
@@ -418,6 +446,7 @@ void func_8003F3C4(void)
     D_8009D250++;
     func_80065400();
     func_80035558_walk_cut();
+    if (PE_Port_ShouldStop()) return;
     bits = PE_LoadU32(0x800B0CD8u);
     /* 3F500 andi 0x100 / bnez 3F5F4: skip update+draw, not jr. */
     if ((bits & 0x100u) != 0u)
@@ -474,10 +503,17 @@ after_draw:
     /* .L8003F678: retail loops to 3F404 while D1C4 == D280 (host: one
      * pass per 1220C tick, see header).  Entry D1C4 == dest0. */
 loop_tail:
-    if (dest0 == D_8009D280)
+    if (dest0 == D_8009D280) {
+        PE_Field_PassContinues = 1;
         return;
+    }
 
 epilogue:
+    /* A real field exit.  Retail's next entry runs 3F074, which loads D280
+     * again (6B4F8) even when the destination is unchanged, e.g. the same
+     * room re-entered after a disc swap.  The host change gate (one pass
+     * per tick) must not skip that load, so forget the loaded dest here. */
+    pe_3f3c4_loaded_dest = 0u;
     /* .L8003F68C */
     if ((PE_LoadU32(0x800B0CD8u) & 0x200u) != 0u) {
         RECT rect;
@@ -493,6 +529,7 @@ epilogue:
     func_80087024();
     func_8003DFC8();
     func_800696F0();
+    if (PE_Port_ShouldStop()) return;
     /* 3F6EC..3F738: D1A0 = (D1A0|0x40) & ~0x3800; B0CD8 = (B0CD8|2) &
      * ~0x800, then if bit 9 was set B0CD8 = (that|2) & 0xFFFF7DFF. */
     d1a0 = (D_8009D1A0 | 0x40u) & ~0x3800u;

@@ -3,12 +3,16 @@ static void test_DAY2_spu_dma_event(void)
     TEST("DAY2_spu_dma_event");
     ResetTestState();
     PE_SpuDma_InstallIrq(PE_SPU_DMA_IRQ_HANDLER);
-    ASSERT(!PE_SpuDma_Begin(0x80150000u,0x70000u,0x400u,0),"event transfer needs registered event");
+    /* Issue never reads the callback slot (7D9F8).  With no enabled event the
+     * completion's DeliverEvent(F0000009,20) is the retail no-op. */
+    ASSERT(PE_SpuDma_Begin(0x80150000u,0x60000u,0x400u,0) && PE_SpuDma_Service()==1 &&
+           !PE_Port_ShouldStop(),"unregistered event completes as a no-op");
     int wrong=PE_Event_Open(0xF0000009u,0x21u,0x2000u,0);
     PE_Event_Enable(wrong);
     ASSERT(!PE_Event_SpuDmaEnabled(),"different event spec is not DMA completion");
     int handle=PE_Event_Open(0xF0000009u,0x20u,0x2000u,0);
-    ASSERT(!PE_SpuDma_Begin(0x80150000u,0x70000u,0x400u,0),"registration alone does not enable event");
+    ASSERT(PE_SpuDma_Begin(0x80150000u,0x60000u,0x400u,0) && PE_SpuDma_Service()==1 &&
+           !PE_Event_ConsumeSpuDma(handle),"registration alone does not enable event");
     PE_Event_Enable(handle);
     for(unsigned step=0;step<3;step++) {
         for(unsigned i=0;i<0x400;i++)PE_StoreU8(0x80150000u+i,(uint8_t)(i+step+1));

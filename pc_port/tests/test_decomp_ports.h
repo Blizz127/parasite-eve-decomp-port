@@ -300,16 +300,13 @@ static void test_DECOMP_channel_forwarders(void)
     ASSERT(PE_LoadU32(DECOMP_DMA_CB_TABLE + 4u * 4u) == 0x80001234u,
            "a same-handler reinstall must not disturb the slot");
 
-    /* func_80085DC4(value) == func_80073CC4(9, value).  Source 9 is outside
-     * func_800740D0's translated 0/2/3 set, so the forward is observed at the
-     * loud boundary with the exact source and handler arguments. */
-    Bootstrap_ResetArg4CallLog();
+    /* Source 9 registers the SPU callback through the existing IRQ owner. */
+    PE_StoreU16(0x800945E4u, 1u);
+    PE_StoreU32(0x8009460Cu, 0u);
     func_80085DC4(0x80005678);
-    ASSERT(g_bootstrap_arg4_call_count == 1,
-           "func_80085DC4 must reach the func_80073CC4 backend exactly once");
-    ASSERT(g_bootstrap_arg4_calls[0].arg0 == 9u &&
-           g_bootstrap_arg4_calls[0].arg1 == 0x80005678u,
-           "func_80085DC4 must pass source 9 and the value unchanged");
+    ASSERT(PE_LoadU32(0x8009460Cu) == 0x80005678u &&
+           (PE_LoadU16(0x80094614u) & 0x200u) != 0u,
+           "func_80085DC4 must register the source-9 callback");
     PASS();
 }
 

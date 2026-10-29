@@ -31,6 +31,12 @@
 #include "pe_guest_ram.h"
 
 typedef int (*PeGuestThunk)(uintptr_t a0, uintptr_t a1, uintptr_t a2, uintptr_t a3);
+/* Callees with 5..8 integer parameters: O32 passes a0-a3 in registers and the
+ * rest in the caller's outgoing stack slots (sp+16, sp+20, ...).  A host call
+ * carries them all as plain arguments. */
+typedef int (*PeGuestThunk8)(uintptr_t a0, uintptr_t a1, uintptr_t a2, uintptr_t a3,
+                             uintptr_t a4, uintptr_t a5, uintptr_t a6, uintptr_t a7);
+#define PE_GUESTCALL_MAX_ARGS 8u
 
 typedef struct {
     uint32_t vma;          /* retail entry address */
@@ -38,6 +44,12 @@ typedef struct {
     uint32_t fingerprint;  /* FNV-1a of the retail bytes, 0 = none */
     PeGuestThunk thunk;
     const char *symbol;    /* host symbol, for diagnostics */
+    uint32_t closure;      /* room entries: FNV-1a over the bytes of this leaf and
+                            * every same-room function reached by absolute j/jal
+                            * (0 = none); existing generated tables may predate
+                            * tail-call coverage and require regeneration. */
+    PeGuestThunk8 thunk8;  /* set instead of `thunk` for 5..8-parameter callees */
+    uint8_t nargs;         /* parameter count of a thunk8 callee */
 } PeGuestCodeEntry;
 
 typedef struct {
@@ -55,6 +67,8 @@ typedef struct {
  * Linking it into the static library would pull every thunk's object (the
  * whole port) into every small test executable.  Without a registry every
  * guest call is a loud boundary. */
+/* Installing/replacing/removing a registry clears its previous residency.
+ * A loader must establish residency again for the installed tables. */
 void PE_GuestCode_SetRegistry(const PeGuestCodeTable *const *tables, unsigned count);
 void PE_GuestCode_InstallGenerated(void);   /* defined in zz_dispatch.c */
 
@@ -63,18 +77,52 @@ void PE_GuestCode_InstallGenerated(void);   /* defined in zz_dispatch.c */
  * an unknown overlay id. */
 int PE_Overlay_SetResident(const char *ovl);
 /* Same, after checking the SHA-1 of guest RAM [lo, lo+load_size) against
- * the committed manifest hash; returns -2 (and sets nothing) on mismatch. */
+ * the committed manifest hash; returns -2 on mismatch, invalidating residency
+ * marks overlapping that load window. Unrelated windows are preserved. */
 int PE_Overlay_SetResidentVerified(const char *ovl);
 int PE_Overlay_IsResident(const char *ovl);
 void PE_Overlay_ResetResidency(void);
 
-/* NULL when the address cannot be resolved with certainty. */
+/* First-2-MiB KUSEG/KSEG1 RAM aliases resolve through the same canonical
+ * entry and identity checks. NULL when it cannot be resolved with certainty.
+ * This does not model CPU instruction-cache isolation or extra RAM mirrors. */
 const PeGuestCodeEntry *PE_GuestCode_Resolve(pe_addr_t addr);
 
 /* The retail `jalr`: call the code at `fn` with up to four argument
- * registers.  Unresolved -> loud boundary (site, fn, args), returns 0. */
+ * registers. Declaring more than four arguments is a loud boundary; use
+ * PE_GuestCallN when stack words are supplied. Unresolved targets also take
+ * the loud boundary (site, fn, args), returning 0. */
 int PE_GuestCall(const char *site, pe_addr_t fn, unsigned arity,
                  uintptr_t a0, uintptr_t a1, uintptr_t a2, uintptr_t a3);
+/* The same with up to PE_GUESTCALL_MAX_ARGS arguments: args[4..] are the
+ * O32 stack arguments.  A <= 4-parameter callee gets args[0..3] (it never
+ * reads the caller's stack slots).  A 5..8-parameter callee is called only
+ * when the site passes at least its parameter count; a site that passes
+ * fewer would leave the callee reading stack slots the caller never wrote,
+ * so that is a loud boundary (STOP), never a zero fill. */
+int PE_GuestCallN(const char *site, pe_addr_t fn, unsigned arity, const uintptr_t *args);
+
+/* The retail `jalr` through a hook word: a fixed callback slot that an SDK
+ * or game setter writes and a dispatcher calls with no prototype check.
+ * Native C at `fn` with at most four register parameters runs through
+ * PE_GuestCall with the registers the site leaves in $a0..$a3; *ret (when
+ * not NULL) receives its $v0, and the result is 1.  The callee may itself
+ * have requested a stop, so the site checks afterwards, as after any call.
+ * Anything else is PE_GuestHook_Refuse and the result is 0.  Unlike
+ * PE_GuestCall's own boundary, that stop does not depend on the boundary
+ * policy: a hook site has no retail value to continue with. */
+int PE_GuestHook_Call(const char *slot, const char *caller, pe_addr_t fn,
+                      unsigned arity, uintptr_t a0, uintptr_t a1,
+                      uintptr_t a2, uintptr_t a3, int *ret);
+/* The named refusal: prints a CPU_BOUNDARY/REFUSED line with `why`, records
+ * Bootstrap_ReturnVoid4Indirect(slot, caller, fn, a0..a3), keeps the line
+ * (with `why`) as the stop detail and requests
+ * PE_PORT_STOP_UNRESOLVED_BOUNDARY.  Sites also use it directly for a
+ * target that resolves but must not run there, because a host model owns
+ * the state that code would drive. */
+void PE_GuestHook_Refuse(const char *slot, const char *caller, pe_addr_t fn,
+                         unsigned arity, uintptr_t a0, uintptr_t a1,
+                         uintptr_t a2, uintptr_t a3, const char *why);
 
 /* Exposed for tests. */
 uint32_t PE_GuestCode_Fnv1a(pe_addr_t addr, uint32_t size);

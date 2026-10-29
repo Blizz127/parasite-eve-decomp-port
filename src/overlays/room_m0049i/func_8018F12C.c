@@ -3,7 +3,8 @@
  * Masked-body twin of room_m0022i func_8018F1CC; C re-targeted by symbol address
  * (docs/evidence/room_m0049i-ports-2026-09-23/REPORT.md). */
 
-int func_8018F12C(void)
+/* Called with the effect object in a0 (func_8018F0BC); unused. */
+int func_8018F12C(void *o)
 {
     return 0;
 }

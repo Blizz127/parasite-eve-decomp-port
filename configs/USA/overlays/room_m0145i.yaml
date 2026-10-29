@@ -94,7 +94,7 @@ segments:
       - [0x3688, c, func_80192670]
       - [0x3690, c, func_80192678]
       - [0x37E0, c, func_801927C8]
-      - [0x3914, asm]
+      - [0x3914, c, func_801928FC]
       - [0x3CD4, c, func_80192CBC]
       - [0x3CF0, c, func_80192CD8]
       - [0x3CF8, c, func_80192CE0]

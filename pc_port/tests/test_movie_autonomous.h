@@ -195,8 +195,8 @@ static void test_DAY2_movie_autonomous(void)
  *
  * Scope: the assembled-slice -> decode-submit -> presentation loop.  It does
  * not drive a continuous multi-sector CD read (the CD model documents a
- * single pending sector plus an independent requested FIFO, and stops on a
- * hardware-style overrun: see docs/ai_context/DAY2_CD_SECTOR_DEVICE.md).  It
+ * single pending sector plus an independent requested FIFO; acknowledged
+ * unread sectors may be superseded: see DAY2_CD_SECTOR_DEVICE.md). It
  * also does not claim hardware-exact pixels or XA audio. */
 static void test_DAY2_movie_multiframe(void)
 {

@@ -4,6 +4,7 @@
  * absent_lo_window_port.c.
  */
 #include "pe_guest_decomp.h"
+void func_8005A318(int32_t a_who, int32_t a_slot, int32_t a_flags, int32_t a_cnt);   /* generated (gen_decomp_ports --e21) */
 
 /* Decomp-derived callees (pc_port/game/decomp/, no header prototype). */
 void func_8004C5DC(void);
@@ -152,8 +153,8 @@ void func_8005DF6C(int mask, pe_addr_t out)
 }
 
 /* src/func_80047A30.c: item-use confirm list update.  Confirm (bit 16) on
- * cell 0: close, apply the item (func_8005A318 — no pc_port implementation
- * yet: loud boundary with its four arguments), decrement the D_800A1888
+ * cell 0: close, apply the item (func_8005A318, generated from its matched C
+ * by gen_decomp_ports --e21, with its four arguments), decrement the D_800A1888
  * stock counter when it is below 999 (the leaf's `*p -= (*p < 0x3E7)`),
  * close the item windows, refocus, post message 0x33E, and for each of the
  * two party slots that holds the equipped item (D_800C0E20[0] / [2]) outside
@@ -172,10 +173,9 @@ int func_80047A30(int a0, int a1)
         switch (k) {
         case 0:
             func_80062F1C((pe_addr_t)a0);
-            (void)PE_D_COMP_BOUNDARY4("func_8005A318", 0x8005A318u,
-                PE_LoadU32(0x8009CF24u), PE_LoadU32(0x8009CF28u),
-                PE_LoadU32(0x8009CF2Cu),
-                PE_LoadU32(0x800A1888u + PE_LoadU32(0x8009CF2Cu) * 4u));
+            func_8005A318((int32_t)PE_LoadU32(0x8009CF24u), (int32_t)PE_LoadU32(0x8009CF28u),
+                          (int32_t)PE_LoadU32(0x8009CF2Cu),
+                          (int32_t)PE_LoadU32(0x800A1888u + PE_LoadU32(0x8009CF2Cu) * 4u));
             p = 0x800A1888u + PE_LoadU32(0x8009CF2Cu) * 4u;
             PE_StoreU32(p, PE_LoadU32(p) -
                         (uint32_t)((int)PE_LoadU32(p) < 0x3E7));

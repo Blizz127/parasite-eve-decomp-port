@@ -377,20 +377,26 @@ int func_8005D2B4(int32_t cmd, int32_t arg, int32_t arg2)
 /* ---- func_80015C7C: field-VM opcode 0xE9 -------------------------------- */
 int func_80015C7C(pe_addr_t args)
 {
-    pe_addr_t task = PE_LoadU32(GM_D_8009D300);
-    pe_addr_t out  = PE_LoadU32(args + 0xCu);
+    pe_addr_t task, out;
+    if (PE_Port_ShouldStop()) return 0;
+    task = PE_LoadU32(GM_D_8009D300);
+    out = PE_LoadU32(args + 0xCu);
 
-    if ((PE_LoadU16(task + 8u) & 0x20u) == 0u)
-        PE_StoreU32(out, (uint32_t)func_8005D2B4(
+    if ((PE_LoadU16(task + 8u) & 0x20u) == 0u) {
+        int result = func_8005D2B4(
             (int32_t)PE_LoadU32(PE_LoadU32(args)),
             (int32_t)PE_LoadU32(PE_LoadU32(args + 4u)),
-            (int32_t)PE_LoadU32(PE_LoadU32(args + 8u))));
+            (int32_t)PE_LoadU32(PE_LoadU32(args + 8u)));
+        if (PE_Port_ShouldStop()) return 0;
+        PE_StoreU32(out, (uint32_t)result);
+    }
 
     if (func_800629B0() != 0) {
         if ((PE_LoadU16(task + 8u) & 0x20u) == 0u) {
             PE_StoreU32(GM_D_800B0CD8, PE_LoadU32(GM_D_800B0CD8) | 0x9000u);
             PE_StoreU16(task + 8u, (uint16_t)(PE_LoadU16(task + 8u) | 0x20u));
             func_80067CBC();
+            if (PE_Port_ShouldStop()) return 0;
         } else {
             PE_StoreU32(GM_D_8009D1A0, PE_LoadU32(GM_D_8009D1A0) | 4u);
         }

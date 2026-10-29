@@ -8,7 +8,7 @@
 #define W(o, x) (*(int *)((char *)(o) + (x)))
 #define P(o, x) (*(void **)((char *)(o) + (x)))
 extern void *D_8009D20C;
-extern void func_80194E14();
+extern int func_80194E14(void *);
 int func_801946B4(void *o, int a1, unsigned int a2, int a3, int a4, int a5)
 {
     void *s = (char *)o + 0xC;
@@ -30,7 +30,7 @@ int func_801946B4(void *o, int a1, unsigned int a2, int a3, int a4, int a5)
             }
         }
         if (P(s, 0x10) == 0) {
-            func_80194E14();
+            func_80194E14(o);
         }
         break;
     case 12:

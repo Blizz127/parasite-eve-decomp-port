@@ -1,9 +1,10 @@
 /*
  * Memory-mapped I/O dispatch for guest accesses to modelled hardware
- * registers.  ONE table (pe_mmio.c, `g_pe_mmio_regs`) lists every modelled
- * register; any other I/O address stays a loud abort in PE_Translate.
+ * registers. pe_mmio.c owns register dispatch and dedicated device ranges; any other I/O address stays a loud abort in PE_Translate.
  *
- *   0x1F801040  SIO0 DATA    8  pe_sio0   read (pops RX FIFO) / write (TX)
+ *   0x1F801040  SIO0 DATA 8/16/32 pe_sio0 value read / low-byte TX write
+ *               16-bit read previews two/pops one; 32-bit read pops four.
+ *               Legacy pointer shadow still covers only the byte register.
  *   0x1F801044  SIO0 STAT   16  pe_sio0   read only
  *   0x1F801048  SIO0 MODE   16  pe_sio0   read / write
  *   0x1F80104A  SIO0 CTRL   16  pe_sio0   read / write
@@ -11,20 +12,53 @@
  *   (SIO0 0x1F801041..43 preview, 0x1F80104C MISC: NOT modelled -> abort.)
  *   0x1F801070  I_STAT      16  pe_irq    read / write (W0C)
  *   0x1F801074  I_MASK      16  pe_irq    read / write
+ *   0x1F801080..0x1F801088 MDEC DMA0 MADR/BCR/CHCR: aligned word value
+ *               reads / writes; forward request-mode input, no pointer alias.
+ *   0x1F801090..0x1F801098 MDEC DMA1 MADR/BCR/CHCR: aligned word value
+ *               reads / writes; request-mode output, whole color macroblocks
+ *               or monochrome chunks, no pointer alias.
+ *   0x1F8010A0..0x1F8010A8 GPU DMA2 MADR/BCR/CHCR: aligned word value
+ *               reads / writes; image/command request mode and RAM->GP0 lists.
+ *               Command blocks/list nodes retain parser state between services.
+ *               Live DPCR/GP1/DREQ gates service; readback requires C0 setup.
+ *               No mutable pointer alias or subword access.
+ *   0x1F8010B0..0x1F8010B8 CD DMA3 MADR/BCR/CHCR: aligned word value
+ *               reads / writes through pe_cdreg (including its service gates).
+ *               No mutable pointer alias or subword access.
+ *   0x1F8010E0..0x1F8010E8 DMA6 OTC MADR/BCR/CHCR: aligned word value
+ *               access, native synchronous reverse ordering-table clear.
+ *   DMA0..3/6 CHCR at +0xC mirrors +8 (aligned word value access).
+ *               DMA4/5 remain unmodelled; no second register storage.
  *   0x1F8010F0  DPCR        32  pe_gpu    read / write
  *   0x1F8010F4  DICR        32  pe_gpu    read / write
- *   0x1F801110  RCNT1 count 16  pe_timer1 read only
- *   0x1F801114  RCNT1 mode  16  pe_timer1 read; write only the retail 0x107
+ *   0x1F801110  RCNT1 count 16  pe_timer1 read / write
+ *   0x1F801114  RCNT1 mode  16  pe_timer1 read/write (HBlank, all sync modes, no IRQ)
+ *   0x1F801118  RCNT1 target16  pe_timer1 read / write
  *   0x1F801120  RCNT2 count 16  pe_rcnt2  read / write
  *   0x1F801124  RCNT2 mode  16  pe_rcnt2  read (clears reached) / write
  *   0x1F801128  RCNT2 target16  pe_rcnt2  read / write
- *   (RCNT0 0x1F801100..0x1F80110B, RCNT1 target: NOT modelled -> abort.)
+ *   (RCNT0 0x1F801100..0x1F80110B: NOT modelled -> abort.)
+ *   0x1F801800..0x1F801803 CD registers: byte value reads / writes;
+ *               RDDATA at 0x1F801802 also permits a halfword read (two FIFO
+ *               bytes, low first). No CD host-pointer shadow or word MMIO.
+ *   0x1F801810/1814 GPU data/control: aligned word value reads / writes
+ *               through pe_gpu. FIFO reads consume data; status reads do not
+ *               advance it. No mutable pointer alias or subword access.
+ *   0x1F801820/1824 MDEC command/control: aligned word writes through pe_mdec.
+ *               Quant/scale/decode input and reset/control. Complete received
+ *               macroblocks can decode early. Data reads consume four bytes in raw
+ *               8x8 block order; status reads, subword accesses and mutable
+ *               pointers remain unsupported.
  *   0x1F801C00..0x1F801DFF  SPU registers (pe_spu_dma.h PE_SpuRegister_*):
  *               halfword / aligned word / byte read, halfword / aligned word
  *               write.  Its own host-pointer shadow block: every changed
  *               halfword is committed in address order; KON/KOFF
  *               (0x1F801D88..0x1F801D8F) refresh as 0 so a repeated key-on
  *               mask is still written.
+ *   0x1F801E00..0x1F801E5F  SPU current voice volumes (pe_spu):
+ *               byte / aligned halfword / aligned word value reads only;
+ *               signed live sweep levels, zero when synthesis is inactive.
+ *               Writes and host-pointer translation remain unsupported.
  * Register semantics: https://psx-spx.consoledev.net/timers/ and
  * /interrupts/ and /dmachannels/.  KSEG0/KSEG1 aliases (0x9F80xxxx,
  * 0xBF80xxxx) resolve to the same registers.

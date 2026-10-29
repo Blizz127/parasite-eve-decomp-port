@@ -4,6 +4,7 @@
 #include "psx_compat.h"
 #include "pe_port_compat.h"
 #include "pe_sdk.h"
+#include "game_port.h"
 
 int PE_MirrorOverlay(void)
 {
@@ -131,7 +132,10 @@ int PE_MirrorDraw(pe_addr_t slot)
         PE_StoreU8(slot+24u,1u);
     }
     if (PE_LoadU8(slot+25u)) {
-        PE_MirrorPose(dest);func_8003A088_mode0_walk_cut(dest);
+        PE_MirrorPose(dest);
+        if (PE_Port_ShouldStop()) return 0;
+        func_8003A088_mode0_walk_cut(dest);
+        if (PE_Port_ShouldStop()) return 0;
         func_8003AC90(dest,PE_LoadU32(0x800BCFA4u));PE_MirrorPackets(dest);
     }
     return 0;

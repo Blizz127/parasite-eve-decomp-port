@@ -5,10 +5,10 @@
 extern unsigned char *D_8009D20C;
 extern unsigned char *D_8009D254;
 extern char D_8018F1CC[];
-extern void func_800CE870();
+extern void func_800CE870(void *, int, short *);
 extern void func_80071A74();
 
-unsigned char *func_80192560(int a0, int a1)
+unsigned char *func_80192560(int a0, int a1, short *a2)
 {
     unsigned char *p;
     register int b asm("$7") = a1;
@@ -17,7 +17,7 @@ unsigned char *func_80192560(int a0, int a1)
         if (p != D_8009D254 && *(unsigned char **)p != 0
             && *(int *)(*(unsigned char **)p + 0x10) > 0
             && p[0xD] == a0 && p[0xC] == b) {
-            func_800CE870(p, 0);
+            func_800CE870(p, 0, a2);
             return p;
         }
     }

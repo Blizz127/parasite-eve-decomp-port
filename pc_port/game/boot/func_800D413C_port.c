@@ -6,11 +6,20 @@
 #include "pe_sdk.h"
 #include "game_port.h"
 #include <stdio.h>
+#include <string.h>
 
 /* Retail passes a fourth register (a3) to descriptor command callbacks;
  * D4698 publishes it here before dispatching (SEW12). */
 static uint32_t g_pe_effect_extra1;
 void PE_EffectCallback_SetExtra1(uint32_t extra1) { g_pe_effect_extra1 = extra1; }
+/* The per-slot draw/update dispatchers (func_8006F8EC / func_8006F9F0) call
+ * the descriptor callback as retail `jalr fn` with a0 = slot (draw: a1 =
+ * min(code, 85)), not (mode, data).  `mode` 1/2 only selects the hand ports
+ * below; the generic guest-code call must use the retail registers, or a
+ * native callee that reads a0 sees 1/2 instead of the slot address. */
+static int g_pe_effect_slot_abi;
+static uint32_t g_pe_effect_slot_a1;
+void PE_EffectCallback_SlotAbi(uint32_t a1) { g_pe_effect_slot_abi = 1; g_pe_effect_slot_a1 = a1; }
 
 /* Six original stack bytes shared by M0023I callbacks in the 69594 pump.
  * Track their writers, including the retained joint Z on paused frames.
@@ -18,15 +27,58 @@ void PE_EffectCallback_SetExtra1(uint32_t extra1) { g_pe_effect_extra1 = extra1;
 enum { EFFECT_STACK_NONE,EFFECT_STACK_INIT,EFFECT_STACK_UPDATE,EFFECT_STACK_DRAW,
        EFFECT_STACK_PARTICLE_UPDATE,EFFECT_STACK_PARTICLE_DRAW,EFFECT_STACK_WEAPON_DRAW,
        EFFECT_STACK_WEAPON_UPDATE };
-static struct { uint64_t generation;unsigned active,context,known;int16_t position[3]; } effect_stack;
-void PE_EffectStackInvalidate(void) { effect_stack.known=0; }
+static struct { uint64_t generation;unsigned active,context,known;int16_t position[3];
+                pe_addr_t reset_fn;unsigned reset_context; } effect_stack;
+/* Forget the borrowed bytes and remember who did it: a callback whose stack
+ * writes are not bound, or a PE_EFFECT_STACK_RESET_* marker.  Diagnostics for
+ * the m0023i flash shim only (PE_EffectStackCause); nothing reads them back. */
+static void effect_stack_forget(pe_addr_t fn)
+{
+    effect_stack.known=0;effect_stack.reset_fn=fn;effect_stack.reset_context=effect_stack.context;
+}
+void PE_EffectStackCause(PeEffectStackCause *out)
+{
+    out->active=effect_stack.active;out->context=effect_stack.context;out->known=effect_stack.known;
+    out->reset_fn=effect_stack.reset_fn;out->reset_context=effect_stack.reset_context;
+}
+static const char *effect_stack_context_name(unsigned context)
+{
+    static const char *const names[]={"none","init","update","draw","particle-update",
+        "particle-draw","weapon-draw","weapon-update"};
+    return context<sizeof(names)/sizeof(names[0])?names[context]:"?";
+}
+void PE_EffectStackDescribe(const PeEffectStackCause *cause,char *out,unsigned size)
+{
+    char who[32];
+    switch(cause->reset_fn) {
+    case 0:snprintf(who,sizeof who,"nothing");break;
+    case PE_EFFECT_STACK_RESET_INVALIDATE:snprintf(who,sizeof who,"invalidate");break;
+    case PE_EFFECT_STACK_RESET_RAM:snprintf(who,sizeof who,"new RAM generation");break;
+    case PE_EFFECT_STACK_RESET_WEAPON_UPDATE:snprintf(who,sizeof who,"weapon-update call");break;
+    case PE_EFFECT_STACK_RESET_BEGIN:snprintf(who,sizeof who,"new draw depth");break;
+    default:snprintf(who,sizeof who,"callback %08X",(unsigned)cause->reset_fn);break;
+    }
+    /* known: 1 = X, 2 = Y (particle prologue), 4 = Z (CE934 update store). */
+    char missing[8]="";
+    for(unsigned i=0;i<3;i++)if(!(cause->known&(1u<<i))) {
+        size_t n=strlen(missing);missing[n]="XYZ"[i];missing[n+1]=0;
+    }
+    if(!cause->active)snprintf(out,size,"outside the effect pump");
+    else snprintf(out,size,"context %s, unknown %s, last cleared by %s in context %s",
+        effect_stack_context_name(cause->context),missing[0]?missing:"none",who,
+        effect_stack_context_name(cause->reset_context));
+}
+void PE_EffectStackInvalidate(void) { effect_stack_forget(PE_EFFECT_STACK_RESET_INVALIDATE); }
 void PE_EffectStackBegin(void)
 {
     if(effect_stack.generation!=PE_RamGeneration()) {
-        effect_stack.generation=PE_RamGeneration();effect_stack.known=0;
+        effect_stack.generation=PE_RamGeneration();effect_stack_forget(PE_EFFECT_STACK_RESET_RAM);
     }
     effect_stack.active=1;effect_stack.context=EFFECT_STACK_NONE;
     /* The next particle prologue establishes X/Y at this draw depth. */
+    if(effect_stack.known&3u) {
+        effect_stack.reset_fn=PE_EFFECT_STACK_RESET_BEGIN;effect_stack.reset_context=EFFECT_STACK_NONE;
+    }
     effect_stack.known&=4u;
 }
 void PE_EffectStackEnd(void) { effect_stack.active=0;effect_stack.context=EFFECT_STACK_NONE; }
@@ -51,13 +103,107 @@ int PE_EffectStackWeaponUpdate(pe_addr_t fn,pe_addr_t slot)
 void PE_EffectStackWeaponUpdateCall(void)
 {
     if(effect_stack.active && effect_stack.context==EFFECT_STACK_WEAPON_UPDATE)
-        effect_stack.known=0;
+        effect_stack_forget(PE_EFFECT_STACK_RESET_WEAPON_UPDATE);
+}
+/* crt0 starts sp at 0x801FFFF8 with an 8 KB stack (heap [0x800C20CC,
+ * 0x801FDFFC)). Any RAM mirror of that range may hold the borrowed bytes. */
+static int effect_stack_retail_stack(pe_addr_t ea,unsigned n)
+{
+    for(unsigned i=0;i<n;i++)if(((ea+i)&0x1FFFFFu)>=0x1FDFF8u)return 1;
+    return 0;
+}
+/* Frameless retail update leaves of the three weapon record tables
+ * (D_800E0AA4 pistol, D_800E0F38 hit, D_800E0FCC club): no sp access and no
+ * calls, so they write no stack at any depth.  Their only stores go through
+ * a1 (rec+1) and a2 (data+[lo, hi)); the bounds were read from the retail
+ * bytes.  The fourth entry of D_800E0F38, 800CDFE0, has a frame and calls the
+ * RNG; it is in k_framed_update below. */
+typedef struct { pe_addr_t fn; uint8_t lo, hi; } effect_stack_update_leaf;
+static const effect_stack_update_leaf k_frameless_update[] = {
+    {0x800CA4A8u, 0, 0},    /* li v0,2; sb v0,1(a1): retire */
+    {0x800CA4B4u, 1, 20},   /* data+1,+2,+8..+13,+18..+19 */
+    {0x800CA540u, 4, 6},    /* sh 4(a2) */
+    {0x800CDF40u, 0, 0},    /* retire */
+    {0x800CDF4Cu, 1, 64},   /* data+1,+3 and data+16..+63 (3 x 8 halfwords) */
+    {0x800CE464u, 0, 0},    /* retire */
+    {0x800CE470u, 3, 4},    /* sb 3(a2) */
+};
+/* Update callbacks with a frame that stays above the borrowed bytes.  The
+ * update entries C9B90/CD8F0/CE16C (frame 32) call C251C at S-32, and C251C
+ * (frame 40) dispatches record callbacks by jalr at 800C2638, so a callback
+ * enters at S-72.  800CDFE0 (frame 32, sp S-104) saves s0, s1 and ra at
+ * sp+16/20/24 = S-88..S-77, above the borrowed [S-112, S-106).  Its one call
+ * is the BIOS rand stub 80071A54 (li t2,0xA0; jr t2; li t1,0x2F), which
+ * touches no stack in the EXE.  The BIOS A(2Fh) body is not modelled, as for
+ * every BIOS call (docs/ai_context/M34_FRAME_STACK_PRESERVATION.md).  Its
+ * stores go through a1 (sb 1(a1)) and a2 (sb 1, sh 4, sh 6). */
+static const effect_stack_update_leaf k_framed_update[] = {
+    {0x800CDFE0u, 1, 8},
+};
+/* 1 when fn is a listed update callback whose stores all miss the retail
+ * stack reservation for this record and data block. */
+static int effect_stack_update_keeps(const effect_stack_update_leaf *list,unsigned n,
+                                     pe_addr_t fn,pe_addr_t rec,pe_addr_t data)
+{
+    for(unsigned k=0;k<n;k++) {
+        if(list[k].fn!=fn)continue;
+        unsigned lo=list[k].lo,hi=list[k].hi;
+        return !effect_stack_retail_stack(rec+1u,1u) &&
+               (lo==hi || !effect_stack_retail_stack(data+lo,hi-lo));
+    }
+    return 0;
+}
+/* A record callback that PE_WeaponCallback dispatches at the weapon-update
+ * depth.  The frameless leaves above keep the bytes while none of their
+ * stores can land in the retail stack reservation.  Every other callback
+ * forgets them and is recorded by address, so the flash shim's cause line
+ * names the next writer to bind. */
+void PE_EffectStackWeaponUpdateCallback(pe_addr_t fn,pe_addr_t rec,pe_addr_t data)
+{
+    if(!effect_stack.active || effect_stack.context!=EFFECT_STACK_WEAPON_UPDATE)return;
+    if(effect_stack_update_keeps(k_frameless_update,sizeof k_frameless_update/sizeof k_frameless_update[0],fn,rec,data) ||
+       effect_stack_update_keeps(k_framed_update,sizeof k_framed_update/sizeof k_framed_update[0],fn,rec,data))
+        return;
+    /* fn 0 (a zeroed callbacks table) or a reserved marker value is not an
+     * address to name; record the generic marker for it. */
+    effect_stack_forget(fn && fn < PE_EFFECT_STACK_RESET_BEGIN ? fn : PE_EFFECT_STACK_RESET_WEAPON_UPDATE);
+}
+/* C2758 (sp S-104) calls C2B90 at 800C2850. C2B90's straight-line prologue
+ * (frame 40, sp S-144) stores C2758's s4 at sp+32 over borrowed X/Y and the
+ * return address 800C2858 at sp+36, whose low half lands on borrowed Z.
+ * C2B90's callees run below S-144 and cannot reach those bytes. Other C2B90
+ * callers run at other depths and keep the entry marker's forget. */
+void PE_EffectStackWeaponSpawnReturn(void)
+{
+    if(!effect_stack.active || effect_stack.context!=EFFECT_STACK_WEAPON_UPDATE)return;
+    effect_stack_forget(0x800C2B90u);
+    effect_stack.position[2]=0x2858;effect_stack.known=4u;
+}
+void PE_EffectStackPosition(int16_t out[3])
+{
+    for(unsigned i=0;i<3;i++)out[i]=effect_stack.position[i];
 }
 void PE_EffectStackWeaponCallback(pe_addr_t fn,pe_addr_t data)
 {
     if(!effect_stack.active || effect_stack.context!=EFFECT_STACK_WEAPON_DRAW)return;
     switch(fn) {
     case 0x800C9EA0u:case 0x800CDD04u:case 0x800CE3ACu:return; /* Original empty leaves. */
+    case 0x800CDE90u:
+        /* Runs at S-80. The only frame of its call tree that covers the
+         * bytes is C3B04's (sp S-112), which never stores its sp+0..5
+         * argument area, and C3B04's callees use no stack. */
+        return;
+    case 0x800CDD0Cu:
+        /* Enters at S-56 like CDE90 (C9B68/CE144/CD8C8 and C2414 frames
+         * 24 + 32) and runs at S-88. The frames that cover the bytes are
+         * the outgoing-argument areas of C2EAC, C3098 and C3238 (sp S-112)
+         * and C3B04 (sp S-120). Those four store only at their own sp+16..28,
+         * C3B04 gets global records (D_800E27B0, D_800E2770), and their
+         * callees are frameless leaves without stack stores. C3098 reaches
+         * the BIOS printf stub 80071A74 (which spills a1-a3 into sp+4..12,
+         * over Z) only for a mode other than 16 or 256, and CDD0C passes
+         * 0x100 and 0x10. */
+        return;
     case 0x800C9EA8u:
         /* C9ED8/DC/F8: casing angles at sp+30 overlap the borrowed vector. */
         effect_stack.position[0]=0;effect_stack.position[1]=0;
@@ -68,7 +214,7 @@ void PE_EffectStackWeaponCallback(pe_addr_t fn,pe_addr_t data)
          * into sp+78/+7C, at this same 69594 draw depth. */
         for(unsigned i=0;i<3;i++)effect_stack.position[i]=(int16_t)PE_LoadU16(0x800C21BCu+i*2u);
         break;
-    default:effect_stack.known=0;return;
+    default:effect_stack_forget(fn);return;
     }
     effect_stack.known=7u;
 }
@@ -86,13 +232,15 @@ static int m0023i_code(void)
 
 int PE_EffectCallback(pe_addr_t fn, int32_t mode, pe_addr_t data, pe_addr_t extra)
 {
+    const int slot_abi = g_pe_effect_slot_abi;
+    const uint32_t slot_a1 = g_pe_effect_slot_a1;
+    g_pe_effect_slot_abi = 0;
     PE_M34StackCallback(fn);
-    (void)data; (void)extra;
     int rehearsal=m0023i_code();
     if(effect_stack.active && (!rehearsal || effect_stack.context==EFFECT_STACK_INIT ||
-       effect_stack.context==EFFECT_STACK_NONE))effect_stack.known=0;
+       effect_stack.context==EFFECT_STACK_NONE))effect_stack_forget(fn);
     if (PE_MirrorOverlay()) {
-        if(effect_stack.active)effect_stack.known=0;
+        if(effect_stack.active)effect_stack_forget(fn);
         if (fn==0x8018F0F0u) return PE_MirrorDraw(data);
         if (fn==0x8018EFF4u || fn==0x8018F1A4u || fn==0x8018F1BCu) return 0;
         if (fn==0x8018F1ACu) {PE_StoreU8(data,4u);return 0;}
@@ -114,12 +262,17 @@ int PE_EffectCallback(pe_addr_t fn, int32_t mode, pe_addr_t data, pe_addr_t extr
         if (fn==0x80191504u || fn==0x801917E4u || fn==0x801920ECu) return 0;
     }
     if (PE_M28MovementOverlay()) {
-        if (fn==0x80192700u) return PE_M28ProjectileMain(mode,data,extra);
-        if (fn==0x801924F8u) return PE_M0013I_Particle(mode,data);
+        /* The shared movement graph also appears in m0089i, whose particle
+         * code is different. These callbacks lie outside that graph: match
+         * each complete retail body before selecting its m28 hand port. */
+        if (fn==0x80192700u && PE_GuestCode_Fnv1a(fn,0xA48u)==0xF2111279u)
+            return PE_M28ProjectileMain(mode,data,extra);
+        if (fn==0x801924F8u && PE_GuestCode_Fnv1a(fn,0x208u)==0xF4F2FCACu)
+            return PE_M0013I_Particle(mode,data);
         if (fn==0x801917FCu) return PE_M28MovementUpdate(data);
         if (fn==0x801920A0u) return PE_M28MovementCleanup(data);
         if (fn==0x80191514u || fn==0x801917F4u || fn==0x801920FCu) return 0;
-        if (fn==0x80193148u) {
+        if (fn==0x80193148u && PE_GuestCode_Fnv1a(fn,0x24u)==0x4A3088EBu) {
             PE_StoreU32(0x80193288u,data);PE_StoreU32(0x8019328Cu,extra);
             PE_StoreU32(0x80193290u,g_pe_effect_extra1);
             return (int32_t)0x80193288u;
@@ -164,16 +317,18 @@ int PE_EffectCallback(pe_addr_t fn, int32_t mode, pe_addr_t data, pe_addr_t extr
             return PE_M0023I_Particle(mode,data);
         }
         if (fn==0x8018FC14u) {
-            if(effect_stack.active)effect_stack.known=0;
+            if(effect_stack.active)effect_stack_forget(fn);
             return PE_M0023I_Beam(mode,data);
         }
         if (fn==0x8018F710u) {
-            int16_t *retained=0;
-            if(effect_stack.active && effect_stack.context==EFFECT_STACK_DRAW && mode==2 &&
-               (effect_stack.known==7u || (int16_t)PE_LoadU16(data+4u)!=0))retained=effect_stack.position;
-            int result=PE_M0023I_Flash(mode,data,retained);
-            if(retained && !PE_Port_ShouldStop())effect_stack.known=7u;
-            return result;
+            if(effect_stack.active && effect_stack.context==EFFECT_STACK_DRAW && mode==2) {
+                /* F710 ends every mode-2 call by writing its joint position
+                 * over all six bytes, including after a shim substitution. */
+                int result=PE_M0023I_FlashTracked(data,effect_stack.position,effect_stack.known);
+                if(!PE_Port_ShouldStop())effect_stack.known=7u;
+                return result;
+            }
+            return PE_M0023I_Flash(mode,data,NULL);
         }
         /* Eleven-word descriptor command; +0x34 is bytecode, not a callback. */
         if (fn==0x80190644u) {
@@ -181,12 +336,17 @@ int PE_EffectCallback(pe_addr_t fn, int32_t mode, pe_addr_t data, pe_addr_t extr
             return (int32_t)0x80190758u;
         }
     }
-    if(effect_stack.active)effect_stack.known=0;
-    if (fn==0x8018F330u) return func_8018F330(mode,data);
-    if (fn==0x8018F018u) return func_8018F018(mode,data);
-    if (fn==0x8018F614u) return func_8018F614(mode,data);
-    if (fn==0x8018FB84u) return func_8018FB84(mode,data);
-    if (fn==0x8018FDC4u) return func_8018FDC4(mode,data);
+    if(effect_stack.active)effect_stack_forget(fn);
+    /* M0005I (Eve's charge effect) hand ports are that room's code only:
+     * other rooms put different bodies at these addresses (m0113i 8018F018,
+     * the m0412i 8018F614, m0205i/m0243i/m0406i/m0410i 8018FB84, m0256i
+     * 80190A6C), which must reach their own registry entries below.  Match
+     * the m0005i body's fingerprint (all-rooms census) before binding. */
+    if (fn==0x8018F330u && PE_GuestCode_Fnv1a(fn,0x2E4u)==0xB8920712u) return func_8018F330(mode,data);
+    if (fn==0x8018F018u && PE_GuestCode_Fnv1a(fn,0x318u)==0xE679E906u) return func_8018F018(mode,data);
+    if (fn==0x8018F614u && PE_GuestCode_Fnv1a(fn,0x570u)==0xF57D2D68u) return func_8018F614(mode,data);
+    if (fn==0x8018FB84u && PE_GuestCode_Fnv1a(fn,0x240u)==0xE0EA576Eu) return func_8018FB84(mode,data);
+    if (fn==0x8018FDC4u && PE_GuestCode_Fnv1a(fn,0xCA8u)==0x5F89BFF3u) return func_8018FDC4(mode,data);
     if (fn==0x800D751Cu) return func_800D751C(mode,data);
     if (fn==0x800D71B8u) return func_800D71B8(mode,data);
     if (fn==0x800D70C0u) return func_800D70C0(mode,data);
@@ -194,12 +354,26 @@ int PE_EffectCallback(pe_addr_t fn, int32_t mode, pe_addr_t data, pe_addr_t extr
     if (fn==0x800D4928u) return func_800D4928(mode,data);
     if (fn==0x800DF87Cu) return func_800DF87C(mode,data);
     /* M0005's descriptor command callback (80190A6C..80190A98). */
-    if (fn==0x80190A6Cu) {
+    if (fn==0x80190A6Cu && PE_GuestCode_Fnv1a(fn,0x2Cu)==0x02F26EECu) {
         if (mode==1) PE_StoreU16(PE_LoadU32(0x800E2368u)+18u,1u);
         return (int32_t)0x80190B80u;
     }
+    /* Retail D413C calls h(mode, rec->a1, vm->f8): the third argument is the
+     * effect descriptor (`extra` here), which callbacks such as room m0349i's
+     * emitter func_8018F7C4 read in every mode. */
     if (PE_GuestCode_Resolve(fn))   /* generated overlay / EXE TU (pe_guestcode.h) */
-        return PE_GuestCall("@800D413C:effect", fn, 2u, (uintptr_t)(uint32_t)mode, (uintptr_t)data, 0, 0);
+        return slot_abi
+            ? PE_GuestCall("@800D413C:effect", fn, 2u, (uintptr_t)data, (uintptr_t)slot_a1, 0, 0)
+            : PE_GuestCall("@800D413C:effect", fn, 3u, (uintptr_t)(uint32_t)mode, (uintptr_t)data,
+                           (uintptr_t)extra, 0);
+    if (PE_Decomp_BoundaryStopEnabled())
+        /* Native-only: an unported effect callback is a CPU_BOUNDARY/REFUSED
+         * STOP under the port binary's stop policy; the skip below is
+         * record-policy only. */
+        return slot_abi
+            ? PE_GuestCall("@800D413C:effect", fn, 2u, (uintptr_t)data, (uintptr_t)slot_a1, 0, 0)
+            : PE_GuestCall("@800D413C:effect", fn, 3u, (uintptr_t)(uint32_t)mode, (uintptr_t)data,
+                           (uintptr_t)extra, 0);
     if (g_pe_strict_effect_stack) {
         fprintf(stderr,"[EFFECT] Unported callback %08X mode %d\n",fn,mode);
         Bootstrap_ReturnVoid("PE_EffectCallback", "room effect callback");
@@ -271,6 +445,7 @@ static int pe_particles(pe_addr_t pool,int mode)
     uint32_t saved=PE_LoadU32(0x800E27ECu),stride=PE_LoadU32(pool);
     pe_addr_t callback=PE_LoadU32(pool+8u),p=pool+12u;
     int32_t i,active=0;
+    if (PE_Port_ShouldStop()) return 0;
     for (i=0;i<(int32_t)PE_LoadU32(pool+4u);i++,p+=stride) {
         int result;
         if (!(int16_t)PE_LoadU16(p)) continue;
@@ -278,6 +453,7 @@ static int pe_particles(pe_addr_t pool,int mode)
         PE_StoreU32(0x800E27ECu,(uint32_t)(int32_t)(int16_t)PE_LoadU16(p+2u));
         result=effect_context_call(mode==1?EFFECT_STACK_PARTICLE_UPDATE:EFFECT_STACK_PARTICLE_DRAW,
             callback,mode,p+4u,PE_LoadU32(PE_LoadU32(0x800E2368u)+8u));
+        if (PE_Port_ShouldStop()) break;
         if (mode==1) {
             if (result) PE_StoreU16(p,0u);
             else PE_StoreU16(p+2u,(uint16_t)(PE_LoadU16(p+2u)+1u));
@@ -338,6 +514,7 @@ int func_800D401C(int32_t index)
     PE_StoreU32(rec+8u,data+size);PE_StoreU32(rec+4u,data);
     PE_StoreU32(0x800F33E0u,rec);
     bytes=effect_context_call(EFFECT_STACK_INIT,PE_LoadU32(desc+(uint32_t)PE_LoadU16(rec)*4u),0,data,PE_LoadU32(body+8u));
+    if (PE_Port_ShouldStop()) return -1;
     if (!bytes) PE_StoreU32(rec+8u,0u);
     PE_StoreU32(body+4u,PE_LoadU32(body+4u)+size+(uint32_t)bytes);
     PE_StoreU16(body+16u,(uint16_t)(PE_LoadU16(body+16u)+(uint32_t)bytes));
@@ -444,8 +621,13 @@ int func_800D413C(pe_addr_t slot)
         if (index==65535u) continue;
         PE_StoreU32(0x800F33E0u,rec);PE_StoreU32(0x800E27ECu,PE_LoadU16(rec+2u));
         result=effect_context_call(EFFECT_STACK_UPDATE,PE_LoadU32(PE_LoadU32(body+128u)+index*4u),1,PE_LoadU32(rec+4u),PE_LoadU32(body+8u));
+        if (PE_Port_ShouldStop()) return 0;
         pool=PE_LoadU32(rec+8u);
-        if (pool) { int active=func_800CE688(pool);if (result==2 && !active) result=1; }
+        if (pool) {
+            int active=func_800CE688(pool);
+            if (PE_Port_ShouldStop()) return 0;
+            if (result==2 && !active) result=1;
+        }
         PE_StoreU16(rec+2u,(uint16_t)(PE_LoadU16(rec+2u)+1u));
         if (result==1) { PE_StoreU16(rec,65535u);PE_StoreU8(body+12u,(uint8_t)(PE_LoadU8(body+12u)-1u)); }
     }
@@ -466,7 +648,11 @@ int func_800D4704(pe_addr_t slot)
         PE_StoreU32(0x800F33E0u,rec);PE_StoreU32(0x800E27ECu,PE_LoadU16(rec+2u));
         (void)effect_context_call(EFFECT_STACK_DRAW,PE_LoadU32(PE_LoadU32(body+128u)+index*4u),2,PE_LoadU32(rec+4u),PE_LoadU32(body+8u));
         if(PE_Port_ShouldStop())return 0;
-        pool=PE_LoadU32(rec+8u);if (pool) (void)func_800CE78C(pool);
+        pool=PE_LoadU32(rec+8u);
+        if (pool) {
+            (void)func_800CE78C(pool);
+            if (PE_Port_ShouldStop()) return 0;
+        }
     }
     return 0;
 }
@@ -499,7 +685,8 @@ int func_8006F9F0(unsigned index)
     fn=PE_LoadU32(entry+16u);if (!fn) return -1;
     if (fn==0x800D413Cu) result=func_800D413C(slot);
     else if (fn==0x800C9B90u || fn==0x800CD8F0u || fn==0x800CE16Cu) result=PE_EffectStackWeaponUpdate(fn,slot);
-    else {PE_EffectStackInvalidate();result=PE_EffectCallback(fn,1,slot,0u);}
+    else {PE_EffectStackInvalidate();PE_EffectCallback_SlotAbi(0u);result=PE_EffectCallback(fn,1,slot,0u);}
+    if (PE_Port_ShouldStop()) return result;
     PE_StoreU32(slot+4u,PE_LoadU32(slot+4u)+1u);
     return result;
 }

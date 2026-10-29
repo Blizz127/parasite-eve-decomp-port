@@ -34,6 +34,8 @@ void func_8019234C(void)
     unsigned epoch = PE_Port_StopEpoch();
     pe_addr_t descriptor;
     pe_addr_t ot;
+    pe_addr_t drawn_env = 0;
+    uint32_t align_calls;
     uint32_t flags;
     uint32_t mode;
     uint32_t handle = 0u;
@@ -45,6 +47,7 @@ void func_8019234C(void)
      * construct the scene, then enter the empty-run loop with s2=0. */
     PE_StoreU32(0x8009CDDCu, 0u);
     PE_StoreU8(0x8019C00Eu, 0u);
+    PE_TransitionMenuTailReset(); /* previous visit exit 80192030 residue: unproven */
     func_80196498();
     if (PE_Port_StopEpoch() != epoch) return;
     func_80191DE8(PE_LoadU16(0x8019C024u) == 10 ? 0 : 1);
@@ -77,12 +80,20 @@ void func_8019234C(void)
         if (PE_Port_ShouldStop()) return;
 
         /* 80192450: input first, or held-mask test sees stale edges. */
+        /* HOST_ADAPTED: retail libpad fills the BIOS pad buffer from the
+         * VSync interrupt; like the field (func_8003F3C4) and title loops,
+         * fill it from the host pad source right before 8003EB04 reads it.
+         * Without this the world map never saw input. */
+        PE_Port_FillPadBuffer();   /* ID 41h (73h + sticks: opt-in ANALOG STICK) */
+        align_calls = PE_ControllerAlignCalls;
         func_8003EB04();
         if (PE_Port_ShouldStop()) return;
+        if (PE_ControllerAlignCalls != align_calls) PE_TransitionMenuTailActuator();
 
         /* 80192458..80192498: the whole held mask calls the exit path. */
         flags = PE_LoadU32(0x8009D1A0u) & 0x0F000006u;
         if (flags == 0x0F000006u) {
+            PE_TransitionMenuTailReset(); /* exit path: residue not modelled */
             func_80073A44(0);
             if (PE_Port_StopEpoch() != epoch) return;
             func_80074D28(0);
@@ -156,6 +167,7 @@ void func_8019234C(void)
         if (PE_Port_StopEpoch() != epoch) return;
 
         descriptor = PE_LoadU32(0x8019C9C0u);
+        drawn_env = descriptor + 8u;
         func_80075424(descriptor + 8u);
         if (PE_Port_StopEpoch() != epoch) return;
         descriptor = PE_LoadU32(0x8019C9C0u);
@@ -174,6 +186,7 @@ void func_8019234C(void)
         PE_StoreU32(0x8009CDDCu, PE_LoadU32(0x8009CDDCu) ^ 1u);
         func_800752AC(ot, 4096);
         if (PE_Port_StopEpoch() != epoch) return;
+        PE_TransitionMenuTailDrawn(drawn_env, ot);
         func_8019BF8C(PE_LoadU32(0x8019C9C0u));
         if (PE_Port_StopEpoch() != epoch) return;
 

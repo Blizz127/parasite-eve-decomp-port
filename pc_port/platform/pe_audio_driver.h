@@ -44,6 +44,12 @@ void PE_AudioDriver_VBlank(void);
 typedef void (*PeVBlankPacer)(void);
 void PE_AudioDriver_SetVBlankPacer(PeVBlankPacer pacer);
 
+/* MUSIC VOLUME / SFX VOLUME: the SPU voices AKAO's sound-effect channels
+ * own right now, D_800BCD50 | D_800BCD60 (bit n = voice n; the 12 SFX
+ * channels map to voices 12..23).  PE_AudioDriver_Enable(1) installs it as
+ * the SPU's SFX-mask source, read at every key-on write (pe_spu.h). */
+uint32_t PE_AudioDriver_SfxVoiceMask(void);
+
 /* TEST-ONLY oracle (tests/pe_akao_interp_oracle.c, never linked into the
  * port binary): run the guest function at `entry` in a minimal R3000A
  * interpreter with a0..a3; returns v0.  `ok` (may be NULL) is set to 0 on a

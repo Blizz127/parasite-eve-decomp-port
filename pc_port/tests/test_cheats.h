@@ -69,6 +69,8 @@ static void test_CHEATS_toggles(void)
     static uint8_t fb[320 * 240 * 3];
     const uint8_t *shown;
     TEST("CHEATS_toggles");
+    /* the flat F8 warp list: the dev menu off (it is on by default) */
+    setenv("PE_DEV_MENU", "0", 1);
     cheats_fixture();
     /* F2 god mode */
     cheat_press(PE_CHEAT_KEY_F2);
@@ -157,12 +159,46 @@ static void test_CHEATS_toggles(void)
     pe_plat_cheats_apply();
     ASSERT(PE_LoadU32(0x8009D280u) == 0xA80021C8u, "warp latches the Eve 1 room token (room_transfer)");
     ASSERT(PE_LoadU32(0x800A7918u) == 0x5Bu, "warp sets the checkpoint story word");
+    ASSERT(PE_LoadU32(0x800A77F4u) == 0x17u, "warp sets the checkpoint's entry door (persist[1])");
     ASSERT(PE_LoadU32(0x8009D1A0u) & 0x2000u, "room transfer requested via func_80017BB4");
     pe_plat_cheats_get_state(&s);
     ASSERT(s.wins == 1 && s.kits == 1 && s.warps == 1 && !s.menu, "counters");
     ASSERT(pe_plat_cheats_warp_count() >= 13, "Day-1 checkpoint list");
+    {   /* warps by day: 13 Day-1, 12 Day-2, the Day-3/4 gate entries, none for Days 5/6 */
+        int days[7] = {0};
+        for (int i = 0; i < pe_plat_cheats_warp_count(); i++) {
+            int d = pe_plat_cheats_warp_day(i);
+            ASSERT(d >= 1 && d <= 6, "every warp has a day");
+            days[d]++;
+        }
+        ASSERT(days[1] == 13 && days[2] == 12 && days[3] == 2 && days[4] == 1 && !days[5] && !days[6],
+               "warps per day");
+        ASSERT(pe_plat_cheats_warp_day(-1) == 0 && pe_plat_cheats_warp_day(pe_plat_cheats_warp_count()) == 0,
+               "an invalid index has no day");
+        ASSERT(!strcmp(pe_plat_cheats_warp_name(1), "STAGE (M0005I)") &&
+               !strcmp(pe_plat_cheats_warp_name(2), "HALL RAT ENCOUNTER (M0013I)"),
+               "Day-1 labels name the rooms their tokens decode to");
+        ASSERT(!strcmp(pe_plat_cheats_warp_name(13), "DAY 2 START (M0351I)"), "Day 2 follows Day 1");
+    }
+    /* A Day-3 entry warps like the env warp that verified it: story set,
+     * persist[1] left alone. */
+    PE_StoreU32(0x8009D1A0u, 0u);
+    PE_StoreU32(0x8009D280u, 0xA8000148u);
+    PE_StoreU32(0x8009D1C4u, 0xA8000148u);
+    PE_StoreU32(0x800A77F4u, 0x55u);
+    cheat_press(PE_CHEAT_KEY_F8);
+    ASSERT(pe_plat_cheats_menu_open(), "F8 reopens the warp list");
+    pe_plat_cheats_get_state(&s);
+    for (int i = s.menu_index; i < 25; i++) cheat_press(PE_CHEAT_KEY_DOWN);
+    pe_plat_cheats_get_state(&s);
+    ASSERT(s.menu_index == 25 && !strcmp(pe_plat_cheats_warp_name(25), "DAY 3 START (M0093I)"), "cursor on Day 3 start");
+    cheat_press(PE_CHEAT_KEY_ENTER);
+    pe_plat_cheats_apply();
+    ASSERT(PE_LoadU32(0x8009D280u) == 0xA80091C8u && PE_LoadU32(0x800A7918u) == 0x140u, "Day-3 start warp");
+    ASSERT(PE_LoadU32(0x800A77F4u) == 0x55u, "a Day-3 warp keeps persist[1]");
     pe_plat_cheats_reset();
     ResetTestState();
+    unsetenv("PE_DEV_MENU");
     PASS();
 }
 

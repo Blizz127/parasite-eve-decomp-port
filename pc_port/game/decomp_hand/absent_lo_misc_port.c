@@ -3,6 +3,7 @@
  * (port_absent lane, batch 8).  Conventions as in absent_lo_small_port.c.
  */
 #include "pe_guest_decomp.h"
+#include "game_port.h"
 
 /* Hand ports with no header prototype (pc_port/game/boot/func_8003F3C4_port.c). */
 void func_8003DFC8(int a0);
@@ -264,9 +265,8 @@ int func_80038D0C(void);
 
 /* src/func_80015790.c: pick the message token for a talk event and latch it
  * in D_8009D280.  The event kind k comes from func_80039678(**a0) when
- * func_80038D0C() is set, else from func_80038D74() (neither has a pc_port
- * implementation yet: loud boundaries; their return value is the boundary's
- * 0).  k == 0xFF: D_8009CD78 / D_8009CD80 by func_800392EC() < 2 (after
+ * func_80038D0C() is set, else from the complete native font-page initializer
+ * func_80038D74().  k == 0xFF: D_8009CD78 / D_8009CD80 by func_800392EC() < 2 (after
  * resetting the cursor block); k 6/7/8: D_800917E4, or one of its 8-byte
  * variants chosen by func_80070DD0(1, 4) when func_80070DD0(0, 0x64) >= 0x3C;
  * otherwise the (func_800392EC() - 1) / 10 row of the D_8009173C table
@@ -282,8 +282,11 @@ int func_80015790(pe_addr_t a0)
 
     if ((func_80038D0C() & 0xFF) != 0)
         v = func_80039678(PE_LoadU8(PE_LoadU32(a0)));   /* absent_lo2_port.c */
-    else
-        v = PE_D_COMP_BOUNDARY0("func_80038D74", 0x80038D74u);
+    else {
+        const unsigned stop_epoch = PE_Port_StopEpoch();
+        v = func_80038D74();
+        if (PE_Port_StopEpoch() != stop_epoch) return 0;
+    }
     k = v & 0xFF;
     if (k == 0xFF) {
         if (((unsigned int)func_800392EC() & 0xFFu) < 2u) {

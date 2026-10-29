@@ -1,5 +1,62 @@
 #include "retail_effect_tick_cases.h"
 
+static void test_effect_nested_callback_stop(void)
+{
+    const pe_addr_t slot=0x80150000u,body=slot+12u,desc=0x80154000u;
+    const pe_addr_t rec=body+32u,data=0x80156000u;
+    int policy=PE_Decomp_BoundaryStopEnabled();
+    TEST("effect_nested_callback_stop");
+    ResetTestState(); PE_Decomp_SetBoundaryStop(1);
+    PE_StoreU16(body+14u,2u); PE_StoreU8(body+12u,1u);
+    for (unsigned i=0;i<8u;i++) PE_StoreU16(rec+i*12u,0xFFFFu);
+    PE_StoreU16(rec,0u); PE_StoreU16(rec+2u,7u);
+    PE_StoreU32(body+128u,desc); PE_StoreU32(desc,0x81234567u);
+    (void)func_800D413C(slot);
+    ASSERT(PE_Port_GetStopReason()==PE_PORT_STOP_UNRESOLVED_BOUNDARY &&
+           PE_LoadU16(rec)==0u && PE_LoadU16(rec+2u)==7u && PE_LoadU8(body+12u)==1u,
+           "effect record changed after stopped update callback");
+
+    ResetTestState(); PE_Decomp_SetBoundaryStop(1);
+    PE_StoreU32(slot+0x8Cu,desc); PE_StoreU32(desc+0x30u,0x81234567u);
+    PE_StoreU32(slot+0x14u,0xA5A5A5A5u);
+    (void)func_800D4698(slot,0u,1u,0u,0u,0u);
+    ASSERT(PE_Port_GetStopReason()==PE_PORT_STOP_UNRESOLVED_BOUNDARY &&
+           PE_LoadU32(slot+0x14u)==0xA5A5A5A5u,
+           "effect initialization published a stopped callback result");
+
+    ResetTestState(); PE_Decomp_SetBoundaryStop(1);
+    PE_StoreU32(0x800E2368u,body); PE_StoreU32(body+4u,data);
+    PE_StoreU32(body+128u,desc); PE_StoreU32(desc,0x81234567u);
+    PE_StoreU16(desc+0x20u,4u);
+    for (unsigned i=0;i<8u;i++) PE_StoreU16(rec+i*12u,0xFFFFu);
+    (void)func_800D401C(0);
+    ASSERT(PE_Port_GetStopReason()==PE_PORT_STOP_UNRESOLVED_BOUNDARY &&
+           PE_LoadU32(rec+8u)==data+4u && PE_LoadU32(body+4u)==data,
+           "effect allocation continued after stopped initializer");
+    PE_Decomp_SetBoundaryStop(policy);
+    PASS();
+}
+
+static void test_effect_update_callback_stop(void)
+{
+    const pe_addr_t pool=0x80150000u,table=0x80158000u,entry=0x80158400u;
+    TEST("effect_update_callback_stop");
+    ResetTestState();
+    PE_StoreU32(0x800942E4u,pool); PE_StoreU32(0x800942E0u,table);
+    PE_StoreU32(table,entry); PE_StoreU32(entry+16u,0x81234567u);
+    PE_StoreU8(pool,2u); PE_StoreU32(pool+4u,0x12345678u);
+    PE_StoreU8(pool+0xA0Cu,4u);
+    D_8009D1A0=0x80u;
+    int policy=PE_Decomp_BoundaryStopEnabled();
+    PE_Decomp_SetBoundaryStop(1);
+    (void)func_80069594();
+    PE_Decomp_SetBoundaryStop(policy);
+    ASSERT(PE_Port_GetStopReason()==PE_PORT_STOP_UNRESOLVED_BOUNDARY &&
+           PE_LoadU32(pool+4u)==0x12345678u && PE_LoadU8(pool+0xA0Cu)==4u,
+           "effect pump mutated the stopped or later slot");
+    PASS();
+}
+
 static void test_ATK23_retail_effect_tick(void)
 {
     unsigned k,i;

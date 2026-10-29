@@ -6,7 +6,8 @@
  * D_8009B788 = 0x1F801040): DATA byte write/read (sb/lbu +0), STAT halfword
  * read (lhu +4: bits 0, 1, 9), MODE write (+8 = 0x0D), CTRL write/read
  * (+0xA: 0x40, 0, 0x1003/0x3003, |= 0x10), BAUD write (+0xE: 0x88/0x22).
- * Exactly those registers are modelled (pe_mmio.h table).
+ * Those registers plus DATA halfword/word value accesses are modelled
+ * (pe_mmio.h table); direct preview-byte offsets remain unsupported.
  *
  * Register semantics, quoted from psx-spx "Serial Interfaces (SIO)"
  * (https://psx-spx.consoledev.net/serialinterfacessio/; source
@@ -21,26 +22,33 @@
  *     "1 RXRDY RX FIFO Not Empty", "2 TXU TX Idle (1=Idle/Finished)",
  *     "7 DSR DSR Input Level" — "On SIO0, DSR is wired to the /ACK pin",
  *     "9 IRQ Interrupt Request (0=None, 1=IRQ) ... (sticky)".
- *   SIO_MODE 1F801048 bits 0..8 (bits "9-15 Not used (always zero)").
+ *   SIO_MODE 1F801048 bits 0..5 and 8; 6..7 are SIO1-only, 9..15 zero.
  *   SIO_CTRL 1F80104A "0 TXEN TX Enable", "1 DTR ... (SIO0) bit 1 will pull
  *     (assert) /CS low", "2 RXEN (SIO0: 0=only receive when /CS low,
- *     1=force receiving single byte)", "4 ERRRST Acknowledge ... Reset
+ *     1=force receiving single byte)"; RXEN clears after reception.
+ *     "4 ERRRST Acknowledge ... Reset
  *     SR.Bits 3,4,5,9 (W)", "6 INTRST Reset ... Reset most registers to
  *     zero (W)", bits "14-15 Not used (always zero)".
  *   SIO_BAUD 1F80104E "Baudrate Reload value".
  *
- * Attached device: NONE.  psx-spx (controllersandmemorycards.md):
- *   "FFFFh=High-Z (no controller connected, pins floating High-Z)" — every
- *   received byte is FFh; and the RX IRQ "Gets set after receiving a data
- *   byte - that only if an /ACK has been received from the peripheral (ie.
- *   there will be no IRQ if the peripheral fails to send an /ACK, or if
- *   there's no peripheral connected at all)" — so DSR (STAT.7) stays 0,
- *   STAT.9 is never set and IRQ7 is never asserted.  No card protocol is
- *   modelled.
+ * RX backing slots retain received bytes even after RXRDY clears: each
+ * receive fills all unused slots, each read shifts eight slots and inserts
+ * zero at the tail. Empty reads therefore eventually return zero. Reset
+ * clears both count and retained data. A full FIFO overwrites its last entry.
  *
- * Timing: a byte transfer (8 bit times at the programmed baud) completes
- * before the next guest status poll: the write sets TXRDY and TXU again and
- * pushes the received byte.  The port has no per-instruction clock, so the
+ * Attached device: NONE. Received bytes are FFh (floating High-Z), DSR
+ * (STAT.7) stays zero, and the retail /ACK interrupt (CTRL.12) never fires.
+ * This is distinct from CTRL.10 TX-ready and CTRL.11 RX-FIFO interrupts:
+ * those can latch STAT.9 and I_STAT.7 with no attached device. CTRL.8..9
+ * selects the receive threshold of 1/2/4/8 bytes. Acknowledging STAT.9 via
+ * CTRL.4 while its condition persists produces a fresh interrupt edge;
+ * clearing I_STAT alone does not. No card/controller protocol is modelled.
+ *
+ * Timing: an enabled byte transfer (8 bit times at the programmed baud)
+ * completes before the next guest status poll. A write while TXEN is off
+ * occupies the TX holding slot (TXRDY/TXU clear); enabling TXEN completes
+ * it, sets TXRDY/TXU and applies the receive gates. Reset cancels the slot.
+ * The port has no per-instruction clock, so the
  * transfer duration is not observable here; the retail code polls these
  * flags and never measures the transfer itself (its timeouts use RCNT2).
  * Host-time-independent and deterministic.
@@ -53,6 +61,8 @@ void PE_Sio0_Reset(void);
 void PE_Sio0_WriteData(uint8_t value);
 uint8_t PE_Sio0_ReadData(void);     /* pops the RX FIFO */
 uint8_t PE_Sio0_PeekData(void);     /* no pop (MMIO shadow) */
+/* Value-register accesses: 2 bytes previews two/pops one; 4 pops four. */
+uint32_t PE_Sio0_ReadDataWide(unsigned bytes); /* only 2 or 4 */
 uint16_t PE_Sio0_ReadStat(void);
 uint16_t PE_Sio0_ReadMode(void);
 void PE_Sio0_WriteMode(uint16_t value);

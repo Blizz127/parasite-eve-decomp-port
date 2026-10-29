@@ -19,22 +19,35 @@ static void command_boundary(const char *name)
 
 void func_80021128(void)
 {
-    pe_addr_t weapon=attack_weapon();
-    int kind=(int16_t)PE_LoadU16(weapon+6u);
+    pe_addr_t weapon;
+    int kind, result;
+    if (PE_Port_ShouldStop()) return;
+    weapon=attack_weapon();
+    kind=(int16_t)PE_LoadU16(weapon+6u);
     if (kind==6) {
         if (!(PE_LoadU32(weapon+0xCu)&0x3FFu)) (void)func_800518A8(weapon);
-        PE_StoreU32(0x8009D200u,(uint32_t)func_8006F39C(3u,PE_LoadU32(0x8009D254u)));
+        if (PE_Port_ShouldStop()) return;
+        result=func_8006F39C(3u,PE_LoadU32(0x8009D254u));
+        if (PE_Port_ShouldStop()) return;
+        PE_StoreU32(0x8009D200u,(uint32_t)result);
     } else if (kind==8) {
-        PE_StoreU32(0x8009D2FCu,(uint32_t)func_8006F39C(6u,PE_LoadU32(0x8009D254u)));
+        result=func_8006F39C(6u,PE_LoadU32(0x8009D254u));
+        if (PE_Port_ShouldStop()) return;
+        PE_StoreU32(0x8009D2FCu,(uint32_t)result);
     } else {
         uint32_t flags,first,second;
         if (!(PE_LoadU32(weapon+0xCu)&0x3FFu)) (void)func_800518A8(weapon);
+        if (PE_Port_ShouldStop()) return;
         weapon=attack_weapon(); kind=(int16_t)PE_LoadU16(weapon+6u);
         flags=PE_LoadU32(weapon+0x10u);
         if (kind==5 || (flags&0x1F00u)) { first=0u; second=5u; }
         else { first=kind==2 || (flags&0xC0u)==0x80u?1u:2u; second=4u; }
-        PE_StoreU32(0x8009D200u,(uint32_t)func_8006F39C(first,PE_LoadU32(0x8009D254u)));
-        PE_StoreU32(0x8009D2FCu,(uint32_t)func_8006F39C(second,PE_LoadU32(0x8009D254u)));
+        result=func_8006F39C(first,PE_LoadU32(0x8009D254u));
+        if (PE_Port_ShouldStop()) return;
+        PE_StoreU32(0x8009D200u,(uint32_t)result);
+        result=func_8006F39C(second,PE_LoadU32(0x8009D254u));
+        if (PE_Port_ShouldStop()) return;
+        PE_StoreU32(0x8009D2FCu,(uint32_t)result);
     }
 }
 
@@ -48,7 +61,9 @@ static int8_t commit_commands(unsigned entry)
     if (first-0x183u>=0x15u) {
         for (i=0;i<PE_LoadU8(0x8009CE3Cu);i++) {
             if ((unsigned)PE_LoadU16(0x800BE834u+i*8u)-1u<2u) {
-                func_80021128(); break;
+                func_80021128();
+                if (PE_Port_ShouldStop()) return 0;
+                break;
             }
         }
     }
@@ -84,6 +99,7 @@ void func_800258CC(int8_t mode)
             pe_addr_t selected;
             int32_t distance,range;
             func_800347B4();
+            if (PE_Port_ShouldStop()) return;
             selected=0x8009E000u+(uint32_t)(int32_t)(int8_t)PE_LoadU8(0x8009CE44u)*12u;
             distance=(int32_t)PE_LoadU32(selected+4u);
             range=(PE_LoadU32(record+0x4Cu)&0x30u)==0x10u?200:
@@ -117,7 +133,10 @@ void func_80026600(pe_addr_t target)
         for (i=0;i<((PE_LoadU32(attack_weapon()+16u)&15u)*3u)/2u;i++) {
             int count=(int8_t)PE_LoadU8(0x8009D2B0u);
             if (!count) { command_boundary("func_80026600_target_divide"); return; }
-            queue_shot(PE_LoadU32(0x8009E000u+(func_80071A54()%(uint32_t)count)*12u),2u);
+            /* 71A54 produces a nonnegative 15-bit value; retail uses signed
+             * division by the sign-extended target count. */
+            int32_t target=(int32_t)func_80071A54() % count;
+            queue_shot(PE_LoadU32(0x8009E000u+(uint32_t)target*12u),2u);
         }
         PE_StoreU8(0x8009D1DCu,0u);
     } else {
@@ -180,6 +199,7 @@ int8_t func_80025EE8_attack_cut(void)
     }
     if ((int8_t)PE_LoadU8(0x8009D1F0u)) {
         int8_t mode=func_80026824((int8_t)PE_LoadU8(0x8009D1F0u));
+        if (PE_Port_ShouldStop()) return 1;
         PE_StoreU8(0x8009D1F0u,(uint8_t)mode);
         if (mode==-1) {PE_StoreU8(0x8009D1F0u,0u);return commit_commands(2u);}
         if (!mode) func_80026FD0();
@@ -190,6 +210,7 @@ int8_t func_80025EE8_attack_cut(void)
         uint32_t shape=(PE_LoadU32(weapon+16u)>>6u)&3u;
         int8_t mode=(int16_t)PE_LoadU16(weapon+6u)==8?3:shape==1u?1:shape==3u?2:0;
         func_800258CC(mode);
+        if (PE_Port_ShouldStop()) return 1;
     }
     if ((PE_LoadU32(0x8009D1F4u)&0x200u) && !advanced && PE_LoadU8(0x8009D2D8u)) {
         PE_StoreU8(0x8009CE60u,0u);

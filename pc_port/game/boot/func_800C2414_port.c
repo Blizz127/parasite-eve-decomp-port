@@ -45,7 +45,7 @@ static void weapon_hit_child(pe_addr_t data,int particles)
 void PE_WeaponCallback(pe_addr_t fn,pe_addr_t slot,pe_addr_t rec,pe_addr_t data)
 {
     unsigned i;
-    PE_EffectStackWeaponUpdateCall();
+    PE_EffectStackWeaponUpdateCallback(fn,rec,data);
     PE_M34StackCallback(fn);
     (void)slot;
     if(PE_M34BossEffectOverlay() && PE_M34BossEffectChild(fn,slot,rec,data))return;
@@ -97,6 +97,12 @@ void PE_WeaponCallback(pe_addr_t fn,pe_addr_t slot,pe_addr_t rec,pe_addr_t data)
         return;
     }
     if (PE_GuestCode_Resolve(fn)) {   /* generated overlay / EXE TU (pe_guestcode.h) */
+        (void)PE_GuestCall("@800C2414:weapon", fn, 3u, (uintptr_t)slot, (uintptr_t)rec, (uintptr_t)data, 0);
+        return;
+    }
+    if (PE_Decomp_BoundaryStopEnabled()) {
+        /* Native-only: an unported weapon callback is a CPU_BOUNDARY/REFUSED
+         * STOP under the port binary's stop policy (skip = record-only). */
         (void)PE_GuestCall("@800C2414:weapon", fn, 3u, (uintptr_t)slot, (uintptr_t)rec, (uintptr_t)data, 0);
         return;
     }
@@ -236,7 +242,10 @@ int func_800C2758(pe_addr_t slot,pe_addr_t callbacks,pe_addr_t sizes)
         high=op>>16u;value=(int16_t)op;
         if (op==0xFFFFFFFFu) { stop=1;PE_StoreU8(weapon_body()+7u,1u); }
         else {
-            if (high==1u) (void)func_800C2B90(slot,op&255u,sizes,callbacks);
+            if (high==1u) {
+                (void)func_800C2B90(slot,op&255u,sizes,callbacks);
+                PE_EffectStackWeaponSpawnReturn();
+            }
             if (high==2u) { PE_StoreU16(weapon_body(),(uint16_t)op);stop=1; }
             body=weapon_body();
             if (high>=0x10u && high<0x20u) PE_StoreU32(body+8u+(high-0x10u)*4u,(uint32_t)value);

@@ -58,4 +58,12 @@ extern int g_host_window_open;
  * Cross is XK_Return / XK_space / XK_z / XK_x / pad A (raw 0x4000). */
 uint16_t HostWindow_PadRaw(void);
 
+/* Opt-in ANALOG STICK (pe_plat/enhance.h): the analog source for
+ * PE_Port_SetPadAnalogSource.  Returns 1 with sticks[] = RX, RY, LX, LY
+ * (0x80 = centre) while the option is on and an SDL GameController is open,
+ * else 0.  While the dev menu holds the pad the sticks read centred, as the
+ * buttons read idle.  Then HostWindow_PadRaw also drops the left-stick ->
+ * d-pad bits.  The Win32 backend returns the XInput sticks (host_pad_xinput.c). */
+int HostWindow_PadAnalog(uint8_t sticks[4]);
+
 #endif

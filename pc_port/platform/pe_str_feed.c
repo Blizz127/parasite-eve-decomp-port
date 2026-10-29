@@ -296,7 +296,7 @@ static void Sector(const uint8_t *raw)
                     atv[0], atv[1], atv[2], atv[3]);
             memcpy(g_feed.atv_logged, atv, 4);
         }
-        PE_Spu_CdSector(raw, (uint8_t)g_feed.mode, 0, 0u, 0u, atv);
+        PE_Spu_CdSector(raw, (uint8_t)g_feed.mode, PE_CdReg_XaMuted(), 0u, 0u, atv);
         return;
     }
     if ((submode & 0x08u) && user[0] == 0x60u && user[1] == 0x01u &&

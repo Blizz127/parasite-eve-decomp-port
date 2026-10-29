@@ -246,5 +246,227 @@ class RequireBlobsTests(unittest.TestCase):
         self.assertNotIn(cm.exception.code, (0, None))
 
 
+class E21FallbackTests(unittest.TestCase):
+    """Only pointer-model refusals fall back to E21 guest-memory lowering."""
+    LEAF = {"vram": 0x80190000, "file_offset": 0x1018, "file_size": 0x20, "words": 8}
+    SRC = ("typedef struct O { int a; struct O *next; void (*fn)(struct O *); } O;\n"
+           "int func_80190000(O *o) { o->next->a = 1; o->fn(o); return 0; }\n")
+
+    def test_pointer_reason_is_lowered(self):
+        txt = o.lowered_tu("func_80190000", self.SRC, self.LEAF,
+                           "leaf struct with pointer members (guest layout)", set(), {}, {})
+        self.assertTrue(txt.startswith("/*"), txt)
+        self.assertIn("E21 guest-memory", txt)
+        self.assertIn('PE_GuestCall("@func_80190000:jalr"', txt)
+        self.assertIn("PE_StoreU32(((uint32_t)PE_LoadU32((a_o + 4u))), (uint32_t)(1))", txt)
+
+    def test_other_reasons_stay_refused(self):
+        for why in ("pinned register x read before written",
+                    "hardware/BIOS literal 0x1F801070"):
+            self.assertIsNone(o.lowered_tu("func_80190000", self.SRC, self.LEAF, why, set(), {}, {}))
+
+    def test_asm_and_scratchpad_reasons_go_to_e21(self):
+        # E21b: inline GTE asm and scratchpad literals are lowered (the leaf's
+        # own asm is checked by guest_lower; plain C here simply lowers).
+        for why in ("asm", "hardware/BIOS literal 0x1F800028"):
+            txt = o.lowered_tu("func_80190000", self.SRC, self.LEAF, why, set(), {}, {})
+            self.assertIn("E21 guest-memory", txt)
+
+    def test_mmio_literal_refused_inside_lowering(self):
+        src = "int func_80190000(void) { return *(volatile int *)0x1F801070; }"
+        txt = o.lowered_tu("func_80190000", src, self.LEAF, "asm", set(), {}, {})
+        self.assertIn("hardware/BIOS literal 0x1F801070", txt)
+
+    def test_lowering_refusal_is_reported(self):
+        src = "int func_80190000(float *f) { return *f > 1; }"
+        self.assertEqual(o.lowered_tu("func_80190000", src, self.LEAF,
+                                      "pointer parameter: x", set(), {}, {}), "float")
+
+
+
+class ClosureFingerprintTests(unittest.TestCase):
+    """Registry `closure`: leaf + same-room jal callees, transitively."""
+
+    @staticmethod
+    def room(callee_word: int, far_word: int = 0) -> tuple[dict, bytes]:
+        jal = (3 << 26) | ((0x80190010 >> 2) & 0x3FFFFFF)
+        words = [jal, 0, 0x03E00008, 0, callee_word, 0x03E00008, 0, far_word]
+        data = b"".join(w.to_bytes(4, "little") for w in words)
+        ovl = {"vram": 0x80190000, "leaves": {
+            "func_80190000": {"vram": 0x80190000, "file_offset": 0, "file_size": 16},
+            "func_80190010": {"vram": 0x80190010, "file_offset": 16, "file_size": 12}}}
+        return ovl, data
+
+    def test_identical_closures_match(self):
+        a = o.closure_fp(*self.room(0x24020001), "func_80190000")
+        b = o.closure_fp(*self.room(0x24020001, far_word=0x12345678), "func_80190000")
+        self.assertEqual(a, b)          # bytes outside the closure do not count
+
+    def test_callee_difference_splits(self):
+        a = o.closure_fp(*self.room(0x24020001), "func_80190000")
+        b = o.closure_fp(*self.room(0x24020002), "func_80190000")
+        self.assertNotEqual(a, b)       # same leaf bytes, different jal callee
+
+class DispatchThunkTests(unittest.TestCase):
+    """Registry thunks: <= 4 params -> PeGuestThunk; 5..8 (O32 stack args) ->
+    PeGuestThunk8 plus the parameter count; more -> not thunkable."""
+
+    def sig(self, n):
+        return {"ret": "int", "params": [f"int32_t a{i}" for i in range(n)]}
+
+    def test_thunkable_limits(self):
+        self.assertEqual(o.thunkable(self.sig(4)), ["int32_t"] * 4)
+        self.assertEqual(o.thunkable(self.sig(6)), ["int32_t"] * 6)
+        self.assertEqual(o.thunkable(self.sig(8)), ["int32_t"] * 8)
+        self.assertIsNone(o.thunkable(self.sig(9)))
+
+    def test_render_thunk8_entry(self):
+        ents = [{"vma": 0x801925AC, "size": 0x78, "fp": 0x1234, "closure": 0, "symbol": "room_x__f6",
+                 "types": ["uint32_t", "int32_t", "uint32_t", "int32_t", "int32_t", "int32_t"],
+                 "ret": "int32_t", "decl": None},
+                {"vma": 0x80190000, "size": 8, "fp": 0x99, "closure": 0, "symbol": "room_x__f1",
+                 "types": ["uint32_t"], "ret": "int32_t", "decl": None}]
+        txt = o.render_dispatch([{"id": "room_x", "lo": 0x8018F000, "hi": 0x801A0000, "sha1": None,
+                                  "load_size": 0, "entries": ents}])
+        self.assertIn("static int pe_gct_0(uintptr_t a0, uintptr_t a1, uintptr_t a2, uintptr_t a3, "
+                      "uintptr_t a4, uintptr_t a5, uintptr_t a6, uintptr_t a7) { (void)a6; (void)a7; "
+                      "return (int)room_x__f6((uint32_t)a0, (int32_t)a1, (uint32_t)a2, (int32_t)a3, "
+                      "(int32_t)a4, (int32_t)a5); }", txt)
+        self.assertIn('{0x801925ACu, 0x78u, 0x00001234u, 0, "room_x__f6", 0x00000000u, pe_gct_0, 6u},', txt)
+        self.assertIn('{0x80190000u, 0x8u, 0x00000099u, pe_gct_1, "room_x__f1", 0x00000000u, 0, 0u},', txt)
+
+
+class HostReplacementTests(unittest.TestCase):
+    def test_header_annotation_parsed(self):
+        r = o.host_replacements()
+        self.assertEqual(r["func_80079754"]["host"], "PE_RotMatrixYXZ_Guest")
+        self.assertEqual(r["func_80079754"]["params"], ["pe_addr_t r", "pe_addr_t m"])
+        self.assertEqual(r["func_80079754"]["decl"],
+                         "pe_addr_t PE_RotMatrixYXZ_Guest(pe_addr_t r, pe_addr_t m);")
+
+
+class HandOverlayBindingTests(unittest.TestCase):
+    """HAND_OVERLAY_PORTS: an in-window callee binds only to the hand port named
+    for exactly that (overlay, name); anything else stays a loud boundary."""
+
+    def setUp(self):
+        self.defs = o.g.pc_port_definitions()
+
+    def test_every_binding_resolves_in_the_tree(self):
+        for (ov, name), rel in sorted(o.HAND_OVERLAY_PORTS.items()):
+            ovl = o.parse_overlay(ov)
+            self.assertTrue(o.in_window(ovl, name), name)
+            self.assertEqual(self.defs.get(name), {rel})
+            sig = o.hand_overlay_sigs(ovl, self.defs)[name]
+            self.assertTrue(sig["decl"].startswith(f"{sig['ret']} {name}("), sig)
+
+    def test_signatures_come_from_the_hand_definitions(self):
+        s = o.hand_overlay_sigs(o.parse_overlay("ovl_0700"), self.defs)
+        self.assertEqual(sorted(s), ["func_8018F344", "func_80193B5C", "func_80197BA0"])
+        self.assertEqual(s["func_80193B5C"]["decl"], "int func_80193B5C(int level);")
+        self.assertEqual(s["func_80197BA0"]["params"], ["pe_addr_t unused", "pe_addr_t model"])
+        self.assertEqual(len(s["func_8018F344"]["params"]), 4)
+        s = o.hand_overlay_sigs(o.parse_overlay("ovl_03C5"), self.defs)
+        self.assertEqual(s["func_80121270"]["decl"], "int func_80121270(pe_addr_t state);")
+
+    def test_no_binding_for_other_overlays(self):
+        self.assertEqual(o.hand_overlay_sigs(o.parse_overlay("ovl_03C9"), self.defs), {})
+        # room_m0273i has its own (different) func_80193B5C: never the hand port
+        self.assertEqual(o.hand_overlay_sigs(o.parse_overlay("room_m0273i"), self.defs), {})
+
+    def test_emitted_callee_wins(self):
+        s = o.hand_overlay_sigs(o.parse_overlay("ovl_0700"), self.defs, {"func_80193B5C"})
+        self.assertEqual(sorted(s), ["func_8018F344", "func_80197BA0"])
+
+    def test_stale_binding_stops_the_run(self):
+        ovl = o.parse_overlay("ovl_0700")
+        rel = o.HAND_OVERLAY_PORTS[("ovl_0700", "func_80193B5C")]
+        other = "pc_port/game/boot/elsewhere.c"
+        gone = {k: v for k, v in self.defs.items() if k != "func_80193B5C"}  # deleted or static
+        for bad in (gone, {**self.defs, "func_80193B5C": {other}},
+                    {**self.defs, "func_80193B5C": {rel, other}}):
+            with self.assertRaises(SystemExit) as cm:
+                o.hand_overlay_sigs(ovl, bad)
+            self.assertIn("stale hand binding ovl_0700:func_80193B5C", str(cm.exception.code))
+        # an emitted TU makes the binding moot: nothing to check
+        self.assertEqual(sorted(o.hand_overlay_sigs(ovl, gone, {"func_80193B5C"})),
+                         ["func_8018F344", "func_80197BA0"])
+
+    def test_binding_outside_the_window_stops_the_run(self):
+        key = ("ovl_03C9", "func_80193B5C")
+        o.HAND_OVERLAY_PORTS[key] = o.HAND_OVERLAY_PORTS[("ovl_0700", "func_80193B5C")]
+        self.addCleanup(o.HAND_OVERLAY_PORTS.pop, key)
+        with self.assertRaises(SystemExit):
+            o.hand_overlay_sigs(o.parse_overlay("ovl_03C9"), self.defs)
+
+    def test_lowered_caller_calls_the_hand_port(self):
+        leaf = {"vram": 0x80192740, "file_offset": 0x3750, "file_size": 0xC0, "words": 48}
+        src = ("extern short D_8019C02C;\nextern short func_80193B5C();\n"
+               "void func_80192740(void)\n{\n    if (D_8019C02C != 0) {\n"
+               "        D_8019C02C = func_80193B5C(D_8019C02C);\n    }\n}\n")
+        sig = {"ret": "int", "params": ["int level"], "decl": "int func_80193B5C(int level);"}
+        bound = o.lowered_tu("func_80192740", src, leaf, "asm", {"func_80193B5C"},
+                             {"func_80193B5C": sig}, {"func_80193B5C": sig})
+        self.assertIn("int func_80193B5C(int level);", bound)
+        self.assertIn("(((int16_t)func_80193B5C(((int16_t)PE_LoadU16(0x8019C02Cu)))))", bound)
+        self.assertNotIn("PE_D_COMP_BOUNDARY", bound)
+        unbound = o.lowered_tu("func_80192740", src, leaf, "asm", set(), {}, {})
+        self.assertIn('PE_D_COMP_BOUNDARY1("func_80193B5C", 0x80193B5Cu, '
+                      '((int16_t)PE_LoadU16(0x8019C02Cu)))', unbound)
+
+
+class NativeCallbackRegistryTests(unittest.TestCase):
+    """Synthetic bytes test fail-closed registration without retail assets."""
+    def setUp(self):
+        import hashlib
+        from unittest.mock import patch
+        self.patch = patch
+        self.ov = o.parse_overlay("ovl_03C9")
+        self.defs = o.g.pc_port_definitions()
+        self.data = bytes(range(256)) * (0x4800 // 256)
+        self.bindings = {}
+        for key, value in o.NATIVE_OVERLAY_CALLBACKS.items():
+            b = dict(value)
+            b["sha1"] = hashlib.sha1(self.data).hexdigest()
+            b["body_sha256"] = hashlib.sha256(self.data[b["offset"]:b["offset"] + b["size"]]).hexdigest()
+            self.bindings[key] = b
+        self.context = self.patch.object(o, "NATIVE_OVERLAY_CALLBACKS", self.bindings)
+        self.context.start()
+        self.addCleanup(self.context.stop)
+
+    def test_typed_fingerprinted_entries(self):
+        rows = o.native_callback_entries(self.ov, self.defs, self.data, set())
+        self.assertEqual([e["vma"] for e in rows], [0x801EDC44, 0x801EEBC8, 0x801F0068])
+        for e in rows:
+            self.assertEqual(e["types"], ["int32_t", "pe_addr_t"])
+            self.assertNotEqual(e["fp"], 0)
+            self.assertNotIn(e["symbol"], self.ov["leaves"])
+
+    def test_other_overlay_has_no_entries(self):
+        self.assertEqual(o.native_callback_entries(o.parse_overlay("ovl_03C5"), self.defs, None, set()), [])
+
+    def test_changed_or_absent_retail_bytes_fail(self):
+        for data in (None, self.data[:-1], bytes([self.data[0] ^ 1]) + self.data[1:]):
+            with self.assertRaisesRegex(SystemExit, "retail identity mismatch"):
+                o.native_callback_entries(self.ov, self.defs, data, set())
+
+    def test_missing_duplicate_moved_definition_fails(self):
+        name = "func_801EDC44"
+        for where in (set(), {"elsewhere.c"}, self.defs[name] | {"elsewhere.c"}):
+            with self.assertRaisesRegex(SystemExit, "stale native callback definition"):
+                o.native_callback_entries(self.ov, {**self.defs, name: where}, self.data, set())
+
+    def test_bad_span_fails_before_identity(self):
+        b = self.bindings[("ovl_03C9", "func_801EDC44")]
+        for off, size in ((-4, 0x950), (0x44D, 0x950), (0x44C, 0), (0x44C, 0x4800)):
+            with self.patch.dict(b, {"offset": off, "size": size}):
+                with self.assertRaisesRegex(SystemExit, "invalid native callback span"):
+                    o.native_callback_entries(self.ov, self.defs, self.data, set())
+
+    def test_generated_duplicate_fails(self):
+        with self.assertRaisesRegex(SystemExit, "duplicate native callback"):
+            o.native_callback_entries(self.ov, self.defs, self.data, {"func_801EDC44"})
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -28,14 +28,17 @@ static void test_DAY1_dispenv(void)
         ASSERT(gpu.display_command_count==DAY1_dispenv_cases[n].count,"PutDispEnv command count differs");
         for(unsigned i=0;i<4;i++)ASSERT(gpu.display_commands[i]==DAY1_dispenv_cases[n].commands[i],"PutDispEnv ordered GP1 words differ");
     }
-    /* Unknown live dispatch identities must not copy/present the environment. */
+    /* Unknown live dispatch identities must not copy/present the environment:
+     * an unregistered jtb[4] is the guest-code registry's boundary, a STOP
+     * under the port's production policy (test_gpu_jtb_dispatch.h). */
+    int stop_policy=PE_Decomp_BoundaryStopEnabled();
     ResetTestState();DAY1_SeedDisplayDispatch();PE_StoreU32(0x80095714u,0x80123456u);
     PE_Fill(0x800957B8u,20,0xA5);
-    func_800755F0(0x80150000u);
+    PE_Decomp_SetBoundaryStop(1);func_800755F0(0x80150000u);PE_Decomp_SetBoundaryStop(stop_policy);
     ASSERT(PE_Port_ShouldStop() && PE_LoadU32(0x800957B8u)==0xA5A5A5A5u,"unknown GP1 writer must preserve the nonreturn prefix");
     ResetTestState();DAY1_SeedDisplayDispatch();PE_StoreU32(0x80095714u,0x80123456u);
     PE_StoreU32(0x8009575Cu,0xA5A5A5A5u);
-    func_80070E54();
+    PE_Decomp_SetBoundaryStop(1);func_80070E54();PE_Decomp_SetBoundaryStop(stop_policy);
     ASSERT(PE_Port_ShouldStop() && !PE_LoadU32(0x8009CDDCu) && PE_LoadU32(0x8009575Cu)==0xA5A5A5A5u,"frame tail must not draw/flip after display nonreturn");
     ResetTestState();
     for(unsigned v=0;v<256;v++) {

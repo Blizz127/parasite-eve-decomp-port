@@ -14,7 +14,7 @@ static void test_DAY2_spu_mode(void)
         for(unsigned i=0;i<sizeof(SM_common)/sizeof(SM_common[0]);i++)PE_StoreU32(0x80000000u|SM_common[i][0],SM_common[i][1]);
         for(unsigned i=SM_cases[k].first;i<SM_cases[k].end;i++)PE_StoreU32(0x80000000u|SM_patches[i][0],SM_patches[i][1]);
         if(physical) {
-            for(unsigned i=0;i<0x200u;i+=2)PE_SpuRegister_StoreU16(i,PE_LoadU16(0x80151000u+i));
+            for(unsigned i=0;i<0x200u;i+=2)if(i!=0x1A8u)PE_SpuRegister_StoreU16(i,PE_LoadU16(0x80151000u+i)); /* 0x1A8 is the data FIFO port (049ea8fe6) */
             PE_StoreU32(0x8009B3FCu,0x1F801C00u);
         }
         func_8008CB54(SM_cases[k].mode);

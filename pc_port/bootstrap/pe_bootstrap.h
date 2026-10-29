@@ -117,6 +117,14 @@ void Bootstrap_ResetArg5CallLog(void);
 /* Same, for void functions.  In strict mode aborts on first call. */
 void Bootstrap_ReturnVoid(const char *symbol, const char *caller);
 
+/* func_80069B08 (retail disc-swap screen: "insert disc N", drive polling,
+ * then D_800B0DCD = N) has no native port.  The main loop reaches it when the
+ * story word persist[74] needs the other disc (< 0x258: disc 1, else disc 2)
+ * and when New Game init (0xAA108448) runs without disc 2.  Returning without
+ * the swap would leave D_800B0DCD unchanged and make func_8001220C ask again
+ * forever, so this is a CPU_BOUNDARY/REFUSED STOP (unresolved-boundary). */
+void PE_Port_DiscSwapBoundary(int disc);
+
 /* ── Strict mode ────────────────────────────────────────────────────── */
 
 /* Called once at startup when --strict-stubs is active. */

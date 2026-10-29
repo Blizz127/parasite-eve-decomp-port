@@ -3,6 +3,7 @@
 #include "psx_compat.h"
 #include "pe_port_compat.h"
 #include "pe_sdk.h"
+#include "game_port.h"
 
 void func_8003CCB0(pe_addr_t dest, int enabled)
 {
@@ -43,7 +44,7 @@ static void fade_lighting(pe_addr_t dest)
 {
     uint32_t color=PE_LoadU8(dest+0x94u)|(PE_LoadU8(dest+0x95u)<<8u)|(PE_LoadU8(dest+0x96u)<<16u);
     PE_StoreU32(0x8009CDA0u,color);
-    func_8003B97C_lighting_cut(dest,0x800BEA40u);
+    func_8003B97C(dest,0x800BEA40u);
     if (!(PE_LoadU16(dest+0x9Cu)&8u))
         func_8003BCE0(dest,0,(int16_t)PE_LoadU16(0x8009CDDCu));
     PE_StoreU32(0x8009CDA0u,0x808080u);
@@ -93,7 +94,11 @@ int func_8003C818(pe_addr_t dest)
         PE_StoreU8(dest+0x8Cu,PE_LoadU8(dest+0x8Du));
         func_8003CCB0(dest,1); func_8003CEF8(dest,1);
         int divisor=(int8_t)PE_LoadU8(dest+0x8Du);
-        if (!divisor) { Bootstrap_ReturnVoid("func_8003C818_divide_zero", "func_8003C818"); return 0; }
+        if (!divisor) {
+            Bootstrap_ReturnVoid("func_8003C818_divide_zero", "func_8003C818");
+            PE_Port_RequestStop(PE_PORT_STOP_UNRESOLVED_BOUNDARY);
+            return 0;
+        }
         for (unsigned i=0;i<3;i++) {
             unsigned color=PE_LoadU8(dest+0x90u+i);
             if (color>128u) color=128u;
@@ -121,17 +126,21 @@ void func_8003B708(pe_addr_t dest, int bank)
         for (unsigned i=0;i<8;i++) saved[i]=PE_LoadU32(dest+0x34u+i*4u);
         for (unsigned i=0;i<8;i++) PE_StoreU32(dest+0x34u+i*4u,PE_LoadU32(0x80091A38u+i*4u));
         func_80039B74(dest,PE_LoadU32(dest+0xB0u),0,1);
-        func_8003A088_mode0_walk_cut(dest);
+        if (!PE_Port_ShouldStop()) func_8003A088_mode0_walk_cut(dest);
+        if (PE_Port_ShouldStop()) {
+            for (unsigned i=0;i<8;i++) PE_StoreU32(dest+0x34u+i*4u,saved[i]);
+            return;
+        }
     } else {
         pe_addr_t matrix=PE_LoadU32(0x800B0D70u);
         for (unsigned i=0;i<8;i++) PE_StoreU32(matrix+i*4u,PE_LoadU32(0x80091A38u+i*4u));
     }
-    func_8006698C(dest); func_8003B97C_lighting_cut(dest,0x800BEA40u);
+    func_8006698C(dest); func_8003B97C(dest,0x800BEA40u);
     func_8003BCE0(dest,1,(int16_t)bank);
     if (dest!=0x800B0CECu) {
         for (unsigned i=0;i<8;i++) PE_StoreU32(dest+0x34u+i*4u,saved[i]);
         func_80039B74(dest,PE_LoadU32(dest-4u),(int16_t)PE_LoadU16(dest-0x19Eu),1);
-        func_8003A088_mode0_walk_cut(dest);
+        if (!PE_Port_ShouldStop()) func_8003A088_mode0_walk_cut(dest);
     }
 }
 
@@ -147,6 +156,11 @@ void func_8003C0B4(pe_addr_t dest, int level, uint32_t red, uint32_t green, uint
         PE_GTE_LoadRT(PE_LoadU32(dest+0x84u)+bone*32u);
         PE_GTE_SetV0((int16_t)PE_LoadU16(bounds),(int16_t)PE_LoadU16(bounds+2u),(int16_t)PE_LoadU16(bounds+4u));
         PE_GTE_MVMVA(0x0480012u);
+        /* The game's clip-color pass exposes each transformed vector in
+         * scratchpad before its bounds/vertex predicates and packet tail. */
+        PE_StoreU16(0x1F800000u,(uint16_t)g_pe_gte.ir[0]);
+        PE_StoreU16(0x1F800002u,(uint16_t)g_pe_gte.ir[1]);
+        PE_StoreU16(0x1F800004u,(uint16_t)g_pe_gte.ir[2]);
         int y=(int16_t)g_pe_gte.ir[1],radius=(int16_t)PE_LoadU16(bounds+6u);
         if (!(level<y) && !(level<y-radius) && !(level<y+radius)) continue;
         unsigned start=PE_LoadU16(rec);
@@ -154,6 +168,9 @@ void func_8003C0B4(pe_addr_t dest, int level, uint32_t red, uint32_t green, uint
             pe_addr_t v=PE_LoadU32(dest+8u)+(start+i)*8u;
             PE_GTE_SetV0((int16_t)PE_LoadU16(v),(int16_t)PE_LoadU16(v+2u),(int16_t)PE_LoadU16(v+4u));
             PE_GTE_MVMVA(0x0480012u);
+            PE_StoreU16(0x1F800000u,(uint16_t)g_pe_gte.ir[0]);
+            PE_StoreU16(0x1F800002u,(uint16_t)g_pe_gte.ir[1]);
+            PE_StoreU16(0x1F800004u,(uint16_t)g_pe_gte.ir[2]);
             if (level<(int16_t)g_pe_gte.ir[1]) {
                 pe_addr_t color=0x800B1638u+(start+i)*4u;
                 PE_StoreU8(color,(uint8_t)red); PE_StoreU8(color+1u,(uint8_t)green); PE_StoreU8(color+2u,(uint8_t)blue);

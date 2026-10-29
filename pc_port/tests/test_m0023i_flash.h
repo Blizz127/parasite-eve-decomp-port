@@ -102,8 +102,16 @@ static void test_DAY1_retail_m0023i_flash(void)
     for(i=0;i<sizeof(DAY1_flash_common)/sizeof(DAY1_flash_common[0]);i++)
         PE_StoreU32(DAY1_flash_address(DAY1_flash_common[i][0]),DAY1_flash_common[i][1]);
     PE_StoreU16(0x80150104u,0);PE_StoreU32(0x8009CDD8u,0);
+    unsigned hits=PE_M0023I_FlashShimLast(NULL);
     (void)PE_EffectCallback(0x8018F710u,2,0x80150100u,0);
     ASSERT(!PE_Port_ShouldStop(),"Day-1 shim: unresolved F710 stack position must not stop the port");
+    {   /* The shim names its cause: this call is outside the effect pump. */
+        PeEffectStackCause cause;char text[160];
+        ASSERT(PE_M0023I_FlashShimLast(&cause)==hits+1u,"Day-1 shim: each substitution is counted");
+        PE_EffectStackDescribe(&cause,text,sizeof text);
+        if(!strstr(text,"outside the effect pump"))fprintf(stderr,"M0023I flash shim cause: %s\n",text);
+        ASSERT(!cause.active && strstr(text,"outside the effect pump"),"Day-1 shim: the log names the cause");
+    }
     ResetTestState();
     PASS();
 }

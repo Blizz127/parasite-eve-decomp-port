@@ -38,6 +38,7 @@
 #include "psx_compat.h"
 #include "pe_port_compat.h"
 #include "pe_sdk.h"
+#include "game_port.h"
 
 #define GA_OVERLAY  0x800B0CD8u
 #define GA_D2E8     0x8009D2E8u
@@ -181,6 +182,10 @@ int func_8006CC68(void)
      * model at +0x14 is D_800B0B38.sub (2B29C/2AA98 fade it out). */
     func_800661A4();
     func_8003A088_mode0_walk_cut(GA_OVERLAY + 0x14u);
+    if (PE_Port_ShouldStop()) {
+        func_800661CC();
+        return 1;
+    }
     func_8003AC90(GA_OVERLAY + 0x14u, 0x800B89F8u);
     if ((D_8009D1A0 & 2u) != 0u || PE_LoadU8(PE_LoadU32(GA_D254) + 0x252u) != 0u)
         (void)func_8003AF14(GA_OVERLAY + 0x14u, 0x800B89F8u);
@@ -222,6 +227,7 @@ int func_8006C5BC(void)
             int index;
             int result;
             pe_addr_t dest;
+            if (PE_Port_ShouldStop()) return 1;
             if (ee == 1u && (unsigned)(slot - 2) >= 5u) {
                 PE_StoreU8(GA_OVERLAY + 0xEEu, 4u);
                 continue;
@@ -235,14 +241,18 @@ int func_8006C5BC(void)
                 result = func_8006E6A8((int)PE_LoadU32(GA_OVERLAY + 0x100u)
                                      + (int)first, dest, (int)(end - first));
             }
+            if (PE_Port_ShouldStop()) return 1;
             if (ee == 1u || (D_8009D1A0 & 2u) == 0u)
                 (void)func_8006CC68();
+            if (PE_Port_ShouldStop()) return 1;
             if (result != -1)
                 PE_StoreU8(GA_OVERLAY + 0xEEu, (uint8_t)(ee + 1u));
             return 1;
         }
         if (ee == 2u || ee == 5u) {
+            if (PE_Port_ShouldStop()) return 1;
             int result = func_8006E7E8();
+            if (PE_Port_ShouldStop()) return 1;
             if (result == -1) {
                 PE_StoreU8(GA_OVERLAY + 0xEEu, (uint8_t)(ee - 1u));
                 return 1;
@@ -256,13 +266,18 @@ int func_8006C5BC(void)
             continue;
         }
         if (ee == 3u) {
-            pe_addr_t pkg = PE_LoadU32(GA_OVERLAY + 0x194u);
-            pe_addr_t section = pkg + PE_LoadU32(pkg + 4u);
-            uint32_t packed = PE_LoadU32(section + 0x28u);
-            pe_addr_t entry = pkg + (packed & 0x3FFFFFu);
+            pe_addr_t pkg, section, entry;
+            uint32_t packed;
             unsigned i;
-            for (i = 0; i < (packed >> 22); i++, entry += 20u)
+            if (PE_Port_ShouldStop()) return 1;
+            pkg = PE_LoadU32(GA_OVERLAY + 0x194u);
+            section = pkg + PE_LoadU32(pkg + 4u);
+            packed = PE_LoadU32(section + 0x28u);
+            entry = pkg + (packed & 0x3FFFFFu);
+            for (i = 0; i < (packed >> 22); i++, entry += 20u) {
                 (void)func_8006E1C0(entry, pkg);
+                if (PE_Port_ShouldStop()) return 1;
+            }
             PE_StoreU8(GA_OVERLAY + 0xEEu, 4u);
             continue;
         }
@@ -277,6 +292,7 @@ int func_8006C5BC(void)
                 continue;
             }
             (void)func_8006CC68();
+            if (PE_Port_ShouldStop()) return 1;
             func_8006C5BC_ee13_epilogue_cut();
             return 0;
         }
@@ -372,14 +388,21 @@ void func_8003F074_after_poll_cut(void)
 {
     uint32_t word;
 
+    if (PE_Port_ShouldStop()) return;
     func_8001A918();
+    if (PE_Port_ShouldStop()) return;
     func_800371B0(func_8003F074_371b0_a0());
+    if (PE_Port_ShouldStop()) return;
     func_800125E0();
+    if (PE_Port_ShouldStop()) return;
     func_800E0060();
+    if (PE_Port_ShouldStop()) return;
     PE_StoreU32(0x8009CDA4u, 0u);
     PE_StoreU16(0x800942ECu, 0u);
     func_80074DC0(0);
+    if (PE_Port_ShouldStop()) return;
     func_80074D28(1);
+    if (PE_Port_ShouldStop()) return;
     D_8009D1A0 &= ~0x40u;
     word = PE_LoadU32(GA_D2E8) & ~0xCu;
     PE_StoreU32(GA_D2E8, word);
@@ -423,7 +446,7 @@ void func_800E0060(void)
 /*
  * PE-BTL116 — 6C1CC default. lbu overlay+0xED (B0DC5).
  * v1=state-32; if v1 not in [0,8) return 0 at 6C4A8.
- * States 32-39 (jtbl 113D0) stay deferred. 24A3C cases
+ * The +0xED states are translated selectively below. 24A3C cases
  * 0/2 jal 6C1CC(1) and skip the rest of the case on
  * nonzero. Tests with +0xED==0 take this default.
  */
@@ -432,7 +455,8 @@ void func_800E0060(void)
  * 0x800113D0. State 32 a0!=0: overlay|=0x20000, save CE2 to
  * +0x13, sb 14 → CE2, ED=33, return 1. 33/34 increment.
  * 35 may ori overlay 0x200000 and +0xE bit 4, then ED=36.
- * 36 jals 6BECC; v0==1 stays; a0!=0 jumps to 39. State 39
+ * 36 jals 6BECC; v0==1 stays; a0!=0 jumps to 39. States 37/38
+ * set up and poll 6C5BC. State 39
  * (3D050 / 6698C / 3D834 / 1A680(21)) stays fail-closed.
  */
 int func_8006C1CC(int a0)
@@ -497,6 +521,25 @@ int func_8006C1CC(int a0)
         PE_StoreU8(0x800B0DC5u, 37u);
         return 1;
     }
+    if (state == 37u) {
+        if (PE_Port_ShouldStop())
+            return 1;
+        PE_StoreU8(GA_OVERLAY + 0x0Eu,
+                   (uint8_t)(PE_LoadU8(GA_OVERLAY + 0x0Eu) | 4u));
+        (void)func_8006C4C4((int)(int8_t)PE_LoadU8(GA_OVERLAY + 0x0Cu));
+        if (!PE_Port_ShouldStop())
+            PE_StoreU8(0x800B0DC5u, 38u);
+        return 1;
+    }
+    if (state == 38u) {
+        if (PE_Port_ShouldStop())
+            return 1;
+        int result = func_8006C5BC();
+        if (!PE_Port_ShouldStop() &&
+            (result != 1 || PE_LoadU8(GA_OVERLAY + 0xEEu) >= 11u))
+            PE_StoreU8(0x800B0DC5u, 39u);
+        return 1;
+    }
     if (state == 39u) {
         pe_addr_t aya;
         pe_addr_t dest;
@@ -527,6 +570,5 @@ int func_8006C1CC(int a0)
         PE_StoreU8(0x800B0DC5u, 32u);
         return 0;
     }
-    /* 37-38: 6C4C4 / 6C5BC. Do not stub v0=0. */
     return 1;
 }

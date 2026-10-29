@@ -485,8 +485,11 @@ static void test_PORTABSENT_mmio(void)
     ASSERT(PE_IRQ_GetMask() == 0x0041u, "I_MASK |= through the shadow");
     /* unmodelled I/O stays a loud abort on every path */
     PA_EXPECT_ABORT(PE_StoreU32(0x1F801100u, 1u), "RCNT0 count store aborts");
-    PA_EXPECT_ABORT((void)PE_LoadU16(0x1F801040u), "SIO0 load aborts");
-    PA_EXPECT_ABORT(PE_StoreU16(0x1F801114u, 0x0100u),
+    /* SIO0 value reads are modelled since native-sio0-wide-mmio-20261029. */
+    PA_EXPECT_ABORT((void)PE_LoadU16(0x1F801054u), "SIO1 STAT load aborts");
+    /* 0x0100 (HBlank clock) is modelled since native-timer1-registers-20261029;
+     * timer IRQ enables remain unmodelled. */
+    PA_EXPECT_ABORT(PE_StoreU16(0x1F801114u, 0x0110u),
                     "an unmodelled RCNT1 mode value aborts");
     PA_EXPECT_ABORT((void)PE_Translate(0x1F801800u, 1u), "CD register translate aborts");
     PA_EXPECT_ABORT({ PE_DECOMP_PTRGLOBAL(0x8009B7D0u, unsigned int)[0] = 7u;
@@ -516,8 +519,9 @@ static void test_PORTABSENT_overlay_namespaced(void)
            "801F1B60 a0 != 1 leaves the flag");
     ASSERT(ovl_03C9__func_801F1B60(1) == 0 && PE_LoadU16(0x801F1F3Au) == 0u,
            "801F1B60 clears the flag");
-    /* ovl_0700 func_80190D08: func_80191834(a0) — ovl_0700-local, no port:
-     * a boundary labelled "ovl_0700:" (never a plain-named pc_port
+    /* ovl_0700 func_80190D08: func_80191834(a0) — the ovl_0700-local node
+     * unlink (next at +0x64, prev at +0x68), generated from its matched C
+     * under its namespaced symbol (no boundary, never a plain-named pc_port
      * definition) — then func_80191678(*a0), the namespaced generated
      * ovl_0700 leaf: unlink node n from the D_801E4A88 {prev,next} list,
      * push it on the D_8019CBC0 free chain (D_8019C830[n] = old head). */
@@ -532,11 +536,15 @@ static void test_PORTABSENT_overlay_namespaced(void)
         PE_StoreU16(0x8019C9D0u, 7u);
         PE_StoreU16(0x8019CBC0u, 9u);
         PE_StoreU16(PA_E9 + 0x7000u, 3u);
+        /* the record's own {next,prev} neighbours for func_80191834 */
+        PE_StoreU32(PA_E9 + 0x7000u + 0x64u, PA_E9 + 0x7100u);
+        PE_StoreU32(PA_E9 + 0x7000u + 0x68u, PA_E9 + 0x7200u);
         ovl_0700__func_80190D08(PA_E9 + 0x7000u);
-        ASSERT(PE_Decomp_BoundaryCount() == 1 &&
-               strcmp(PE_Decomp_BoundaryName(0), "ovl_0700:func_80191834") == 0 &&
-               g_bootstrap_arg4_calls[0].arg0 == PA_E9 + 0x7000u,
-               "ovl_0700-local unported callee: overlay-labelled boundary");
+        ASSERT(PE_Decomp_BoundaryCount() == 0 && g_bootstrap_arg4_call_count == 0,
+               "ovl_0700-local callee func_80191834 runs natively (no boundary)");
+        ASSERT(PE_LoadU32(PA_E9 + 0x7100u + 0x68u) == PA_E9 + 0x7200u &&
+               PE_LoadU32(PA_E9 + 0x7200u + 0x64u) == PA_E9 + 0x7100u,
+               "func_80191834 unlinks the record (next->prev = prev, prev->next = next)");
         ASSERT(PE_LoadU16(L + 2u * 4u + 2u) == 4u && PE_LoadU16(L + 4u * 4u) == 2u,
                "node 3 unlinked (2 <-> 4)");
         ASSERT(PE_LoadU16(L + 3u * 4u) == 0xFFFFu && PE_LoadU16(L + 3u * 4u + 2u) == 0xFFFFu,
@@ -634,6 +642,144 @@ static void test_PORTABSENT_room_dedupe_dispatch(void)
     PASS();
 }
 
+/* O32 stack arguments through the registry: room_m0256i's 6-parameter
+ * message handler func_801925AC (src/overlays/room_m0256i/func_801925AC.c:
+ * 0x101 stores a3/a4/a5 as shorts at +0x28/+0x2A/+0x2C) reached by the
+ * EXE dispatcher func_8006F6D4 (record -> handler table +8 -> jalr with
+ * a4/a5 on the stack), by PE_GuestCallN directly, and refused (loud) when
+ * a 4-argument site would leave its stack arguments unset. */
+static void test_PORTABSENT_stack_args(void)
+{
+    const pe_addr_t pool = PA_E9 + 0x7C00u, table = PA_E9 + 0x7B00u, ent = PA_E9 + 0x7B80u;
+    const pe_addr_t o = PA_E9 + 0x7E00u;
+    TEST("PORTABSENT_stack_args");
+    ResetTestState();
+    PE_Overlay_ResetResidency();
+    PE_Decomp_ResetBoundaries();
+    ASSERT(PE_Overlay_SetResident("room_m0256i") == 0, "room_m0256i resident");
+    {
+        const PeGuestCodeEntry *e = PE_GuestCode_Resolve(0x801925ACu);
+        ASSERT(e && !e->thunk && e->thunk8 && e->nargs == 6u, "6-parameter handler: thunk8 entry");
+    }
+    {
+        const uintptr_t a[6] = {o, 0u, 0x101u, 5u, 6u, 7u};
+        ASSERT(PE_GuestCallN("t:n", 0x801925ACu, 6u, a) == 0 && PE_Decomp_BoundaryCount() == 0,
+               "PE_GuestCallN reaches the handler");
+        ASSERT(PE_LoadU16(o + 0x28u) == 5u && PE_LoadU16(o + 0x2Au) == 6u &&
+               PE_LoadU16(o + 0x2Cu) == 7u, "a3, a4, a5 (stack) delivered");
+    }
+    /* func_8006F6D4(0, 0, 0x100, 0x30, 0x40, 0): record 0 in D_800942E4, handler byte 0x10. */
+    PE_StoreU32(0x800942E4u, pool);
+    PE_StoreU8(pool + 1u, 0x10u);
+    PE_StoreU32(0x800942E0u, table);
+    PE_StoreU32(table + 0x10u * 4u, ent);
+    PE_StoreU32(ent + 8u, 0x801925ACu);
+    ASSERT(func_8006F6D4(0u, 0u, 0x100u, 0x30u, 0x40u, 0u) == 0 && PE_Decomp_BoundaryCount() == 0,
+           "dispatcher calls the room handler");
+    ASSERT(PE_LoadU16(pool + 0x22u) == 0x30u && PE_LoadU16(pool + 0x24u) == 0x40u,
+           "message 0x100 heights (a3, stack a4) delivered");
+    /* A 4-argument site cannot supply a4/a5: loud boundary, nothing stored. */
+    PE_StoreU16(o + 0x2Cu, 0u);
+    (void)PE_GuestCall("t:4", 0x801925ACu, 4u, o, 0u, 0x101u, 9u);
+    ASSERT(PE_Decomp_BoundaryCount() == 1 && PE_LoadU16(o + 0x2Cu) == 0u,
+           "4-argument call to a 6-parameter handler is a boundary");
+    PE_Decomp_ResetBoundaries();
+    PE_Overlay_ResetResidency();
+    PASS();
+}
+
+/* The retail GPU print hook names the EXE BIOS A(3Fh) printf vector. Exercise
+ * register-only, O32 stack, and no-optional-argument calls through the same
+ * registry used by generated game callbacks. */
+static void test_PORTABSENT_bios_printf_vectors(void)
+{
+    const pe_addr_t fmt = PA_E9 + 0x7000u;
+    const char text[] = "%d %d %d %d %d %d %d";
+    const pe_addr_t targets[1] = {0x80071A74u};
+    TEST("PORTABSENT_bios_printf_vectors");
+    ResetTestState();
+    PE_Decomp_ResetBoundaries();
+    PE_Bios_PrintfLogReset();
+    memcpy(PE_Translate(fmt, sizeof(text)), text, sizeof(text));
+    for (unsigned i = 0; i < 1; i++) {
+        const uintptr_t args[8] = {fmt, 1, 2, 3, 4, 5, 6, 7};
+        ASSERT(PE_GuestCallN("t:printf8", targets[i], 8u, args) == 13,
+               "printf vector lost register or stack arguments");
+        ASSERT(PE_GuestCall("t:printf4", targets[i], 4u, fmt, 8, 9, 1) == 13,
+               "register printf call did not dispatch");
+        PE_StoreU8(fmt, 'o'); PE_StoreU8(fmt + 1u, 'k'); PE_StoreU8(fmt + 2u, 0);
+        ASSERT(PE_GuestCall("t:printf1", targets[i], 1u, fmt, 0, 0, 0) == 2,
+               "printf without variadic arguments did not dispatch");
+        memcpy(PE_Translate(fmt, sizeof(text)), text, sizeof(text));
+    }
+    ASSERT(PE_Bios_PrintfLog(NULL, NULL) == 3u &&
+           PE_Decomp_BoundaryCount() == 0 && !PE_Port_ShouldStop(),
+           "BIOS printf reached a boundary");
+    PASS();
+}
+
+static void test_PORTABSENT_bios_puts_literal(void)
+{
+    const pe_addr_t src = PA_E9 + 0x7100u;
+    const char text[] = "literal %d %s";
+    char output[64] = {0};
+    FILE *capture;
+    int saved_stderr;
+    TEST("PORTABSENT_bios_puts_literal");
+    ResetTestState();
+    PE_Decomp_ResetBoundaries();
+    memcpy(PE_Translate(src, sizeof(text)), text, sizeof(text));
+    capture = tmpfile();
+    ASSERT(capture != NULL, "cannot capture puts output");
+    fflush(stderr);
+    saved_stderr = dup(fileno(stderr));
+    ASSERT(saved_stderr >= 0, "cannot save stderr");
+    ASSERT(dup2(fileno(capture), fileno(stderr)) >= 0, "cannot redirect stderr");
+    (void)PE_GuestCall("t:puts", 0x80073C5Cu, 1u, src, 0, 0, 0);
+    (void)PE_GuestCall("t:puts-empty", 0x80073C5Cu, 1u, src + sizeof(text) - 1u, 0, 0, 0);
+    (void)PE_GuestCall("t:puts-null", 0x80073C5Cu, 1u, 0, 0, 0, 0);
+    fflush(stderr);
+    dup2(saved_stderr, fileno(stderr));
+    close(saved_stderr);
+    rewind(capture);
+    size_t count = fread(output, 1, sizeof(output) - 1u, capture);
+    fclose(capture);
+    ASSERT(count == strlen("literal %d %s<NULL>") &&
+           strcmp(output, "literal %d %s<NULL>") == 0,
+           "puts interpreted percent operands or changed empty/NULL output");
+    ASSERT(PE_Decomp_BoundaryCount() == 0 && !PE_Port_ShouldStop(),
+           "puts used a boundary");
+    PASS();
+}
+
+/* Real generated libspu diagnostic caller: mixes integer and host-pointer
+ * operands at the same variadic position, and passes five stack/register
+ * values in one call. Its retail strings come from the owner's disc. */
+static void test_PORTABSENT_generated_tty_caller(void)
+{
+    char why[256];
+    int stop_policy;
+    TEST_RETAIL_DISC1("PORTABSENT_generated_tty_caller");
+    ResetTestState();
+    PE_Decomp_ResetBoundaries();
+    PE_Bios_PrintfLogReset();
+    ASSERT(PE_DiscCache_FileRead(PE_DISC_SRC_EXE, 0x2574u,
+        PE_Translate(0x80011D74u, 0x100u), 0x100u, why, sizeof(why)) == 0,
+        "cannot read retail TTY strings");
+    PE_StoreU32(0x8009B574u, 123u);
+    PE_StoreU32(0x800A36A0u, 456u);
+    stop_policy = PE_Decomp_BoundaryStopEnabled();
+    PE_Decomp_SetBoundaryStop(1);
+    (void)PE_GuestCall("t:generated-tty", 0x800809E0u, 0u, 0, 0, 0, 0);
+    PE_StoreU32(0x8009B70Cu, 1u);
+    (void)PE_GuestCall("t:generated-tty", 0x800809E0u, 0u, 0, 0, 0, 0);
+    PE_Decomp_SetBoundaryStop(stop_policy);
+    ASSERT(!PE_Port_ShouldStop() && PE_Decomp_BoundaryCount() == 0 &&
+           PE_Bios_PrintfLog(NULL, NULL) == 14u && g_bootstrap_arg4_call_count == 0,
+           "generated caller stopped or dropped a native TTY call");
+    PASS();
+}
+
 static void test_PORTABSENT_all(void)
 {
     test_PORTABSENT_host_to_guest();
@@ -649,6 +795,10 @@ static void test_PORTABSENT_all(void)
     test_PORTABSENT_overlay_namespaced();
     test_PORTABSENT_guestcode();
     test_PORTABSENT_room_dedupe_dispatch();
+    test_PORTABSENT_stack_args();
+    test_PORTABSENT_bios_printf_vectors();
+    test_PORTABSENT_bios_puts_literal();
+    test_PORTABSENT_generated_tty_caller();
     test_PA_handhi_all();
     test_PA_sdk_all();
     test_PA_cd_all();

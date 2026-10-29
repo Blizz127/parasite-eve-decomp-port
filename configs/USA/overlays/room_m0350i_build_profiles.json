@@ -41,6 +41,9 @@
       "func_8019421C",
       "func_80197B98",
       "func_801992A0"
+    ],
+    "room_m0350i_narrow_any_dest": [
+      "func_80192E4C"
     ]
   },
   "local_profiles": {
@@ -106,6 +109,18 @@
       ],
       "environment": {
         "MASPSX_NARROW_SHIFTED_REG_LOAD": "1"
+      }
+    },
+    "room_m0350i_narrow_any_dest": {
+      "toolchain": "era",
+      "flags": [
+        "-O2",
+        "-G0"
+      ],
+      "environment": {
+        "MASPSX_NARROW_SHIFTED_WORD_LOAD": "1",
+        "MASPSX_NARROW_SHIFTED_REG_LOAD": "1",
+        "MASPSX_NARROW_SHIFTED_ANY_DEST": "1"
       }
     }
   }

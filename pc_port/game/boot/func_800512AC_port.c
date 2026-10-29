@@ -3,6 +3,7 @@
  * native ownership; all actor, item and menu records are guest addresses. */
 #include "psx_compat.h"
 #include "pe_port_compat.h"
+#include "game_port.h"
 
 void func_80051244(void) {PE_StoreU32(0x8009D014u,0x800A1AA0u);}
 /* func_8005D970: ported from the matching decomp -- generated TU pc_port/game/decomp/func_8005D970_port.c (src/func_8005D970.c); hand port retired after differential verification (docs/evidence/portverify/REPORT.md). */
@@ -72,6 +73,7 @@ void func_800254BC(int32_t command)
         PE_StoreU32(0x8009D278u,PE_LoadU32(aya));
         func_8006DE80(1107,1,(int16_t)PE_LoadU16(aya+42u),(int16_t)PE_LoadU16(aya+46u),
             (int16_t)PE_LoadU16(aya+50u));
+        if (PE_Port_ShouldStop()) return;
     }
     if (command==407) {
         func_800218D8();func_800209F0();PE_StoreU8(PE_LoadU32(0x8009D278u)+18u,13u);

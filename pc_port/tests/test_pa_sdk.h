@@ -304,14 +304,18 @@ static void test_PA_sdk_gpu_setters(void)
     PE_StoreU32(0x80095748u, 0x80071A74u);
     PE_StoreU8(0x8009574Du, 3u);
     PE_StoreU8(0x8009574Eu, 2u);                 /* debug level 2 */
+    PE_Bios_PrintfLogReset();
     ASSERT(func_80074C14(5) == 3, "returns the old byte");
     ASSERT(PE_LoadU8(0x8009574Du) == 5u, "new value stored");
-    ASSERT(g_bootstrap_arg4_call_count == 2 &&
-           g_bootstrap_arg4_calls[0].target == 0x80071A74u &&
-           g_bootstrap_arg4_calls[0].arg0 == 0x80011840u &&
-           g_bootstrap_arg4_calls[0].arg1 == 5u &&
-           g_bootstrap_arg4_calls[1].target == 0x80011110u &&
-           g_bootstrap_arg4_calls[1].arg0 == 1u, "print, then jtb[13](1)");
+    {
+        pe_addr_t fmt;
+        uint32_t args[4];
+        ASSERT(PE_Bios_PrintfLog(&fmt, args) == 1u && fmt == 0x80011840u &&
+               args[0] == 5u && g_bootstrap_arg4_call_count == 1 &&
+               g_bootstrap_arg4_calls[0].target == 0x80011110u &&
+               g_bootstrap_arg4_calls[0].arg0 == 1u,
+               "native print, then unresolved jtb[13](1)");
+    }
     Bootstrap_ResetArg4CallLog();
     PE_StoreU8(0x8009574Eu, 1u);
     ASSERT(func_80074C14(5) == 5 && g_bootstrap_arg4_call_count == 0,
@@ -364,11 +368,16 @@ static void test_PA_sdk_800751E4(void)
     PE_StoreU8(0x8009574Eu, 2u);
     PE_StoreU32(0x80095748u, 0x80071A74u);
     PE_StoreU32(ot, 0xFFFFFFFFu);
+    PE_Bios_PrintfLogReset();
     ASSERT(func_800751E4(ot, 1) == ot && PE_LoadU32(ot) == 0x0009580Cu,
            "count 1: terminator only");
-    ASSERT(g_bootstrap_arg4_calls[0].arg0 == 0x800118F8u &&
-           g_bootstrap_arg4_calls[0].arg1 == ot &&
-           g_bootstrap_arg4_calls[0].arg2 == 1u, "debug print (fmt, a0, a1)");
+    {
+        pe_addr_t fmt;
+        uint32_t args[4];
+        ASSERT(PE_Bios_PrintfLog(&fmt, args) == 1u && fmt == 0x800118F8u &&
+               args[0] == ot && args[1] == 1u && g_bootstrap_arg4_call_count == 0,
+               "native debug print (fmt, a0, a1)");
+    }
     PASS();
 }
 

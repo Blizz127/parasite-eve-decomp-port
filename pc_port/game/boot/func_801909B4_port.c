@@ -63,10 +63,8 @@ extern void func_8005E788(int32_t wait);
  * tick), so title/movie loops see window or scripted input. */
 static void HostPadFill(void)
 {
-    if (PE_Port_HasPadSource()) {
-        PE_StoreU16(0x800BE9A0u, 0x4100u);
-        PE_StoreU16(0x800BE9A2u, PE_Port_ReadPadRaw());
-    }
+    /* ID 41h + buttons; ID 73h + sticks with the opt-in ANALOG STICK. */
+    PE_Port_FillPadBuffer();
 }
 
 static void TitleListSweepAndMerge(void)

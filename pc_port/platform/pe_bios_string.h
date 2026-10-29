@@ -22,6 +22,7 @@
 #define PE_BIOS_STRING_H
 #include <stdint.h>
 #include "pe_guest_ram.h"
+#include "pe_plat/bios_string.h"
 
 int32_t func_80072A54(pe_addr_t str1, pe_addr_t str2);
 int32_t func_80071A04(pe_addr_t str1, pe_addr_t str2, int32_t maxlen);
@@ -33,8 +34,9 @@ pe_addr_t func_80071A44(pe_addr_t dst, int32_t fillbyte, int32_t len);
 /* Host C-library sprintf over guest memory for the EXE's Psy-Q libc
  * formatter func_80071A84 (variadic; its full frame-level translation is
  * the separate PE_FormatterFrame model).  Supports the conversions the
- * game's formats use: flags '-' '0' ' ' '+', width, precision, length
- * modifiers h/l (ignored: int is 32-bit), and d i u x X o c s p %.
+ * game's formats use: flags '-' '0' ' ' '+' '#', width, precision, h/l
+ * length modifiers, and d i u x X o c s p n %.  This adapter remains bounded
+ * and is not a complete emulation of every original format behavior.
  * `args` are the 32-bit argument words in call order (a2, a3, stack...);
  * %s arguments are guest addresses.  Writes the NUL; returns the length. */
 int32_t PE_Bios_Sprintf(pe_addr_t dst, pe_addr_t fmt, const uint32_t *args, int nargs);
@@ -45,6 +47,9 @@ int32_t PE_Bios_SprintfHost(char *dst, uint32_t cap, pe_addr_t fmt, const uint32
  * "[TTY] ").  Retail prints to the debug TTY and continues, so this is not
  * a boundary.  Returns the length. */
 int32_t PE_Bios_Printf(pe_addr_t fmt, const uint32_t *args, int nargs);
+/* Host replacement for func_80071A74 (pe_port_compat.h): format plus seven words. */
+int32_t PE_Printf_Guest(pe_addr_t fmt, uint32_t a1, uint32_t a2, uint32_t a3,
+                        uint32_t a4, uint32_t a5, uint32_t a6, uint32_t a7);
 /* Test hook: calls since the last reset, and the last call's format
  * address and first four argument words. */
 unsigned PE_Bios_PrintfLog(pe_addr_t *last_fmt, uint32_t last_args[4]);

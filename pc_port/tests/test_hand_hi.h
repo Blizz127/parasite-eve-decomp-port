@@ -1121,6 +1121,8 @@ static void test_HANDHI_batch20(void)
     ASSERT(PE_LoadU32(0x8009AFB4u) == 0u && PE_LoadU32(0x8009AFB8u) == 0u &&
            PE_LoadU32(0x8009AFC4u) == 0u && PE_LoadU32(0x8009AFC8u) == 0u,
            "7BBB0: CD callback words cleared");
+    ASSERT(!PE_Port_ShouldStop() && PE_LoadU32(0x800945F0u) == 0x8007C13Cu,
+           "7BBB0: CD interrupt callback registered");
 
     /* src/func_800D6E3C.c mode 2: draw state for the fountain. */
     PE_StoreU16(0x800E11E4u, 1u);

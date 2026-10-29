@@ -7,7 +7,7 @@
 # Facts (peimg.py room m0137i, 2026-09-23): slot 136, PE.IMG sectors
 # [0x9C9D,0x9D06), size 0x34800, vram 0x8018EFE8, SHA-1 6e146c37de2790b03bcb104954571437abb82c1a.
 # Geometry (room_census text-window rule, build/fanout/overlays2/roomscan.py):
-#   0x0-0x80  header + switch jump tables (bin); 0x80-0x1E48 .text;
+#   0x0-0x54 header (bin), 0x54-0x84 switch jump tables (rodata), 0x84 (bin); 0x80-0x1E48 .text;
 #   0x1E48-0x34800 behaviour tables + room data (bin).
 name: Parasite Eve (USA) Disc 1 PE.IMG room m0137i chunk 2
 sha1: 6e146c37de2790b03bcb104954571437abb82c1a
@@ -32,6 +32,9 @@ segments:
     vram: 0x8018EFE8
     subsegments:
       - [0x0, bin]
+      # 0x54-0x84: func_8019018C switch jump tables (pool for MASPSX_DISPATCH_FOLD).
+      - [0x54, rodata]
+      - [0x84, bin]
       - [0x88, c, func_8018F070]
       - [0x90, c, func_8018F078]
       - [0xBC, c, func_8018F0A4]
@@ -54,7 +57,7 @@ segments:
       - [0xE30, c, func_8018FE18]
       - [0xFB8, c, func_8018FFA0]
       - [0x10C8, c, func_801900B0]
-      - [0x11A4, asm]
+      - [0x11A4, c, func_8019018C]
       - [0x1B64, c, func_80190B4C]
       - [0x1E2C, c, func_80190E14]
       - [0x1E48, bin]

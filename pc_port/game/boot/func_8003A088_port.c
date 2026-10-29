@@ -16,6 +16,7 @@
 #include "psx_compat.h"
 #include "pe_port_compat.h"
 #include "pe_sdk.h"
+#include "game_port.h"
 #include <string.h>
 #include "game/decomp_hand/hand_lo_protos.h"
 
@@ -59,7 +60,6 @@ void func_8003A088_mode0_walk_cut(pe_addr_t dest)
     pe_addr_t stream;
     int16_t mode;
     unsigned int count;
-    struct { int16_t rt[3][3]; int32_t tr[3]; } stack[31];
     unsigned int depth = 0u;
     unsigned int i;
 
@@ -119,6 +119,10 @@ void func_8003A088_mode0_walk_cut(pe_addr_t dest)
         PE_StoreU32(dest + 0x50u, (uint32_t)(int32_t)g_pe_gte.ir[2]);
     }
 
+    /* Retail scratchpad seed precedes the part-count test, including empty walks. */
+    PE_StoreU32(0x1F800000u, 0u);
+    PE_StoreU32(0x1F800004u, 0u);
+    PE_GTE_LoadRT(dest + 0x34u);
     obj = PE_LoadU32(dest + 0x00u);
     if (obj == 0u)
         return;
@@ -126,7 +130,6 @@ void func_8003A088_mode0_walk_cut(pe_addr_t dest)
     if (count == 0u)
         return;
 
-    PE_GTE_LoadRT(dest + 0x34u);
     parents = PE_LoadU32(dest + 0x20u);
     src_base = PE_LoadU32(dest + 0x58u);
     out = PE_LoadU32(dest + 0x84u);
@@ -137,27 +140,28 @@ void func_8003A088_mode0_walk_cut(pe_addr_t dest)
         pe_addr_t src;
         unsigned col;
 
-        /* Retail -1/-2 save and restore rotation/translation without
-         * advancing the output matrix cursor. Host storage represents
-         * the within-call stack at scratchpad +0xC. */
+        /* Retail -1/-2 stack persists in guest scratchpad after return;
+         * animation decoders can read those retained words in later calls. */
         if (parent == -1) {
             if (depth == 31u) {
                 Bootstrap_ReturnVoid("func_8003A088_stack_overflow", "func_8003A088");
+                PE_Port_RequestStop(PE_PORT_STOP_UNRESOLVED_BOUNDARY);
                 return;
             }
-            memcpy(stack[depth].rt, g_pe_gte.rt, sizeof(g_pe_gte.rt));
-            memcpy(stack[depth].tr, g_pe_gte.tr, sizeof(g_pe_gte.tr));
+            for (unsigned reg = 0u; reg < 8u; reg++)
+                PE_StoreU32(0x1F80000Cu + depth * 32u + reg * 4u, PE_GTE_ReadCtrl(reg));
             depth++;
             continue;
         }
         if (parent == -2) {
             if (depth == 0u) {
                 Bootstrap_ReturnVoid("func_8003A088_stack_underflow", "func_8003A088");
+                PE_Port_RequestStop(PE_PORT_STOP_UNRESOLVED_BOUNDARY);
                 return;
             }
             depth--;
-            memcpy(g_pe_gte.rt, stack[depth].rt, sizeof(g_pe_gte.rt));
-            memcpy(g_pe_gte.tr, stack[depth].tr, sizeof(g_pe_gte.tr));
+            for (unsigned reg = 0u; reg < 8u; reg++)
+                PE_GTE_WriteCtrl(reg, PE_LoadU32(0x1F80000Cu + depth * 32u + reg * 4u));
             continue;
         }
 
@@ -169,6 +173,8 @@ void func_8003A088_mode0_walk_cut(pe_addr_t dest)
                          (int16_t)PE_LoadU16(src + 6u + off),
                          (int16_t)PE_LoadU16(src + 12u + off));
             PE_GTE_MVMVA(CMD_RTIR);
+            if (col == 0u)
+                PE_StoreU32(0x1F800008u, PE_LoadU32(PE_LoadU32(dest + 0x04u) + (pe_addr_t)parent * 12u + 8u));
             pe_3a088_store_row(out, off);
         }
 
@@ -178,8 +184,9 @@ void func_8003A088_mode0_walk_cut(pe_addr_t dest)
                          (int16_t)PE_LoadU16(src + 24u),
                          (int16_t)(PE_LoadU32(src + 28u) & 0xFFFFu));
         } else {
-            pe_addr_t rec = PE_LoadU32(dest + 0x04u) + (pe_addr_t)parent * 12u;
-            PE_GTE_SetV0(0, 0, (int16_t)PE_LoadU16(rec + 8u));
+            PE_GTE_SetV0((int16_t)PE_LoadU16(0x1F800000u),
+                         (int16_t)PE_LoadU16(0x1F800004u),
+                         (int16_t)PE_LoadU16(0x1F800008u));
         }
         PE_GTE_MVMVA(CMD_RTV0);
         PE_StoreU32(out + 20u, (uint32_t)g_pe_gte.mac[0]);
@@ -211,6 +218,18 @@ void func_8003A088_mode0_walk_cut(pe_addr_t dest)
         }
         out += 32u;
     }
+}
+
+/* func_8003A088 itself.  Despite its name, the walk cut above transcribes
+ * every +0x28 mode of src/func_8003A088.c (1 source copy, 3 rigid attach, 4
+ * parent-relative, then the bone walk); production's per-actor update
+ * (func_80015240) calls it for every actor.  Mode 0 is checked against retail
+ * (BTL6 oracle), modes 3/4 by the GFX2 unit tests, mode 1 by reading.  Room
+ * code that calls func_8003A088 directly (room_m0017i func_8018F0F0) reaches
+ * it here instead of a generated boundary. */
+void func_8003A088(pe_addr_t dest)
+{
+    func_8003A088_mode0_walk_cut(dest);
 }
 
 /* 3AC90..3AF14: view x joint transforms, then three-vertex RTPT batches.

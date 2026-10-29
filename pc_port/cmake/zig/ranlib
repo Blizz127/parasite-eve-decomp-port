@@ -1,0 +1,12 @@
+#!/bin/sh
+# `zig ranlib` (llvm-ranlib) for the zig macOS toolchains.  CMake's Darwin
+# rules may pass Apple cctools-only flags, which llvm-ranlib rejects; they
+# only silence a warning or select a symbol-table detail, so drop them.
+for a in "$@"; do
+  shift
+  case "$a" in
+    -no_warning_for_no_symbols|-c) ;;
+    *) set -- "$@" "$a" ;;
+  esac
+done
+exec "${PE_ZIG:-zig}" ranlib "$@"

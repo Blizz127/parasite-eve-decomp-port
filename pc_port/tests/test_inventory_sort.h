@@ -1,5 +1,31 @@
 #include "retail_inventory_sort_cases.h"
 
+static void test_inventory_sort_stopped_entry(void)
+{
+    const pe_addr_t items = 0x80150000u;
+    TEST("inventory_sort_stopped_entry");
+    ResetTestState();
+    PE_StoreU32(items, 0x12345678u);
+    PE_StoreU32(0x8009D0B8u, 0x89ABCDEFu);
+    PE_Port_RequestStop(PE_PORT_STOP_UNRESOLVED_BOUNDARY);
+    func_800723A4(items, 4u, 2u, 0x8005AFFCu);
+    func_8005B500(0u, 1u);
+    func_8005B71C(1u);
+    func_8005B7D0(1u, 1u);
+    ASSERT(PE_LoadU32(items) == 0x12345678u &&
+           PE_LoadU32(0x8009D0B8u) == 0x89ABCDEFu,
+           "stopped inventory sorting changed guest state");
+    ResetTestState();
+    PE_StoreU16(items, 1u);
+    PE_StoreU16(items + 2u, 2u);
+    PE_StoreU32(0x8009D0B4u, 0x80000004u);
+    func_800723A4(items, 2u, 2u, 0x8005AFFCu);
+    ASSERT(PE_Port_ShouldStop() && PE_LoadU16(items) == 1u &&
+           PE_LoadU16(items + 2u) == 2u,
+           "unresolved item callback did not stop the sort");
+    PASS();
+}
+
 static void test_DAY1_retail_inventory_sort(void)
 {
     unsigned k,i,failures=0;

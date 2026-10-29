@@ -37,18 +37,18 @@ static void test_PA_r3_80015964(void)
         PE_StoreU8(0x8009CD80u + i, (uint8_t)code_b[i]);
     }
     /* key 1 (< 2): D_80091A1D = 1 -> func_800392EC() == 1 < 2 -> CD78.
-     * D_80091A1C == 0 so func_80038D74 (no pc_port implementation) runs. */
+     * Keep the page-code unit test on its loaded-font path. Cold initialization
+     * now executes the complete native loader and is tested separately. */
     const int32_t key1[] = { 0 };
     pe_addr_t a0 = r3_vec(key1, 1);
     PE_StoreU8(PA_R3 + 0x100u, 1u);          /* **a0 is the operand's byte */
-    PE_StoreU8(0x80091A1Cu, 0u);
+    PE_StoreU8(0x80091A1Cu, 1u);
     PE_StoreU32(0x8009D1A0u, 0u);
     want = func_8006E3D4(0x8009CD78u);
     ASSERT(func_80015964(a0) == 1, "15964 returns 1");
     ASSERT(PE_LoadU32(0x8009D280u) == want, "15964 key<2 -> code at D_8009CD78");
-    ASSERT(PE_Decomp_BoundaryCount() == 1 &&
-           strcmp(PE_Decomp_BoundaryName(0), "func_80038D74") == 0,
-           "15964 !func_80038D0C() -> func_80038D74 boundary");
+    ASSERT(PE_Decomp_BoundaryCount() == 0,
+           "15964 loaded-font page-code path has no boundary");
     ASSERT(PE_LoadU32(0x8009D1A0u) == 0u, "15964 0xFF path sets no flag");
 
     /* key 80 (>= 71): D_80091A20 = 1, D_80091A1D stays 5 -> CD80.

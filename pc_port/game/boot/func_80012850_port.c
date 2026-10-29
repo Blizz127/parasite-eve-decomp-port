@@ -143,7 +143,8 @@ int func_80012850(pe_addr_t args)
             r = (uint32_t)(sa % sb);
         break;
     case 0x17:
-        r = (uint32_t)(-sa);
+        /* Retail negu wraps, including 0x80000000; signed negation is UB. */
+        r = 0u - a;
         break;
     default:
         store = 0;

@@ -106,7 +106,7 @@ segments:
       - [0x468C, c, func_80193674]
       - [0x4694, c, func_8019367C]
       - [0x47E4, c, func_801937CC]
-      - [0x4918, asm]
+      - [0x4918, c, func_80193900]
       - [0x4CD8, c, func_80193CC0]
       - [0x4CF4, c, func_80193CDC]
       - [0x4CFC, c, func_80193CE4]

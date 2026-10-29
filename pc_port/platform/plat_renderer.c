@@ -49,7 +49,7 @@ void pe_plat_renderer_reset(void) { PE_GPU_Reset(); }
 void pe_plat_renderer_caps(PePlatRendererCaps *out)
 {
     if (!out) return;
-    out->internal_scale = 1;
+    out->internal_scale = PE_GPU_GetRenderScale();
     out->widescreen = 0;
     out->backend_name = "pe_gpu";
 }
