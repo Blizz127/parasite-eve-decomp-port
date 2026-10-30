@@ -1,5 +1,38 @@
 # Changelog
 
+## 2026-10-30 — source sync, no new build
+
+Source only. No binary, release, tag or asset. Synced from the development
+tree at `4863cb9c2` (previous source sync: `41ecb77e3`, 2026-10-29), same rule as
+before.
+
+**Native PC port (source): replacing Psy-Q SDK code**
+
+- Psy-Q functions linked into the game binary: 280 -> 264 (counted by
+  `tools/analysis/psyq_port_guard.py` against the allowlist).
+- New host implementations written from the psx-spx hardware documentation,
+  not from SDK source: BIOS rand/srand, GetODE (GPUSTAT bit 31).
+- ResetCallback / InterruptCallback rewritten clean-room
+  (`pc_port/platform/pe_plat_irq_callback.c`). A separate author who never saw
+  SDK source or the earlier translation wrote it from 336 input/output vectors
+  captured from the original code
+  (`pc_port/tools/pe_irq_callback_vectors.py`, checked by
+  `pe_irq_callback_vectors_check.c`) and from psx-spx.
+- SetTexWindow / SetDrawArea rewritten the same clean-room way
+  (`pc_port/platform/pe_plat_gpu_area.c`) from 15902 vectors
+  (`pc_port/tools/pe_gpu_area_vectors.py`, `pe_gpu_area_vectors_check.c`).
+- Existing host models (BIOS exit/FlushCache/ChangeClear*, critical
+  sections, SetIntrMask, VSync callbacks) are now bound under `pe_plat_*`
+  names.
+- Test fixes: test binaries whose link-time hooks named renamed symbols,
+  standalone GPU tests missing a link stub, and one stale blend expectation.
+
+**Not published in this sync (held)**
+
+- `pc_port/CMakeLists.txt`: the change does not apply cleanly to the curated
+  public copy. As before, the PC port does not build from this repository
+  alone. The generator also names providers that are not published.
+
 ## 2026-10-29 — source sync, no new build
 
 Source only. No binary, release, tag or asset. Synced from the development

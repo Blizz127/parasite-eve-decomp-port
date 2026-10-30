@@ -46,9 +46,9 @@ pe_addr_t __wrap_func_800718D0(pe_addr_t tim)
     return 0;
 }
 int __wrap_func_80074DC0(int mode){call(0x80074DC0,mode,0,0,0,0,0);return 0;}
-void __wrap_func_80072714(void){call(0x80072714,0,0,0,0,0,0);}
-void __wrap_func_800726C4(void){call(0x800726C4,0,0,0,0,0,0);}
-void __wrap_func_80072724(void){call(0x80072724,0,0,0,0,0,0);}
+void __wrap_pe_plat_bios_enter_critical(void){call(0x80072714,0,0,0,0,0,0);}
+void __wrap_pe_plat_bios_flush_cache(void){call(0x800726C4,0,0,0,0,0,0);}
+void __wrap_pe_plat_bios_exit_critical(void){call(0x80072724,0,0,0,0,0,0);}
 
 static void fixture(unsigned flag)
 {

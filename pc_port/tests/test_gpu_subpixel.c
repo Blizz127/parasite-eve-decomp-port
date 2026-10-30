@@ -9,6 +9,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+/* pe_gpu.c raises GP0(1Fh) IRQ1 through the interrupt controller (96c69bd62);
+ * this standalone GPU test links no controller. */
+void PE_IRQ_AssertSources(uint16_t sources) { (void)sources; }
 #define CHECK(e) do{if(!(e)){fprintf(stderr,"%s:%d: %s\n",__FILE__,__LINE__,#e);exit(1);}}while(0)
 #define XY(x,y) ((uint32_t)(x)|((uint32_t)(y)<<16))
 static void gp(uint32_t w){CHECK(PE_GPU_WriteGP0(w));}

@@ -5,6 +5,11 @@
 #define PE_PORT_COMPAT_H
 
 #include "psx_compat.h"
+#include "pe_plat/bios_rand.h"   /* BIOS rand/srand -> pe_plat names */
+#include "pe_plat/bios_sys.h"    /* BIOS exit/FlushCache/ChangeClear* -> pe_plat names */
+#include "pe_plat/gpu_status.h"  /* GetODE -> pe_plat name */
+#include "pe_plat/gpu_area.h"    /* SetTexWindow/SetDrawArea -> pe_plat names */
+#include "pe_plat/irq_callback.h" /* ResetCallback/InterruptCallback -> pe_plat names */
 
 int func_801216C4(int mode, pe_addr_t buffers);
 void func_801223A8(int mode);

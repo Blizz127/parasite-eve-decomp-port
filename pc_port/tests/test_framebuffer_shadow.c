@@ -6,6 +6,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+/* pe_gpu.c raises GP0(1Fh) IRQ1 through the interrupt controller (96c69bd62);
+ * this standalone GPU test links no controller. */
+void PE_IRQ_AssertSources(uint16_t sources) { (void)sources; }
 #define CHECK(e) do { if (!(e)) { fprintf(stderr,"%s:%d: %s\n",__FILE__,__LINE__,#e);exit(1); } } while(0)
 static uint8_t env[32];
 static int presents, hooks;

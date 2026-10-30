@@ -58,8 +58,8 @@ uint32_t __wrap_HostFB_VSync(int mode)
     return (uint32_t)(mode == 1 ? 0x99u : 0u);
 }
 void __wrap_HostFB_SetDispMask(int mask) { note('M', mask); }
-void __wrap_func_80071A64(uint32_t seed) { note('S', (long)seed); }
-unsigned int __wrap_func_80071A54(void)
+void __wrap_pe_plat_bios_srand(uint32_t seed) { note('S', (long)seed); }
+unsigned int __wrap_pe_plat_bios_rand(void)
 {
     unsigned int value = rand_value;
     rand_calls++;

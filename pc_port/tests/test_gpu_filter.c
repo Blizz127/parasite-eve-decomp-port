@@ -3,6 +3,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+/* pe_gpu.c raises GP0(1Fh) IRQ1 through the interrupt controller (96c69bd62);
+ * this standalone GPU test links no controller. */
+void PE_IRQ_AssertSources(uint16_t sources) { (void)sources; }
 #define CHECK(e) do{if(!(e)){fprintf(stderr,"%s:%d: %s\n",__FILE__,__LINE__,#e);exit(1);}}while(0)
 #define XY(x,y) ((uint32_t)(x)|((uint32_t)(y)<<16))
 #define UV(u,v) ((uint32_t)(u)|((uint32_t)(v)<<8))
@@ -56,7 +60,7 @@ int main(void)
             PACKET(0xE1000000u,0x60F80000u,XY(100,100),XY(12,8));
             quad(100,100,depth,3,0x2F808080u);
             CHECK(shadow(101*scale,101*scale)==0x001F); /* opaque class does not blend */
-            CHECK(shadow(102*scale,101*scale)==0xF800); /* blue+blue ABR0=blue30 */
+            CHECK(shadow(102*scale,101*scale)==0xFC00); /* blue+blue ABR0=(31+31)/2=31 (carry kept, 0c6d72e09) */
             /* Fully masked destination is protected before sampling. */
             PACKET(0xE6000001u,0x600000F8u,XY(100,100),XY(12,8),0xE6000002u);
             quad(100,100,depth,3,0x2F808080u);

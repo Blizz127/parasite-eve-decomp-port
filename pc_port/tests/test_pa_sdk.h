@@ -383,17 +383,16 @@ static void test_PA_sdk_800751E4(void)
 
 static void test_PA_sdk_80075B1C(void)
 {
-    const pe_addr_t jtb = PS_S + 0x600u;
-
+    /* GetODE is an independent host model of psx-spx GPUSTAT bit 31
+     * ("drawing even/odd lines in interlace mode"), read from the GPU model
+     * rather than through the libgpu jump table.  The model does not yet
+     * produce odd interlaced fields, so both states read 0; the contract
+     * checked is equality with GPUSTAT >> 31. */
     TEST("PA_sdk_80075B1C");
     PS_Reset();
-    PE_StoreU32(0x80095744u, jtb);
-    PE_StoreU32(jtb + 0x38u, 0x8007633Cu);       /* jtb[14] */
-    PE_StoreU32(0x80095854u, PS_S + 0x900u);     /* func_8007633C: *D_80095854 */
-    PE_StoreU32(PS_S + 0x900u, 0x80000001u);
-    ASSERT(func_80075B1C() == 1u, "sign bit of jtb[14]()");
-    PE_StoreU32(PS_S + 0x900u, 0x7FFFFFFFu);
-    ASSERT(func_80075B1C() == 0u, "clear sign bit");
+    ASSERT(func_80075B1C() == (PE_GPU_ReadStatus() >> 31), "GetODE == GPUSTAT bit 31");
+    ASSERT(PE_GPU_WriteGP1(0x08000024u), "interlace display mode");
+    ASSERT(func_80075B1C() == (PE_GPU_ReadStatus() >> 31), "GetODE == GPUSTAT bit 31 (interlaced)");
     PASS();
 }
 

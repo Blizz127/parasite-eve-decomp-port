@@ -30,6 +30,11 @@
 #include "pe_plat/libc.h"
 #include "pe_plat/bios_file.h"
 #include "pe_plat/bios_string.h"
+#include "pe_plat/bios_rand.h"
+#include "pe_plat/bios_sys.h"
+#include "pe_plat/gpu_status.h"
+#include "pe_plat/gpu_area.h"
+#include "pe_plat/irq_callback.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -51,7 +56,6 @@ void func_8007F960(uint32_t status, pe_addr_t response);
 int func_8007F994(void);
 int func_8007BAC0(void);
 void func_800812F4(unsigned int value);
-uint32_t func_80073D58(uint32_t slot, pe_addr_t handler);
 void func_8007FE24(void);
 void func_800800F4(void);
 int func_8007BBFC(void);
@@ -166,13 +170,7 @@ int  func_800727A4(pe_addr_t name);                  /* B(45h) delete */
 /* ── libetc (pc_port/platform/pe_libetc.c) ──────────────────────────── */
 void func_80073C74(uint32_t flag); /* BIOS ChangeClearPAD */
 uint32_t func_80073C84(uint32_t counter,uint32_t flag); /* ChangeClearRCnt,0..3 */
-void func_80073C94(void);            /* ResetCallback */
-pe_addr_t func_80073CC4(uint32_t source, pe_addr_t handler);
 pe_addr_t func_800740D0(uint32_t source, pe_addr_t handler);
-uint32_t func_80073D24(pe_addr_t handler); /* VBlank callback slot 4 setter */
-uint16_t func_80073E10(uint16_t new_mask); /* I_MASK exchange (PE_IRQ authority) */
-int  func_80072714(void);            /* EnterCriticalSection */
-void func_80072724(void);            /* ExitCriticalSection */
 void func_800726C4(void);            /* BIOS A0(44h) FlushCache host adapter */
 int  PE_Irq_LockDepth(void);         /* diagnostic: current critical depth */
 
@@ -230,10 +228,6 @@ pe_addr_t func_800749D8(pe_addr_t pe_env, int x, int y, int w, int h); /* SetDef
 int       func_80074A44(int mode);   /* ResetGraph */
 unsigned char func_80074BB8(unsigned char a0);  /* SetGraphDebug */
 pe_addr_t func_80075424(pe_addr_t env); /* PutDrawEnv */
-void PE_SetTexWindowValues75B4C(pe_addr_t packet,const int16_t rect[4]);
-void PE_SetDrawAreaValues75B84(pe_addr_t packet,const int16_t rect[4]);
-void func_80075B4C(pe_addr_t packet,pe_addr_t rect);
-void func_80075B84(pe_addr_t packet,pe_addr_t rect);
 void      func_800754E4(pe_addr_t ot, pe_addr_t env); /* DrawOTagEnv software */
 
 /* ── libsnd (pc_port/platform/pe_libsnd.c) ──────────────────────────── */

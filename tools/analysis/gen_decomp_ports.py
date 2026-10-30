@@ -792,6 +792,22 @@ PE_PLAT_REPLACED = {
     "func_80071A34": "pc_port/platform/pe_bios_string.c",
     "func_80071A44": "pc_port/platform/pe_bios_string.c",
     "func_80071A24": "pc_port/platform/func_80071A24_port.c",
+    "func_80071A54": "pc_port/platform/pe_bios_rand.c",  # BIOS A(2Fh) rand
+    "func_80071A64": "pc_port/platform/pe_bios_rand.c",  # BIOS A(30h) srand
+    "func_800719E4": "pc_port/platform/func_800719E4_port.c",  # BIOS B(38h)
+    "func_800726C4": "pc_port/platform/pe_libetc.c",  # BIOS A(44h) FlushCache
+    "func_80073C74": "pc_port/platform/pe_libetc.c",  # BIOS B(5Bh) ChangeClearPAD
+    "func_80073C84": "pc_port/platform/pe_libetc.c",  # BIOS C(0Ah) ChangeClearRCnt
+    "func_80072714": "pc_port/platform/pe_libetc.c",  # SYSCALL(01h) EnterCriticalSection
+    "func_80072724": "pc_port/platform/pe_libetc.c",  # SYSCALL(02h) ExitCriticalSection
+    "func_80073E10": "pc_port/platform/pe_libetc.c",  # SetIntrMask (I_MASK exchange)
+    "func_80073D24": "pc_port/platform/pe_libetc.c",  # VSyncCallback (slot 4)
+    "func_80073D58": "pc_port/platform/pe_libetc.c",  # VSyncCallbacks (slot n)
+    "func_80075B1C": "pc_port/platform/pe_plat_gpu_status.c",  # GetODE (psx-spx GPUSTAT.31)
+    "func_80075B4C": "pc_port/platform/pe_plat_gpu_area.c",  # SetTexWindow (psx-spx GP0 E2h)
+    "func_80075B84": "pc_port/platform/pe_plat_gpu_area.c",  # SetDrawArea (psx-spx GP0 E3h/E4h)
+    "func_80073C94": "pc_port/platform/pe_plat_irq_callback.c",  # ResetCallback (clean-room)
+    "func_80073CC4": "pc_port/platform/pe_plat_irq_callback.c",  # InterruptCallback (clean-room)
     "func_80036DC8": "pc_port/platform/pe_plat_libc.c",  # sound startup
     "func_80072334": "pc_port/platform/pe_plat_libc.c",  # guest byte copy
     "func_800725DC": "pc_port/platform/pe_plat_libc.c",  # startup guard
@@ -815,7 +831,13 @@ PE_PLAT_HEADERS = {"pc_port/platform/pe_libsnd.c": "pc_port/include/pe_plat/stat
                    "pc_port/platform/pe_plat_libc.c": "pc_port/include/pe_plat/libc.h",
                    "pc_port/platform/pe_bios_card.c": "pc_port/include/pe_plat/bios_file.h",
                    "pc_port/platform/pe_bios_string.c": "pc_port/include/pe_plat/bios_string.h",
-                   "pc_port/platform/func_80071A24_port.c": "pc_port/include/pe_plat/bios_string.h"}
+                   "pc_port/platform/func_80071A24_port.c": "pc_port/include/pe_plat/bios_string.h",
+                   "pc_port/platform/pe_bios_rand.c": "pc_port/include/pe_plat/bios_rand.h",
+                   "pc_port/platform/func_800719E4_port.c": "pc_port/include/pe_plat/bios_sys.h",
+                   "pc_port/platform/pe_libetc.c": "pc_port/include/pe_plat/bios_sys.h",
+                   "pc_port/platform/pe_plat_gpu_status.c": "pc_port/include/pe_plat/gpu_status.h",
+                   "pc_port/platform/pe_plat_gpu_area.c": "pc_port/include/pe_plat/gpu_area.h",
+                   "pc_port/platform/pe_plat_irq_callback.c": "pc_port/include/pe_plat/irq_callback.h"}
 
 
 def pe_plat_providers() -> dict[str, str]:
