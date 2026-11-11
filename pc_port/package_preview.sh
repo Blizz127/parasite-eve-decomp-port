@@ -83,12 +83,23 @@ if [[ -z "${DISPLAY:-}" ]]; then
     echo "       on Wayland (KDE/GNOME/gamescope) XWayland provides DISPLAY." >&2
     exit 1
 fi
+# Disc 2 (optional, for the disc swap): $PE_DISC2, a .bin or its .cue.
+DISC2_ARGS=()
+if [[ -n "${PE_DISC2:-}" ]]; then
+    DISC2="$PE_DISC2"
+    if [[ "$DISC2" == *.cue || "$DISC2" == *.CUE ]]; then
+        bin2="$(sed -n 's/^[[:space:]]*FILE[[:space:]]*"\(.*\)".*/\1/p' "$DISC2" | head -n1)"
+        [[ -n "$bin2" ]] && DISC2="$(dirname "$DISC2")/$bin2"
+    fi
+    [[ -f "$DISC2" ]] || { echo "ERROR: disc 2 image not found: $DISC2" >&2; exit 1; }
+    DISC2_ARGS=(--disc2-image "$DISC2")
+fi
 cd "$HERE"
 SKIP=()
 [[ "${PE_SKIP_MOVIE:-__DEFAULT_SKIP__}" == 1 ]] && SKIP=(--skip-movie)
 exec "$HERE/bin/parasite-eve-port" --windowed "${SKIP[@]}" --scale 3 \
     --window-title "Parasite Eve - Day 1 preview" \
-    --disc-image "$DISC" "$@"
+    --disc-image "$DISC" "${DISC2_ARGS[@]}" "$@"
 LAUNCHER
 chmod 0755 "$STAGE/parasite-eve-preview"
 
