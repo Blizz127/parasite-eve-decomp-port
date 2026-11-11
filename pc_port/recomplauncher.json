@@ -9,7 +9,7 @@
     "check": { "ids": ["SLUS-00662"] }
   },
   "start": {
-    "program": ["parasite-eve", "parasite-eve-preview"],
+    "program": ["parasite-eve*", "parasite-eve", "parasite-eve-preview"],
     "args": ["{game}"],
     "env": { "PE_DISC2": "{input:disc2}" }
   },
@@ -31,11 +31,12 @@
     {
       "id": "window",
       "label": "Window",
-      "in": "args",
-      "help": "The build's own choice, or always fullscreen. The picture keeps its 4:3 shape either way.",
+      "in": "env",
+      "help": "Automatic is the build's own choice: fullscreen, or a window in the early preview builds. The picture keeps its 4:3 shape either way.",
       "choices": [
-        { "label": "Game's option", "args": [] },
-        { "label": "Fullscreen", "args": ["--fullscreen"] }
+        { "label": "Automatic", "set": {} },
+        { "label": "Fullscreen", "set": { "PE_FULLSCREEN": "1", "PE_WINDOWED": "0" } },
+        { "label": "Windowed", "set": { "PE_FULLSCREEN": "0", "PE_WINDOWED": "1" } }
       ]
     }
   ],
