@@ -1,0 +1,35 @@
+{
+  "$schema": "https://recomplauncher.com/schema/recomplauncher.json",
+  "format": 1,
+  "name": "Parasite Eve Decomp Port",
+  "repo": "Blizz127/parasite-eve-decomp-port",
+  "game": {
+    "kind": "iso_or_folder",
+    "label": "Your copy of Parasite Eve (USA) Disc 1, serial SLUS-00662, as a raw BIN/CUE dump: pick its .cue file, or the folder that holds the .bin and .cue. An .iso or .chd does not work yet.",
+    "check": { "ids": ["SLUS-00662"] }
+  },
+  "start": {
+    "program": ["parasite-eve", "parasite-eve-preview"],
+    "args": ["{game}"]
+  },
+  "saves": ["{local}/parasite-eve-port/memcard1.mcd"],
+  "folders": {
+    "saves": [{ "path": "{local}/parasite-eve-port" }],
+    "logs": [{ "path": "{home}/.local/state/parasite-eve-port/logs" }]
+  },
+  "settings": [
+    {
+      "id": "window",
+      "label": "Window",
+      "in": "args",
+      "help": "The build's own choice, or always fullscreen. The picture keeps its 4:3 shape either way.",
+      "choices": [
+        { "label": "Game's option", "args": [] },
+        { "label": "Fullscreen", "args": ["--fullscreen"] }
+      ]
+    }
+  ],
+  "actions": [
+    { "id": "saves", "label": "Saves", "help": "Your memory card file.", "open": "saves" }
+  ]
+}

@@ -8,6 +8,7 @@
 #   parasite-eve-day1-preview/parasite-eve-preview    launcher script
 #   parasite-eve-day1-preview/README-PREVIEW.txt      controls + known limits
 #   parasite-eve-day1-preview/build-info.json         commit, time, sha256
+#   parasite-eve-day1-preview/recomplauncher.json     RecompLauncher setup file
 #
 # Usage:
 #   PE_BINARY=build/pcbuild-preview/parasite-eve-port ./pc_port/package_preview.sh
@@ -44,6 +45,8 @@ STAGE="$WORK/$NAME"
 mkdir -p "$STAGE/bin"
 
 install -m 0755 "$BINARY" "$STAGE/bin/parasite-eve-port"
+# RecompLauncher setup file: lets the launcher check the disc, set it up and start the game.
+install -m 0644 "$ROOT/pc_port/recomplauncher.json" "$STAGE/recomplauncher.json"
 strip --strip-unneeded "$STAGE/bin/parasite-eve-port" 2>/dev/null || true
 
 cat > "$STAGE/parasite-eve-preview" <<'LAUNCHER'
@@ -198,7 +201,7 @@ chmod 0644 "$STAGE/build-info.json"
 
 # Guard: only the four expected payload files, no disc images, nothing from rom/.
 mapfile -t files < <(cd "$WORK" && find "$NAME" -type f | LC_ALL=C sort)
-expected=("$NAME/README-PREVIEW.txt" "$NAME/bin/parasite-eve-port" "$NAME/build-info.json" "$NAME/parasite-eve-preview")
+expected=("$NAME/README-PREVIEW.txt" "$NAME/bin/parasite-eve-port" "$NAME/build-info.json" "$NAME/parasite-eve-preview" "$NAME/recomplauncher.json")
 [[ "${files[*]}" == "${expected[*]}" ]] || die "unexpected staged files: ${files[*]}"
 for f in "${files[@]}"; do
     case "${f,,}" in

@@ -12,6 +12,7 @@
 #   parasite-eve-day1-<version>/bin/parasite-eve-port   native Release binary
 #   parasite-eve-day1-<version>/parasite-eve            launcher script
 #   parasite-eve-day1-<version>/README.txt              test note + controls
+#   parasite-eve-day1-<version>/recomplauncher.json        RecompLauncher setup file
 #   parasite-eve-day1-<version>/version.txt              version string
 #   parasite-eve-day1-<version>/MANIFEST.txt             file list, size+sha256
 #
@@ -82,6 +83,8 @@ STAGE="$WORK/$NAME"
 mkdir -p "$STAGE/bin"
 
 install -m 0755 "$BINARY" "$STAGE/bin/parasite-eve-port"
+# RecompLauncher setup file: lets the launcher check the disc, set it up and start the game.
+install -m 0644 "$ROOT/pc_port/recomplauncher.json" "$STAGE/recomplauncher.json"
 strip --strip-unneeded "$STAGE/bin/parasite-eve-port" 2>/dev/null || true
 
 cat > "$STAGE/parasite-eve" <<'LAUNCHER'
@@ -385,10 +388,10 @@ fi
 
 # Guard: only the five expected payload files, no disc images, nothing from rom/.
 mapfile -t files < <(cd "$WORK" && find "$NAME" -type f | LC_ALL=C sort)
-expected=("$NAME/MANIFEST.txt" "$NAME/README.txt" "$NAME/bin/parasite-eve-port" "$NAME/build-info.json" "$NAME/parasite-eve" "$NAME/parasite-eve-preview" "$NAME/version.txt")
+expected=("$NAME/MANIFEST.txt" "$NAME/README.txt" "$NAME/bin/parasite-eve-port" "$NAME/build-info.json" "$NAME/parasite-eve" "$NAME/parasite-eve-preview" "$NAME/recomplauncher.json" "$NAME/version.txt")
 # MANIFEST.txt is generated last (it lists itself), so exclude it from this
 # pre-manifest listing and check again after it is written.
-pre_expected=("$NAME/README.txt" "$NAME/bin/parasite-eve-port" "$NAME/build-info.json" "$NAME/parasite-eve" "$NAME/parasite-eve-preview" "$NAME/version.txt")
+pre_expected=("$NAME/README.txt" "$NAME/bin/parasite-eve-port" "$NAME/build-info.json" "$NAME/parasite-eve" "$NAME/parasite-eve-preview" "$NAME/recomplauncher.json" "$NAME/version.txt")
 [[ "${files[*]}" == "${pre_expected[*]}" ]] || die "unexpected staged files: ${files[*]}"
 for f in "${files[@]}"; do
     case "${f,,}" in
