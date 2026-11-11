@@ -12,6 +12,7 @@
 #   parasite-eve-day1-<version>/bin/parasite-eve-port   native Release binary
 #   parasite-eve-day1-<version>/parasite-eve            launcher script
 #   parasite-eve-day1-<version>/README.txt              test note + controls
+#   parasite-eve-day1-<version>/recomplauncher.json        RecompLauncher setup file
 #   parasite-eve-day1-<version>/version.txt              version string
 #   parasite-eve-day1-<version>/MANIFEST.txt             file list, size+sha256
 #
@@ -82,6 +83,8 @@ STAGE="$WORK/$NAME"
 mkdir -p "$STAGE/bin"
 
 install -m 0755 "$BINARY" "$STAGE/bin/parasite-eve-port"
+# RecompLauncher setup file: lets the launcher check the disc, set it up and start the game.
+install -m 0644 "$ROOT/pc_port/recomplauncher.json" "$STAGE/recomplauncher.json"
 strip --strip-unneeded "$STAGE/bin/parasite-eve-port" 2>/dev/null || true
 
 cat > "$STAGE/parasite-eve" <<'LAUNCHER'
@@ -143,6 +146,17 @@ if [[ -z "${DISPLAY:-}" ]]; then
     echo "       on Wayland (KDE/GNOME/gamescope) XWayland provides DISPLAY." >&2
     exit 1
 fi
+# Disc 2 (optional, for the disc swap): $PE_DISC2, a .bin or its .cue.
+DISC2_ARGS=()
+if [[ -n "${PE_DISC2:-}" ]]; then
+    DISC2="$PE_DISC2"
+    if [[ "$DISC2" == *.cue || "$DISC2" == *.CUE ]]; then
+        bin2="$(sed -n 's/^[[:space:]]*FILE[[:space:]]*"\(.*\)".*/\1/p' "$DISC2" | head -n1)"
+        [[ -n "$bin2" ]] && DISC2="$(dirname "$DISC2")/$bin2"
+    fi
+    [[ -f "$DISC2" ]] || { echo "ERROR: disc 2 image not found: $DISC2" >&2; exit 1; }
+    DISC2_ARGS=(--disc2-image "$DISC2")
+fi
 cd "$HERE"
 MODE=(--fullscreen)
 [[ "${PE_WINDOWED:-0}" == 1 ]] && MODE=(--windowed --scale 3)
@@ -155,7 +169,7 @@ ls -1t "$LOG_DIR"/run-*.log 2>/dev/null | tail -n +10 | xargs -r rm -f -- || tru
 
 exec "$HERE/bin/parasite-eve-port" "${MODE[@]}" \
     --window-title "Parasite Eve" \
-    --disc-image "$DISC" "$@" 2>&1 | tee "$LOG_FILE"
+    --disc-image "$DISC" "${DISC2_ARGS[@]}" "$@" 2>&1 | tee "$LOG_FILE"
 LAUNCHER
 chmod 0755 "$STAGE/parasite-eve"
 
@@ -385,10 +399,10 @@ fi
 
 # Guard: only the five expected payload files, no disc images, nothing from rom/.
 mapfile -t files < <(cd "$WORK" && find "$NAME" -type f | LC_ALL=C sort)
-expected=("$NAME/MANIFEST.txt" "$NAME/README.txt" "$NAME/bin/parasite-eve-port" "$NAME/build-info.json" "$NAME/parasite-eve" "$NAME/parasite-eve-preview" "$NAME/version.txt")
+expected=("$NAME/MANIFEST.txt" "$NAME/README.txt" "$NAME/bin/parasite-eve-port" "$NAME/build-info.json" "$NAME/parasite-eve" "$NAME/parasite-eve-preview" "$NAME/recomplauncher.json" "$NAME/version.txt")
 # MANIFEST.txt is generated last (it lists itself), so exclude it from this
 # pre-manifest listing and check again after it is written.
-pre_expected=("$NAME/README.txt" "$NAME/bin/parasite-eve-port" "$NAME/build-info.json" "$NAME/parasite-eve" "$NAME/parasite-eve-preview" "$NAME/version.txt")
+pre_expected=("$NAME/README.txt" "$NAME/bin/parasite-eve-port" "$NAME/build-info.json" "$NAME/parasite-eve" "$NAME/parasite-eve-preview" "$NAME/recomplauncher.json" "$NAME/version.txt")
 [[ "${files[*]}" == "${pre_expected[*]}" ]] || die "unexpected staged files: ${files[*]}"
 for f in "${files[@]}"; do
     case "${f,,}" in

@@ -8,6 +8,7 @@
 #   parasite-eve-day1-preview/parasite-eve-preview    launcher script
 #   parasite-eve-day1-preview/README-PREVIEW.txt      controls + known limits
 #   parasite-eve-day1-preview/build-info.json         commit, time, sha256
+#   parasite-eve-day1-preview/recomplauncher.json     RecompLauncher setup file
 #
 # Usage:
 #   PE_BINARY=build/pcbuild-preview/parasite-eve-port ./pc_port/package_preview.sh
@@ -44,6 +45,8 @@ STAGE="$WORK/$NAME"
 mkdir -p "$STAGE/bin"
 
 install -m 0755 "$BINARY" "$STAGE/bin/parasite-eve-port"
+# RecompLauncher setup file: lets the launcher check the disc, set it up and start the game.
+install -m 0644 "$ROOT/pc_port/recomplauncher.json" "$STAGE/recomplauncher.json"
 strip --strip-unneeded "$STAGE/bin/parasite-eve-port" 2>/dev/null || true
 
 cat > "$STAGE/parasite-eve-preview" <<'LAUNCHER'
@@ -80,12 +83,23 @@ if [[ -z "${DISPLAY:-}" ]]; then
     echo "       on Wayland (KDE/GNOME/gamescope) XWayland provides DISPLAY." >&2
     exit 1
 fi
+# Disc 2 (optional, for the disc swap): $PE_DISC2, a .bin or its .cue.
+DISC2_ARGS=()
+if [[ -n "${PE_DISC2:-}" ]]; then
+    DISC2="$PE_DISC2"
+    if [[ "$DISC2" == *.cue || "$DISC2" == *.CUE ]]; then
+        bin2="$(sed -n 's/^[[:space:]]*FILE[[:space:]]*"\(.*\)".*/\1/p' "$DISC2" | head -n1)"
+        [[ -n "$bin2" ]] && DISC2="$(dirname "$DISC2")/$bin2"
+    fi
+    [[ -f "$DISC2" ]] || { echo "ERROR: disc 2 image not found: $DISC2" >&2; exit 1; }
+    DISC2_ARGS=(--disc2-image "$DISC2")
+fi
 cd "$HERE"
 SKIP=()
 [[ "${PE_SKIP_MOVIE:-__DEFAULT_SKIP__}" == 1 ]] && SKIP=(--skip-movie)
 exec "$HERE/bin/parasite-eve-port" --windowed "${SKIP[@]}" --scale 3 \
     --window-title "Parasite Eve - Day 1 preview" \
-    --disc-image "$DISC" "$@"
+    --disc-image "$DISC" "${DISC2_ARGS[@]}" "$@"
 LAUNCHER
 chmod 0755 "$STAGE/parasite-eve-preview"
 
@@ -198,7 +212,7 @@ chmod 0644 "$STAGE/build-info.json"
 
 # Guard: only the four expected payload files, no disc images, nothing from rom/.
 mapfile -t files < <(cd "$WORK" && find "$NAME" -type f | LC_ALL=C sort)
-expected=("$NAME/README-PREVIEW.txt" "$NAME/bin/parasite-eve-port" "$NAME/build-info.json" "$NAME/parasite-eve-preview")
+expected=("$NAME/README-PREVIEW.txt" "$NAME/bin/parasite-eve-port" "$NAME/build-info.json" "$NAME/parasite-eve-preview" "$NAME/recomplauncher.json")
 [[ "${files[*]}" == "${expected[*]}" ]] || die "unexpected staged files: ${files[*]}"
 for f in "${files[@]}"; do
     case "${f,,}" in

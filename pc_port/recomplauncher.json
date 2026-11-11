@@ -1,0 +1,46 @@
+{
+  "$schema": "https://recomplauncher.com/schema/recomplauncher.json",
+  "format": 1,
+  "name": "Parasite Eve Decomp Port",
+  "repo": "Blizz127/parasite-eve-decomp-port",
+  "game": {
+    "kind": "iso_or_folder",
+    "label": "Your copy of Parasite Eve (USA) Disc 1, serial SLUS-00662, as a raw BIN/CUE dump: pick its .cue file, or the folder that holds the .bin and .cue. An .iso or .chd does not work yet.",
+    "check": { "ids": ["SLUS-00662"] }
+  },
+  "start": {
+    "program": ["parasite-eve*", "parasite-eve", "parasite-eve-preview"],
+    "args": ["{game}"],
+    "env": { "PE_DISC2": "{input:disc2}" }
+  },
+  "inputs": [
+    {
+      "id": "disc2",
+      "label": "Your copy of Parasite Eve (USA) Disc 2, as a BIN/CUE dump: its .bin or its .cue. Optional: the game asks for it at the disc swap, which is not playable yet.",
+      "role": "disc",
+      "optional": true,
+      "formats": [{ "type": "file", "extensions": ["bin", "cue"] }]
+    }
+  ],
+  "saves": ["{local}/parasite-eve-port/memcard1.mcd"],
+  "folders": {
+    "saves": [{ "path": "{local}/parasite-eve-port" }],
+    "logs": [{ "path": "{home}/.local/state/parasite-eve-port/logs" }]
+  },
+  "settings": [
+    {
+      "id": "window",
+      "label": "Window",
+      "in": "env",
+      "help": "Automatic is the build's own choice: fullscreen, or a window in the early preview builds. The picture keeps its 4:3 shape either way.",
+      "choices": [
+        { "label": "Automatic", "set": {} },
+        { "label": "Fullscreen", "set": { "PE_FULLSCREEN": "1", "PE_WINDOWED": "0" } },
+        { "label": "Windowed", "set": { "PE_FULLSCREEN": "0", "PE_WINDOWED": "1" } }
+      ]
+    }
+  ],
+  "actions": [
+    { "id": "saves", "label": "Saves", "help": "Your memory card file.", "open": "saves" }
+  ]
+}

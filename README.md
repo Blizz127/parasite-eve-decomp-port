@@ -1,5 +1,7 @@
 # parasite-eve-decomp-port
 
+<a href="https://recomplauncher.com/game/parasite-eve-decomp-port"><picture><source media="(prefers-color-scheme: dark)" srcset="https://recomplauncher.com/assets/press/launcher/badge-light.svg"><img alt="Get it on RecompLauncher" src="https://recomplauncher.com/assets/press/launcher/badge-dark.svg" height="48"></picture></a>
+
 Parasite Eve decomp and port: a matching decompilation of Parasite Eve
 (PlayStation, USA, SLUS-00662) and a native Linux port that runs the
 decompiled game code.
