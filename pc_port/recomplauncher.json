@@ -10,8 +10,18 @@
   },
   "start": {
     "program": ["parasite-eve", "parasite-eve-preview"],
-    "args": ["{game}"]
+    "args": ["{game}"],
+    "env": { "PE_DISC2": "{input:disc2}" }
   },
+  "inputs": [
+    {
+      "id": "disc2",
+      "label": "Your copy of Parasite Eve (USA) Disc 2, as a BIN/CUE dump: its .bin or its .cue. Optional: the game asks for it at the disc swap, which is not playable yet.",
+      "role": "disc",
+      "optional": true,
+      "formats": [{ "type": "file", "extensions": ["bin", "cue"] }]
+    }
+  ],
   "saves": ["{local}/parasite-eve-port/memcard1.mcd"],
   "folders": {
     "saves": [{ "path": "{local}/parasite-eve-port" }],
