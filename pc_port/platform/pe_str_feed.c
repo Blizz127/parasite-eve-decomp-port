@@ -38,7 +38,7 @@ static struct {
     uint32_t lba;
     uint32_t credits;       /* half-sectors: +5 per VBlank, -2 per sector */
     uint32_t write_idx;
-    int last_presented;
+    uint64_t last_presented;
     uint32_t last_vblank;   /* PE_GPU vsync_count at the last account */
     /* frame under assembly */
     int assembling;
@@ -69,8 +69,8 @@ static void Account(void)
 {
     uint32_t now = VBlankCount();
     uint32_t dv = now - g_feed.last_vblank;
-    int presented;
-    uint32_t dp;
+    uint64_t presented;
+    uint64_t dp;
 
     g_feed.last_vblank = now;
     if (dv == 0u)
@@ -81,13 +81,13 @@ static void Account(void)
     if (g_feed.credits > 5u * 120u) /* at most ~2 s of drive read-ahead */
         g_feed.credits = 5u * 120u;
     g_feed.stats.vblanks += dv;
-    HostFB_GetState(NULL, NULL, &presented, NULL);
-    dp = (uint32_t)(presented - g_feed.last_presented);
+    presented = HostFB_GetPresentCount();
+    dp = presented - g_feed.last_presented;
     while (dp < dv && !PE_Port_ShouldStop()) {
         HostFB_Present();
         dp++;
     }
-    HostFB_GetState(NULL, NULL, &g_feed.last_presented, NULL);
+    g_feed.last_presented = HostFB_GetPresentCount();
 }
 
 static int FmvLog(void)
@@ -187,7 +187,7 @@ void PE_StrFeed_Open(pe_addr_t bcd_location, uint32_t mode)
     g_feed.pending = 0;
     g_feed.published = 0u;
     memset(g_feed.atv_logged, 0xFF, sizeof(g_feed.atv_logged));
-    HostFB_GetState(NULL, NULL, &g_feed.last_presented, NULL);
+    g_feed.last_presented = HostFB_GetPresentCount();
     g_feed.last_vblank = VBlankCount();
     g_feed.stats.start_lba = g_feed.lba;
     g_feed.stats.lba = g_feed.lba;
@@ -259,10 +259,10 @@ static int PlaceFrame(void)
                STR_CHUNK_BYTES);
         memcpy(PE_Translate(rec, 32u), g_feed.headers[k], 32u);
         PE_StoreU16(rec + 6u, (uint16_t)n);
-        PE_StoreU16(rec, k == 0u ? 2u : 3u);
+        PE_StoreU16(rec, 3u);
     }
-    /* Status of record w is written last so a reader never sees a
-     * half-copied frame. */
+    /* Mark the first record ready after all chunks are copied. The host
+     * adapter pumps synchronously; this is not cross-thread atomicity. */
     PE_StoreU16(base + w * 32u, 2u);
     g_feed.published = base + w * 32u;
     g_feed.write_idx = w + n;
@@ -355,21 +355,32 @@ void PE_StrFeed_Pump(void)
         PE_LoadU16(g_feed.published) == 2u)
         return;
     Account();
+    if (PE_Port_ShouldStop())
+        return;
     for (guard = 0u; guard < 200000u; guard++) {
         if (g_feed.pending) {
+            if (PE_Port_ShouldStop())
+                return;
             if (PlaceFrame())
                 return;
             /* Ring full: the reader still holds every free record. */
             return;
         }
         if (g_feed.credits < 2u) {
+            if (PE_Port_ShouldStop())
+                return;
             VBlank();
             if (PE_Port_ShouldStop())
                 return;
             continue;
         }
-        if (g_feed.lba >= PE_Disc_UserSectorCount(disc) ||
-            !PE_Disc_ReadRawSector(disc, g_feed.lba, raw)) {
+        if (g_feed.lba >= PE_Disc_UserSectorCount(disc)) {
+            PE_StrFeed_Close();
+            return;
+        }
+        if (PE_Port_ShouldStop())
+            return;
+        if (!PE_Disc_ReadRawSector(disc, g_feed.lba, raw)) {
             PE_StrFeed_Close();
             return;
         }

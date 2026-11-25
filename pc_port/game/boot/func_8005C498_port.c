@@ -127,20 +127,86 @@ void func_8005E788(int32_t wait)
     }
 }
 
-/* func_8005C498: ported from the matching decomp -- generated TU pc_port/game/decomp/func_8005C498_port.c (src/func_8005C498.c); hand port retired (port3 switch-over E). */
+/* Native field-menu step, matching the generated call order while honoring
+ * a host stop after each call. The matching source remains unchanged. */
+extern int func_80042ED0(void);
+extern void func_80051504(void);
+extern int func_800514F8(void);
+int func_8005C498(pe_addr_t arg)
+{
+    int ready, current, result;
+    if (PE_Port_ShouldStop()) return 0;
+    ready=func_80042ED0(); if (PE_Port_ShouldStop()) return 0;
+    if (ready) {func_80042F44();return 0;}
+    PE_StoreU32(0x8009D1E0u,arg);
+    func_80051504(); if (PE_Port_ShouldStop()) return 0;
+    func_8005E6F0(); if (PE_Port_ShouldStop()) return 0;
+    func_80046334(); if (PE_Port_ShouldStop()) return 0;
+    func_8005E30C(); if (PE_Port_ShouldStop()) return 0;
+    func_8004F464(); if (PE_Port_ShouldStop()) return 0;
+    func_80042B6C(); if (PE_Port_ShouldStop()) return 0;
+    func_80062FEC(); if (PE_Port_ShouldStop()) return 0;
+    func_8005E788(1); if (PE_Port_ShouldStop()) return 0;
+    current=(int32_t)PE_LoadU32(0x8009D030u);
+    if (current>=2) {func_800425DC(); if (PE_Port_ShouldStop()) return 0;}
+    else if (current>0) PE_StoreU32(0x8009D030u,(uint32_t)current+1u);
+    if (PE_LoadU32(0x8009D034u)) {
+        PE_StoreU32(0x8009D034u,0);func_800512AC(9,0);if (PE_Port_ShouldStop()) return 0;
+    }
+    result=func_800514F8(); if (PE_Port_ShouldStop()) return 0;
+    if (result) {func_800339A0(PE_LoadU8(0x8009D02Cu));if (PE_Port_ShouldStop()) return 0;}
+    result=func_800514F8();
+    return PE_Port_ShouldStop()?0:result;
+}
+
+/* Native zero-argument menu step, with the same stop boundaries. */
+int func_8005C594(void)
+{
+    int ready, current, result;
+    if (PE_Port_ShouldStop()) return 0;
+    ready=func_80042ED0(); if (PE_Port_ShouldStop()) return 0;
+    if (ready) {func_80042F44();return 0;}
+    PE_StoreU32(0x8009D1E0u,0);
+    func_80051504(); if (PE_Port_ShouldStop()) return 0;
+    func_8005E6F0(); if (PE_Port_ShouldStop()) return 0;
+    func_80046334(); if (PE_Port_ShouldStop()) return 0;
+    func_8005E30C(); if (PE_Port_ShouldStop()) return 0;
+    func_8004F464(); if (PE_Port_ShouldStop()) return 0;
+    func_80042B6C(); if (PE_Port_ShouldStop()) return 0;
+    func_80062FEC(); if (PE_Port_ShouldStop()) return 0;
+    func_8005E788(1); if (PE_Port_ShouldStop()) return 0;
+    current=(int32_t)PE_LoadU32(0x8009D030u);
+    if (current>=2) {func_800425DC(); if (PE_Port_ShouldStop()) return 0;}
+    else if (current>0) PE_StoreU32(0x8009D030u,(uint32_t)current+1u);
+    if (PE_LoadU32(0x8009D034u)) {
+        PE_StoreU32(0x8009D034u,0);func_800512AC(9,0);if (PE_Port_ShouldStop()) return 0;
+    }
+    result=func_800514F8(); if (PE_Port_ShouldStop()) return 0;
+    if (result) {func_800339A0(PE_LoadU8(0x8009D02Cu));if (PE_Port_ShouldStop()) return 0;}
+    result=func_800514F8();
+    return PE_Port_ShouldStop()?0:result;
+}
+
 
 void PE_FieldMenuFrame(void)
 {
-    pe_addr_t aya=PE_LoadU32(0x8009D254u);
+    pe_addr_t aya;
     int result;
+    if (PE_Port_ShouldStop()) return;
+    aya=PE_LoadU32(0x8009D254u);
     if (aya && PE_LoadU32(aya) && (PE_LoadU32(0x8009D1F4u)&128u) &&
         !(D_8009D1A0&0x2000u) && !(PE_LoadU32(0x800B0CD8u)&0x3400u)) {
-        func_8005C174(0);func_80067CBC();D_8009D1A0|=4u;
+        func_8005C174(0);if (PE_Port_ShouldStop()) return;
+        func_80067CBC();if (PE_Port_ShouldStop()) return;
+        D_8009D1A0|=4u;
         PE_StoreU32(0x800B0CD8u,PE_LoadU32(0x800B0CD8u)|0x9000u);
     }
-    result=func_8005C498(0x800A76D8u);PE_StoreU16(0x8009D2A4u,(uint16_t)result);
+    result=func_8005C498(0x800A76D8u);
+    if (PE_Port_ShouldStop()) return;
+    PE_StoreU16(0x8009D2A4u,(uint16_t)result);
     if ((uint16_t)result) {
-        func_80067CBC();D_8009D1A0&=~4u;PE_StoreU32(0x8009D1A0u,D_8009D1A0);
+        func_80067CBC();if (PE_Port_ShouldStop()) return;
+        D_8009D1A0&=~4u;PE_StoreU32(0x8009D1A0u,D_8009D1A0);
         PE_StoreU32(0x800B0CD8u,PE_LoadU32(0x800B0CD8u)&~0x9000u);
     }
 }

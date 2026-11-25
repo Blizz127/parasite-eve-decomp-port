@@ -21,6 +21,9 @@ not-native.  "reachable" is the static closure from the room's resource records
 and script op 0x6A codes (see pe_room_native_census.py); a body that is not
 reachable statically can still run (function pointers built at run time), so the
 not-native total is reported both ways.
+
+These are static binding classifications, not proof that any path executes
+natively or that gameplay, visuals, audio, timing or saves match.
 """
 from __future__ import annotations
 
@@ -254,6 +257,7 @@ def main() -> int:
                    unique_not_native=len(uniq_nn),
                    unique_not_native_bytes=sum(k[1] for k in uniq_nn))
     print(json.dumps(summary, indent=1))
+    print("Static registry classifications only; no executed native or gameplay parity is established.")
     worst = sorted(out, key=lambda r: -sum(1 for x in r["rows"] if x["reachable"]
                                            and not x["status"].startswith("native")))
     print("rooms by reachable-not-native bodies:")
@@ -266,6 +270,7 @@ def main() -> int:
         ns.json.write_text(json.dumps(dict(summary=summary, rooms=out), indent=1))
     if ns.markdown:
         lines = ["# All-rooms native census", "",
+                 "Static registry classifications only; no executed native or gameplay parity is established.", "",
                  f"Rooms with code: {summary['rooms']}; bodies {summary['bodies']}; "
                  f"unique (vma,size,FNV) bodies {summary['unique_bodies']}; "
                  f"unique not-native {summary['unique_not_native']} "

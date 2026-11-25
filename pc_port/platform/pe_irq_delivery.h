@@ -62,14 +62,19 @@ typedef struct {
  * 3 in the captured generation.  This never runs a CPU callback. */
 PeIrqEdgeResult PE_IRQ_BridgeDICRRisingEdge(PeIrqGeneration generation);
 
-/* Bounded translation of retail func_80073F00's CPU source scanner. */
+/* Host framing (stale generation, critical section, masked status) around
+ * the clean-room CPU interrupt dispatcher pe_plat_irq_dispatch. */
 PeIrqServiceResult PE_IRQ_ServicePendingForGeneration(
     PeIrqGeneration generation);
 
-/* Complete semantic translation of func_80074520.  The typed form reports
- * nested non-return; the public retail ABI is void. */
+/* Host entry for the clean-room DMA handler (guest 0x80074520): reports a
+ * nested stop as BOUNDARY. */
 PeIrqServiceResult PE_func_80074520_Dispatch(void);
-void func_80074520(void);
+/* Host observers/services for the clean-room DMA handler. */
+void PE_IRQ_ObserveDicrWrite(uint32_t value);
+int PE_IRQ_DmaCallbackService(uint32_t handler, int *ok);
+int PE_IRQ_CpuCallbackService(uint32_t handler, int *ok);
+void PE_IRQ_ObserveIstatWrite(uint16_t value);
 
 /* Host-only, value-only evidence.  This is not callback or IRQ authority. */
 void PE_IRQ_DeliveryTraceReset(void);

@@ -42,17 +42,18 @@
 
 unsigned int func_80070D6C(void)
 {
-    int t1 = (int)PE_LoadU32(GA_RNG_INDEX1);
-    int t2 = (int)PE_LoadU32(GA_RNG_INDEX2);
+    uint32_t t1 = PE_LoadU32(GA_RNG_INDEX1);
+    uint32_t t2 = PE_LoadU32(GA_RNG_INDEX2);
     pe_addr_t t3 = GA_RNG_TABLE + (pe_addr_t)t1;   /* addu */
     pe_addr_t t4 = GA_RNG_TABLE + (pe_addr_t)t2;   /* addu */
     unsigned int t5 = PE_LoadU32(t3) + PE_LoadU32(t4);  /* addu wrap */
     PE_StoreU32(t3, t5);
-    t1 -= 4;
-    t2 -= 4;
-    if (t1 < 0) t1 = 0x40;
-    if (t2 < 0) t2 = (int)((unsigned int)t2 | 0x40u);   /* ori, verbatim */
-    PE_StoreU32(GA_RNG_INDEX1, (unsigned int)t1);
-    PE_StoreU32(GA_RNG_INDEX2, (unsigned int)t2);
+    /* addiu wraps before the signed branch tests; avoid signed C overflow. */
+    t1 -= 4u;
+    t2 -= 4u;
+    if (t1 & 0x80000000u) t1 = 0x40u;
+    if (t2 & 0x80000000u) t2 |= 0x40u;   /* ori, verbatim */
+    PE_StoreU32(GA_RNG_INDEX1, t1);
+    PE_StoreU32(GA_RNG_INDEX2, t2);
     return t5;
 }

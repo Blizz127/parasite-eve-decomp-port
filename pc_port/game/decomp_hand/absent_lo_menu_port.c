@@ -294,7 +294,21 @@ void func_800434C0(int a)
             x = p + 0x14u;
         else
             x = p + 4u;
-        func_8005F27C(x);
+        /* Card names are stored in fixed 8- and 12-byte fields.  A damaged
+         * save may omit FF; keep its text from consuming the whole menu
+         * packet arena while leaving the other entries accessible. */
+        {
+            unsigned limit = (x == p + 0x14u) ? 12u : 8u;
+            unsigned i;
+            func_8005E8C4();
+            for (i = 0; i < limit; i++) {
+                unsigned ch = PE_LoadU8(x + i);
+                if (ch == 0xFFu) break;
+                func_8005EED4((int)ch);
+            }
+            func_8005E914();
+        }
+
         func_8005E8A4(0x58, 0);
         if (PE_LoadU8(p + 0x2Au) != 0u) {
             func_8005EB64(0x95u);

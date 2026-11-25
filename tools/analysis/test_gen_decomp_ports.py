@@ -1255,5 +1255,37 @@ class MultiDimArrayTests(unittest.TestCase):
         self.assertTrue(analyze(src)["eligible"], analyze(src).get("reason"))
 
 
+class GuestLocalArrayTests(unittest.TestCase):
+    @staticmethod
+    def fixture():
+        # Synthetic values only; this test contains no retail table data.
+        declarations = "\n".join(
+            f"    unsigned char {name}[18] = {{" + ", ".join(["197"] * 18) + "};"
+            for name in ("uv", "wh", "xy"))
+        return "void func_800323C8(signed char a0) {\n" + declarations + "\n}\n"
+
+    def test_mapped_initializers_become_guest_copies(self):
+        result = g.restore_guest_local_arrays("func_800323C8", self.fixture())
+        self.assertNotIn("197", result)
+        for local, addr in (("uv", "80010DFC"), ("wh", "80010E10"), ("xy", "80010E24")):
+            self.assertIn(f"unsigned char {local}[18];", result)
+            self.assertIn(f"memcpy({local}, PE_Translate(0x{addr}u, sizeof({local})), sizeof({local}));", result)
+
+    def test_changed_shape_fails_before_literal_emission(self):
+        original = self.fixture()
+        for changed in (original.replace("uv[18]", "uv[17]"),
+                        original.replace("197, ", "", 1),
+                        original.replace("unsigned char wh", "signed char wh"),
+                        original.replace("197", "get_value()", 1),
+                        original.replace("    unsigned char xy", "    static unsigned char xy"),
+                        original.replace("func_800323C8", "func_80099990")):
+            with self.subTest(changed=changed), self.assertRaises(ValueError):
+                g.restore_guest_local_arrays("func_800323C8", changed)
+
+    def test_unmapped_leaf_is_unchanged(self):
+        original = self.fixture().replace("func_800323C8", "func_80099990")
+        self.assertEqual(g.restore_guest_local_arrays("func_80099990", original), original)
+
+
 if __name__ == "__main__":
     unittest.main()

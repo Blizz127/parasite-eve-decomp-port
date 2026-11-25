@@ -20,7 +20,8 @@ Inputs (the hash-checked EXE, the user's disc via the shipped readers):
     a stale registry gives stale answers).  Hand entries are those whose
     thunk is not a generated `pe_gct_*`.
 
-Method (all STATIC; nothing is executed):
+Method (all STATIC; nothing is executed). Registry classification does not
+prove native execution or gameplay, visual, audio, timing or save parity:
   1. text window + `jr $ra` bodies (roomscan.py rule), FNV-1a over the body
      (the hash PE_GuestCode_Resolve compares);
   2. handler records of the chunk resource table (`cc 00 00 08` + descriptor);
@@ -612,6 +613,7 @@ def main() -> int:
               + (f"  [{r['gen_skip_reason']}]" if r["gen_skip_reason"] else ""))
     print(f"SUMMARY: {len(rows)} bodies; {n_nat} native; {len(reach)} reachable; "
           f"{len(rnn)} reachable-not-native ({sum(r['size'] for r in rnn):#x} bytes)")
+    print("Static registry classifications only; no executed native or gameplay parity is established.")
     un = [r for r in rnn if r["reach_kind"] == "unconditional"]
     print(f"REACH-KIND: reachable-not-native unconditional {len(un)}, conditional {len(rnn) - len(un)}; "
           f"native-direct {sum(1 for r in rows if r['status'] == 'native-direct')}, "

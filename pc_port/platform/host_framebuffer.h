@@ -54,6 +54,8 @@ int HostFB_GetSSAA(void);
 /* Explicit diagnostic export of the second scan-out, with no capture hooks. */
 int HostFB_WritePresentationPPM(const char *path);
 void HostFB_GetState(int *vsync, int *drawsync, int *presented, int *mask);
+/* Full presentation count; the legacy int view saturates at INT_MAX. */
+uint64_t HostFB_GetPresentCount(void);
 /* Display-only refresh after a VBlank scan-out (not a present). */
 void HostFB_SetScanoutHook(void (*hook)(void));
 /* Number of idle-VBlank scan-outs so far (diagnostics, PE_FRAME_TRACE). */

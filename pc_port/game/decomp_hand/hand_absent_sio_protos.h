@@ -7,7 +7,5 @@
 
 #include "psx_compat.h"
 
-int func_800830DC(pe_addr_t a0, int a1);
-int func_800832B4(pe_addr_t a0, int a1);
 
 #endif

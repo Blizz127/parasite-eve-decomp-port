@@ -4,12 +4,12 @@
  * Retail programs root counter 2 as SetRCnt(0xF2000002, 0x44E8, 0x1000)
  * (mode 0x258: sysclk/8, reset+IRQ at target) and binds func_8008E23C to
  * its event, i.e. the AKAO sound driver tick func_8008DB7C runs at
- * 33868800 / 8 / 0x44E8 = 240 Hz.  Each tick runs the NATIVE C
+ * 33868800 / 8 / 0x44E8 = 240 Hz. Each armed tick runs the native C
  * func_8008DB7C (game/decomp_hand/akao_tick_port.c: sequencer, voice
  * updates, command queue func_8008CA84, SPU flush, all from matched C).
- * Native only: no MIPS machine code runs in the port.  SPU register writes
- * reach the native SPU (pe_spu.h) through pe_mmio; guest RAM through
- * pe_guest_ram.
+ * This tick uses compiled host C. Whole-engine native coverage and remaining
+ * boundaries are tracked separately. SPU register writes reach the native
+ * SPU (pe_spu.h) through pe_mmio; guest RAM through pe_guest_ram.
  *
  * The clock is emulated time: PE_AudioDriver_VBlank() is called once per
  * emulated VBlank (PE_GPU_VBlankStep) and runs 4 driver ticks and

@@ -14,6 +14,13 @@
 #define PE_SYSTEM_CNF       "\\SYSTEM.CNF;1"
 #define PE_SYSTEM_CNF_MAX   2048u
 
+/* PS-X EXE header fields are little-endian, independent of the host. */
+static uint32_t ReadLe32(const uint8_t *p)
+{
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
+           ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+}
+
 /* Extract the BOOT = cdrom:<path> executable name from SYSTEM.CNF.
  * out receives the ISO9660 path (e.g. "\SLUS_006.62;1"). */
 static int ParseBootPath(const uint8_t *cnf, uint32_t size,
@@ -91,11 +98,12 @@ int PE_GuestImage_LoadExe(const PE_Disc *disc, char *err, size_t err_size)
         snprintf(err, err_size, "'%s' is not a PS-X EXE", boot_path);
         return -1;
     }
-    memcpy(&taddr, header + PE_EXE_TADDR_OFF, 4);
-    memcpy(&tsize, header + PE_EXE_TSIZE_OFF, 4);
+    taddr = ReadLe32(header + PE_EXE_TADDR_OFF);
+    tsize = ReadLe32(header + PE_EXE_TSIZE_OFF);
 
     /* 3. Geometry validation: exact file size, guest-RAM bounds. */
-    if (size != PE_EXE_HEADER_SIZE + tsize || tsize == 0) {
+    if (tsize == 0 || tsize > UINT32_MAX - PE_EXE_HEADER_SIZE ||
+        size != PE_EXE_HEADER_SIZE + tsize) {
         snprintf(err, err_size,
                  "exe size mismatch: file=%u header tsize=%u", size, tsize);
         return -1;

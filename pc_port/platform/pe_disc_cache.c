@@ -4,6 +4,7 @@
 #include "pe_disc_cache.h"
 #include "pe_disc.h"
 #include "pe_disc_check.h"
+#include "pe_guest_ram.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -27,18 +28,31 @@ int PE_DiscCache_ImagePath(char *out, size_t out_size)
 {
     const char *env = getenv("PE_DISC1_BIN");
     FILE *fp;
+    size_t used = 0;
+    int c, failed = 0, overflow_trailing = 0;
+
+    if (!out || !out_size) return -1;
+    out[0] = '\0';
     if (env && env[0]) {
-        snprintf(out, out_size, "%s", env);
+        int n = snprintf(out, out_size, "%s", env);
+        if (n < 0 || (size_t)n >= out_size) { out[0] = '\0'; return -1; }
         return 0;
     }
     fp = fopen("local/pe_disc1.path", "r");
-    if (!fp)
-        return -1;
-    if (!fgets(out, (int)out_size, fp)) {
-        fclose(fp);
-        return -1;
+    if (!fp) return -1;
+    while ((c = fgetc(fp)) != EOF && c != '\n') {
+        if (!c) { failed = 1; break; }
+        if (overflow_trailing || used >= out_size - 1u) {
+            if (c != ' ' && c != '\r') { failed = 1; break; }
+            overflow_trailing = 1;
+        } else {
+            out[used++] = (char)c;
+        }
     }
-    fclose(fp);
+    if (ferror(fp)) failed = 1;
+    if (fclose(fp) != 0) failed = 1;
+    if (failed) { out[0] = '\0'; return -1; }
+    out[used] = '\0';
     Chomp(out);
     return out[0] ? 0 : -1;
 }
@@ -74,29 +88,47 @@ static uint8_t *ReadWhole(const char *path, uint32_t *size)
     return buf;
 }
 
-static uint8_t *FromCache(uint32_t *size)
+/* Resolve one complete current-key line before opening cache contents. */
+static int CacheContentPath(char *out, size_t out_size, const char *leaf)
 {
     char root[768], key[128], path[1024];
     const char *env = getenv("PE_DISC_CACHE_DIR");
-    FILE *fp;
+    int n = snprintf(root, sizeof(root), "%s", (env && env[0]) ? env : "build/disc-cache");
+    if (n < 0 || (size_t)n >= sizeof(root)) return 0;
+    n = snprintf(path, sizeof(path), "%s/current", root);
+    if (n < 0 || (size_t)n >= sizeof(path)) return 0;
+    FILE *fp = fopen(path, "r");
+    if (!fp) return 0;
+    size_t used = 0;
+    int c, valid = 1, overflow_trailing = 0;
+    while ((c = fgetc(fp)) != EOF && c != '\n') {
+        if (!c) { valid = 0; break; }
+        if (overflow_trailing || used >= sizeof(key) - 1u) {
+            if (c != ' ' && c != '\r') { valid = 0; break; }
+            overflow_trailing = 1;
+        } else {
+            key[used++] = (char)c;
+        }
+    }
+    if (ferror(fp)) valid = 0;
+    if (fclose(fp) != 0) valid = 0;
+    if (!valid) return 0;
+    key[used] = '\0';
+    Chomp(key);
+    if (!key[0]) return 0;
+    n = snprintf(out, out_size, "%s/%s/%s", root, key, leaf);
+    return n >= 0 && (size_t)n < out_size;
+}
+
+static uint8_t *FromCache(uint32_t *size)
+{
+    char path[1024];
     uint8_t *buf;
     char sha[41];
 
-    snprintf(root, sizeof(root), "%s", (env && env[0]) ? env : "build/disc-cache");
-    snprintf(path, sizeof(path), "%s/current", root);
-    fp = fopen(path, "r");
-    if (!fp)
-        return NULL;
-    if (!fgets(key, (int)sizeof(key), fp)) {
-        fclose(fp);
-        return NULL;
-    }
-    fclose(fp);
-    Chomp(key);
-    snprintf(path, sizeof(path), "%s/%s/SLUS_006.62", root, key);
+    if (!CacheContentPath(path, sizeof(path), "SLUS_006.62")) return NULL;
     buf = ReadWhole(path, size);
-    if (!buf)
-        return NULL;
+    if (!buf) return NULL;
     PE_DiscCheck_Sha1Hex(buf, *size, sha);
     if (!KnownExeHash(sha)) {
         free(buf);
@@ -119,13 +151,14 @@ static uint8_t *FromImage(uint32_t *size)
     }
     d = PE_Disc_Open(path, err, sizeof(err));
     if (!d) {
-        snprintf(s_err, sizeof(s_err), "%s: %s", path, err);
+        snprintf(s_err, sizeof(s_err), "%.120s: %.120s", path, err);
         return NULL;
     }
     /* any verified disc carries the (identical) EXE */
-    if (PE_DiscCheck_Identify(d, 0xFFu, &id, err, sizeof(err)) != 0 ||
-        PE_DiscCheck_ReadFile(d, id.known->boot, &buf, size) != 0) {
-        snprintf(s_err, sizeof(s_err), "%s: %s", path, err);
+    if (PE_DiscCheck_Identify(d, 0xFFu, &id, err, sizeof(err)) != 0) {
+        snprintf(s_err, sizeof(s_err), "%.120s: %.120s", path, err);
+    } else if (PE_DiscCheck_ReadFile(d, id.known->boot, &buf, size) != 0) {
+        snprintf(s_err, sizeof(s_err), "%.220s: boot file is unreadable", path);
         buf = NULL;
     }
     PE_Disc_Close(d);
@@ -159,23 +192,38 @@ const uint8_t *PE_DiscCache_Exe(uint32_t *size, char *err, size_t err_size)
     return s_exe;
 }
 
+/* Mirror the guest-RAM contract without adding a runtime RAM dependency. */
+static int ExeRamOffset(uint32_t address, uint32_t length, uint32_t *offset)
+{
+    uint32_t segment = address & 0xE0000000u;
+    uint32_t physical = address & 0x1FFFFFFFu;
+    if ((segment != 0u && segment != 0x80000000u && segment != 0xA0000000u) ||
+        physical >= PE_RAM_SIZE || length > PE_RAM_SIZE - physical)
+        return 0;
+    *offset = physical;
+    return 1;
+}
+
 int PE_DiscCache_ExeRead(uint32_t addr, void *out, uint32_t len)
 {
-    uint32_t off;
-    if (!PE_DiscCache_Exe(NULL, NULL, 0))
+    uint32_t base, request, off;
+    if ((!out && len) || !PE_DiscCache_Exe(NULL, NULL, 0))
         return -1;
-    off = (addr & 0x1FFFFFFFu) - (s_taddr & 0x1FFFFFFFu);
-    if ((addr & 0x1FFFFFFFu) < (s_taddr & 0x1FFFFFFFu) || off > s_tsize ||
-        len > s_tsize - off)
+    if (!ExeRamOffset(s_taddr, s_tsize, &base) ||
+        !ExeRamOffset(addr, len, &request) || request < base)
         return -1;
-    memcpy(out, s_exe + PE_EXE_HDR + off, len);
+    off = request - base;
+    if (off > s_tsize || len > s_tsize - off)
+        return -1;
+    /* A zero-length request may use NULL, but still needs a valid address. */
+    if (len) memcpy(out, s_exe + PE_EXE_HDR + off, len);
     return 0;
 }
 
 int PE_DiscCache_ExeWord(uint32_t addr, uint32_t *out)
 {
     uint8_t b[4];
-    if (PE_DiscCache_ExeRead(addr, b, 4) != 0)
+    if (!out || PE_DiscCache_ExeRead(addr, b, 4) != 0)
         return -1;
     *out = (uint32_t)b[0] | (uint32_t)b[1] << 8 | (uint32_t)b[2] << 16 | (uint32_t)b[3] << 24;
     return 0;
@@ -195,36 +243,44 @@ static void OpenPeImg(void)
     s_peimg_tried = 1;
     if (PE_DiscCache_ImagePath(path, sizeof(path)) == 0) {
         s_disc = PE_Disc_Open(path, err, sizeof(err));
-        if (s_disc && PE_DiscCheck_Identify(s_disc, 0xFFu, &id, err, sizeof(err)) == 0 &&
-            PE_Disc_FindFile(s_disc, "\\PE.IMG;1", &s_peimg_lba, &s_peimg_size, NULL, 0))
+        if (!s_disc) {
+            snprintf(s_peimg_err, sizeof(s_peimg_err), "%.120s: %.120s", path, err);
+        } else if (PE_DiscCheck_Identify(s_disc, 0xFFu, &id, err, sizeof(err)) != 0) {
+            snprintf(s_peimg_err, sizeof(s_peimg_err), "%.120s: %.120s", path, err);
+        } else if (PE_Disc_FindFile(s_disc, "\\PE.IMG;1", &s_peimg_lba, &s_peimg_size, NULL, 0)) {
             return;
-        snprintf(s_peimg_err, sizeof(s_peimg_err), "%s: %s", path, err);
+        } else {
+            snprintf(s_peimg_err, sizeof(s_peimg_err), "%.220s: PE.IMG;1 not found or invalid", path);
+        }
         if (s_disc)
             PE_Disc_Close(s_disc);
         s_disc = NULL;
     }
     {
-        char root[768], key[128], p2[1024];
-        const char *env = getenv("PE_DISC_CACHE_DIR");
-        FILE *fp;
-        snprintf(root, sizeof(root), "%s", (env && env[0]) ? env : "build/disc-cache");
-        snprintf(p2, sizeof(p2), "%s/current", root);
-        fp = fopen(p2, "r");
-        if (fp && fgets(key, (int)sizeof(key), fp)) {
-            Chomp(key);
-            snprintf(p2, sizeof(p2), "%s/%s/PE.IMG", root, key);
+        char p2[1024];
+        if (CacheContentPath(p2, sizeof(p2), "PE.IMG")) {
             s_peimg_fp = fopen(p2, "rb");
-            if (s_peimg_fp && fseek(s_peimg_fp, 0, SEEK_END) == 0) {
-                s_peimg_size = (uint32_t)ftell(s_peimg_fp);
-                /* the cache's EXE must also be verified before PE.IMG is used */
-                if (PE_DiscCache_Exe(NULL, NULL, 0) == NULL) {
+            if (s_peimg_fp) {
+                long end;
+                if (fseek(s_peimg_fp, 0, SEEK_END) != 0 ||
+                    (end = ftell(s_peimg_fp)) < 0 || (uint64_t)end > UINT32_MAX) {
                     fclose(s_peimg_fp);
                     s_peimg_fp = NULL;
+                    s_peimg_size = 0;
+                    if (!s_peimg_err[0])
+                        snprintf(s_peimg_err, sizeof(s_peimg_err),
+                                 "cached PE.IMG size unavailable or unsupported");
+                } else {
+                    s_peimg_size = (uint32_t)end;
+                    /* the cache's EXE must also be verified before PE.IMG is used */
+                    if (PE_DiscCache_Exe(NULL, NULL, 0) == NULL) {
+                        fclose(s_peimg_fp);
+                        s_peimg_fp = NULL;
+                        s_peimg_size = 0;
+                    }
                 }
             }
         }
-        if (fp)
-            fclose(fp);
         if (!s_peimg_fp && !s_peimg_err[0])
             snprintf(s_peimg_err, sizeof(s_peimg_err), "no disc configured and no disc cache");
     }

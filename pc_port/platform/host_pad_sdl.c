@@ -75,7 +75,7 @@ int HostPadSDL_RawMapParse(HostPadRawMap *m, const char *spec)
         if (e == s || x < -1 || x > 255) return -1;
         v[n++] = (int)x;
         if (*e == 0) break;
-        if (*e != ',') return -1;
+        if (*e != ',' || n == 10) return -1;
         s = e + 1;
     }
     if (n != 10) return -1;
@@ -85,6 +85,14 @@ int HostPadSDL_RawMapParse(HostPadRawMap *m, const char *spec)
 }
 
 static int raw_on(const uint8_t *btn, int nbtn, int i) { return i >= 0 && i < nbtn && btn[i]; }
+
+/* Gameplay owns a raw index when a user map assigns one to a PSX button. */
+static int raw_game_claims_index(const HostPadRawMap *m, int i)
+{
+    return i >= 0 && (i == m->cross || i == m->circle || i == m->square ||
+        i == m->triangle || i == m->l1 || i == m->r1 || i == m->l2 ||
+        i == m->r2 || i == m->select || i == m->start);
+}
 
 uint16_t HostPadSDL_MapJoystick(const HostPadRawMap *m, const uint8_t *btn, int nbtn,
                                 const int16_t *axis, int naxis, unsigned hat, int swap_xy,
@@ -102,8 +110,8 @@ uint16_t HostPadSDL_MapJoystick(const HostPadRawMap *m, const uint8_t *btn, int 
     if (raw_on(btn, nbtn, m->r2)) h |= HOST_PAD_R2;
     if (raw_on(btn, nbtn, m->select)) h |= HOST_PAD_SELECT;
     if (raw_on(btn, nbtn, m->start)) h |= HOST_PAD_START;
-    if (raw_on(btn, nbtn, m->r3)) hk |= HOST_PAD_HOTKEY_FF_HOLD;
-    if (raw_on(btn, nbtn, m->l3)) hk |= HOST_PAD_HOTKEY_FF_TOGGLE;
+    if (raw_on(btn, nbtn, m->r3) && !raw_game_claims_index(m, m->r3)) hk |= HOST_PAD_HOTKEY_FF_HOLD;
+    if (raw_on(btn, nbtn, m->l3) && !raw_game_claims_index(m, m->l3)) hk |= HOST_PAD_HOTKEY_FF_TOGGLE;
     if (hat & HPS_HAT_UP) h |= HOST_PAD_UP;
     if (hat & HPS_HAT_DOWN) h |= HOST_PAD_DOWN;
     if (hat & HPS_HAT_LEFT) h |= HOST_PAD_LEFT;
@@ -328,14 +336,24 @@ void HostPadSDL_Poll(void)
             d->held_analog = HostPadSDL_MapControllerEx(b, a, S.swap_xy, 0, NULL);
             memcpy(d->axis, a, sizeof d->axis);
         } else {
-            uint8_t b[32] = {0};
+            uint8_t b[256] = {0}, seen[256] = {0};
             int16_t a[2] = {0, 0};
             int nb, na;
             unsigned hat = 0;
+            const int indices[] = {S.raw.cross, S.raw.circle, S.raw.square,
+                S.raw.triangle, S.raw.l1, S.raw.r1, S.raw.l2, S.raw.r2,
+                S.raw.select, S.raw.start, S.raw.l3, S.raw.r3};
             if (!S.JSAttached(d->js)) { close_dev(d, "detached"); continue; }
-            nb = S.JSNumButtons(d->js); if (nb > 32) nb = 32; if (nb < 0) nb = 0;
+            nb = S.JSNumButtons(d->js); if (nb > 256) nb = 256; if (nb < 0) nb = 0;
             na = S.JSNumAxes(d->js); if (na > 2) na = 2; if (na < 0) na = 0;
-            for (int i = 0; i < nb; i++) b[i] = S.JSButton(d->js, i);
+            /* Poll only configured indices, once each; raw map permits 0..255. */
+            for (size_t j = 0; j < sizeof(indices)/sizeof(indices[0]); j++) {
+                int i = indices[j];
+                if (i >= 0 && i < nb && !seen[i]) {
+                    seen[i] = 1;
+                    b[i] = S.JSButton(d->js, i);
+                }
+            }
             for (int i = 0; i < na; i++) a[i] = S.JSAxis(d->js, i);
             if (S.JSNumHats(d->js) > 0) hat = S.JSHat(d->js, 0);
             d->held = HostPadSDL_MapJoystick(&S.raw, b, nb, a, na, hat, S.swap_xy, &d->hk);

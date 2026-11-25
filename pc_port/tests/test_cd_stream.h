@@ -29,6 +29,36 @@ static void CDSTREAM_SeedCase(unsigned k)
     PE_StoreU32(0x8013001Cu,CDSTREAM_cases[k].busy?0x01000000u:0u);
     PE_StoreU32(0x801FFE88u,0x55667788u);
 }
+static void test_cd_stream_source_stack_alias(void)
+{
+    TEST("cd_stream_source_stack_alias");
+    CDSTREAM_SeedCase(0u);
+    for(unsigned i=0;i<2048u;i++) PE_StoreU8(0x801FEFC0u+i,PE_LoadU8(0x80160000u+i));
+    PE_StoreU32(0x800C0DB8u,0x801FEFC0u);
+    func_8007C564();
+    ASSERT(!PE_Port_ShouldStop() && PE_LoadU32(0x8009B374u)==10u &&
+           PE_LoadU16(0x80150020u)==3u && PE_LoadU32(0x800BE998u)==2u,
+           "stream source in guest stack-address range did not complete");
+    uint32_t dst=PE_LoadU32(0x800C0DC4u);
+    for(unsigned i=0;i<2016u;i++)
+        ASSERT(PE_LoadU8(dst+i)==PE_LoadU8(0x801FEFE0u+i),
+               "stream source bytes in guest stack-address range differ");
+    PASS();
+}
+
+static void test_cd_stream_dma_busy_boundary(void)
+{
+    TEST("cd_stream_dma_busy_boundary");
+    CDSTREAM_SeedCase(0u);
+    PE_StoreU32(0x8009B35Cu, 0x80130020u);
+    PE_StoreU32(0x80130020u, 0x01000000u);
+    func_8007C564();
+    ASSERT(PE_Port_GetStopReason()==PE_PORT_STOP_UNRESOLVED_BOUNDARY &&
+           CountOrderLog("func_8007C564_dma3_wait")==1,
+           "busy DMA must preserve the named unresolved boundary");
+    PASS();
+}
+
 static void test_DAY2_cd_stream(void)
 {
     TEST("DAY2_cd_stream");
@@ -54,7 +84,7 @@ static void test_DAY2_cd_stream(void)
         ASSERT(hash==CDSTREAM_cases[k].hash,"stream assembly RAM differs from original");
         ASSERT(PE_CdLoadU32(0x1F801018u)==CDSTREAM_cases[k].bus &&
                PE_CdLoadU32(0x1F801020u)==CDSTREAM_cases[k].mailbox &&
-               PE_CdLoadU8(0x1F801803u)==CDSTREAM_cases[k].request,"stream register writes differ");
+               (PE_CdReg_ReadU32(PE_CDREG_BASE)>>24)==CDSTREAM_cases[k].request,"stream register writes differ");
         if(CDSTREAM_cases[k].boundary) {
             const char *names[]={"", "func_8007C564_sector_fifo","func_8007CEAC","func_8007AAB4","func_8007C564_auxiliary_callback"};
             ASSERT(PE_Port_GetStopReason()==PE_PORT_STOP_UNRESOLVED_BOUNDARY &&

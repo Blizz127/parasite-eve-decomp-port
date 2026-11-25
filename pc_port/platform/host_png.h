@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <errno.h>
 #include <sys/stat.h>
 #ifdef _WIN32
 #include "pe_posix_win32.h"   /* mkdir(path, mode) -> the CRT form */
@@ -235,10 +236,14 @@ static inline int HostShot_Save(const uint8_t *rgb, int w, int h, char *path, si
     for (int tries = 0; tries < 10000; tries++) {
         seq++;
         if (snprintf(file, sizeof file, "%s/pe-%s-%u.png", dir, stamp, seq) >= (int)sizeof file) break;
-        f = fopen(file, "rb");          /* never overwrite an existing shot */
-        if (f) { fclose(f); continue; }
-        f = fopen(file, "wb");
-        if (!f) break;
+        /* Claim the name atomically: another process may choose the same
+         * timestamp/sequence, and an unreadable file still must be preserved.
+         * C11 exclusive creation also refuses an existing symbolic link. */
+        f = fopen(file, "wbx");
+        if (!f) {
+            if (errno == EEXIST) continue;
+            break;
+        }
         if (fwrite(buf, 1, need, f) != need) { fclose(f); (void)remove(file); break; }
         if (fclose(f) != 0) { (void)remove(file); break; }
         if (snprintf(path, n, "%s", file) >= (int)n) { (void)remove(file); break; }

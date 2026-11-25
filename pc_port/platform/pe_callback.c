@@ -9,6 +9,8 @@
  *   binding map guest function address → host PECallback, full width.
  */
 #include "pe_callback.h"
+#include "pe_plat/irq_callback.h"
+#include "pe_irq_delivery.h"
 #include "game_port.h"
 #include "pe_guestcode.h"
 #include "host_framebuffer.h"
@@ -129,39 +131,43 @@ void PE_Callback_GetResetTrace(PeCallbackResetTrace *out)
     }
 }
 
+/* Host service for the clean-room interrupt handlers
+ * (platform/pe_plat_irq_callback.c): call the guest callback at `guest` with
+ * no arguments, as the retail jalr through a callback slot would.  A host
+ * bind wins, then the verified guest-code registry; anything else is a loud
+ * stop.  Returns 0 when the port has stopped (the caller returns at once). */
+int pe_plat_invoke_guest_callback(uint32_t guest)
+{
+    uint32_t epoch = PE_Port_StopEpoch();
+    int dma_ok;
+    if (PE_IRQ_DmaCallbackService(guest, &dma_ok))   /* DMA-specific routing */
+        return dma_ok && PE_Port_StopEpoch() == epoch;
+    if (PE_IRQ_CpuCallbackService(guest, &dma_ok))   /* CPU handler routing */
+        return dma_ok && PE_Port_StopEpoch() == epoch;
+    PECallback fn = Resolve(guest);
+    const PeGuestCodeEntry *code = fn ? NULL : PE_GuestCode_Resolve(guest);
+    if (fn) {
+        fn();
+    } else if (code && code->thunk) {
+        (void)code->thunk(0u, 0u, 0u, 0u);
+    } else {
+        fprintf(stderr,
+                "[CALLBACK] dispatch: no host binding for guest 0x%08X\n",
+                guest);
+        g_err_count++;
+        PE_Port_RequestStop(PE_PORT_STOP_UNRESOLVED_BOUNDARY);
+        return 0;
+    }
+    return PE_Port_StopEpoch() == epoch;
+}
+
 int PE_Callback_DispatchChecked(void)
 {
-    uint32_t epoch=PE_Port_StopEpoch();
-    /* func_8007440C: D_800956AC++, then slots 0..7 in order, no args,
-     * return values ignored. */
-    uint32_t n = PE_LoadU32(PE_CALLBACK_COUNTER_ADDR);
-    PE_StoreU32(PE_CALLBACK_COUNTER_ADDR, n + 1u);
-    for (uint32_t i = 0; i < PE_CALLBACK_SLOTS; i++) {
-        pe_addr_t guest = PE_Callback_GetSlot(i);
-        if (guest == 0) {
-            continue;
-        }
-        PECallback fn = Resolve(guest);
-        const PeGuestCodeEntry *code = fn ? NULL : PE_GuestCode_Resolve(guest);
-        if (fn) {
-            fn();
-            if(PE_Port_StopEpoch()!=epoch)return 0;
-        } else if (code && code->thunk) {
-            /* No manual bind (e.g. func_8003E680 now a generated TU that
-             * registers the retail pointer only): the verified guest-code
-             * registry resolves the address, as the retail jalr would. */
-            (void)code->thunk(0u, 0u, 0u, 0u);
-            if(PE_Port_StopEpoch()!=epoch)return 0;
-        } else {
-            fprintf(stderr,
-                    "[CALLBACK] dispatch: no host binding for guest 0x%08X\n",
-                    guest);
-            g_err_count++;
-            PE_Port_RequestStop(PE_PORT_STOP_UNRESOLVED_BOUNDARY);
-            return 0;
-        }
-    }
-    return 1;
+    /* The VBlank handler is the clean-room pe_plat_vsync_handler (guest
+     * 0x8007440C); this host entry reports whether it ran without a stop. */
+    uint32_t epoch = PE_Port_StopEpoch();
+    (void)pe_plat_vsync_handler();
+    return PE_Port_StopEpoch() == epoch;
 }
 
 void PE_Callback_Dispatch(void)

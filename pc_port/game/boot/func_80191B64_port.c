@@ -23,6 +23,7 @@
  */
 
 #include "psx_compat.h"
+#include "game_port.h"
 #include "pe_sdk.h"
 #include "pe_port_compat.h"
 
@@ -40,11 +41,18 @@ int func_80191B64(pe_addr_t state)
     int32_t s1 = (int32_t)state;
     int32_t v0;
 
+    if (PE_Port_ShouldStop())
+        return 0;
     v0 = func_8007F72C();
+    if (PE_Port_ShouldStop())
+        return 0;
     if (v0 == 1) {
         int32_t v1 = func_8007F7A8();
-        if ((uint32_t)v1 != (uint32_t)PE_LoadU16(0x800B0DD4u))
+        if ((uint32_t)v1 != (uint32_t)PE_LoadU16(0x800B0DD4u)) {
             func_800719E4(1u);
+            if (PE_Port_ShouldStop())
+                return 0;
+        }
     }
     /* BB0 poll: 7C484(sp+16, sp+20).  The beqz delay decrements s0
      * on every pass: zero breaks to BD0, nonzero retries until the
@@ -55,6 +63,8 @@ int func_80191B64(pe_addr_t state)
      * lane-1 + a changed 7F7A8 head to even reach.) */
     for (;;) {
         v0 = func_8007C484(MV1_SP16, MV1_SP20);
+        if (PE_Port_ShouldStop())
+            return 0;
         s0--;
         if (v0 == 0)
             break;
@@ -78,6 +88,8 @@ int func_80191B64(pe_addr_t state)
             int32_t adj = (int32_t)q >> 31;
             v >>= 3;
             func_800870F0((uint32_t)(v - adj));
+            if (PE_Port_ShouldStop())
+                return 0;
         }
     }
     /* C44 slot-valid latches (unsigned over sign-extended halves). */
@@ -130,6 +142,8 @@ int func_80191B64(pe_addr_t state)
             rect.w = (int16_t)PE_LoadU16(MV1_RECT + 4u);
             rect.h = (int16_t)PE_LoadU16(MV1_RECT + 6u);
             func_80074F44(&rect, 0u, 0u, 0u);
+            if (PE_Port_ShouldStop())
+                return 0;
         }
         PE_StoreU16(0x801D0DE0u, PE_LoadU16(slot + 16u));
         PE_StoreU16(0x801D0DE2u, PE_LoadU16(slot + 18u));

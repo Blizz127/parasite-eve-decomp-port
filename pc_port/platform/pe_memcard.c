@@ -12,6 +12,9 @@
 #include <sys/stat.h>
 #ifdef _WIN32
 #include <direct.h>
+#include <windows.h>
+#else
+#include <unistd.h>
 #endif
 
 #define MC_DIR_FRAMES   15u
@@ -44,6 +47,8 @@ typedef struct {
     uint32_t size;                /* bytes */
     uint32_t pos;
     uint32_t mode;
+    int write_succeeded;
+    int write_failed;
 } McFile;
 
 static McPort  g_ports[PE_MC_PORTS];
@@ -151,18 +156,22 @@ static int make_dirs(const char *path)
     return 0;
 }
 
-static void default_path(int port, char *out, size_t cap)
+static int default_path(int port, char *out, size_t cap)
 {
     const char *env = getenv(port == 0 ? "PE_MEMCARD1" : "PE_MEMCARD2");
+    int n;
     out[0] = 0;
-    if (env && env[0]) { snprintf(out, cap, "%s", env); return; }
-    if (port != 0) return;                 /* slot 2 empty unless configured */
+    if (env && env[0]) {
+        n = snprintf(out, cap, "%s", env);
+        return n >= 0 && (size_t)n < cap;
+    }
+    if (port != 0) return 1;              /* slot 2 empty unless configured */
 #ifdef _WIN32
     {
         const char *base = getenv("APPDATA");
         if (base && base[0]) {
-            snprintf(out, cap, "%s\\parasite-eve-port\\memcard1.mcd", base);
-            return;
+            n = snprintf(out, cap, "%s\\parasite-eve-port\\memcard1.mcd", base);
+            return n >= 0 && (size_t)n < cap;
         }
     }
 #endif
@@ -170,12 +179,13 @@ static void default_path(int port, char *out, size_t cap)
         const char *xdg = getenv("XDG_DATA_HOME");
         const char *home = getenv("HOME");
         if (xdg && xdg[0])
-            snprintf(out, cap, "%s/parasite-eve-port/memcard1.mcd", xdg);
+            n = snprintf(out, cap, "%s/parasite-eve-port/memcard1.mcd", xdg);
         else if (home && home[0])
-            snprintf(out, cap, "%s/.local/share/parasite-eve-port/memcard1.mcd", home);
+            n = snprintf(out, cap, "%s/.local/share/parasite-eve-port/memcard1.mcd", home);
         else
-            snprintf(out, cap, "memcard1.mcd");
+            n = snprintf(out, cap, "memcard1.mcd");
     }
+    return n >= 0 && (size_t)n < cap;
 }
 
 static void resolve(int port)
@@ -183,7 +193,13 @@ static void resolve(int port)
     McPort *p = &g_ports[port];
     if (p->configured) return;
     p->configured = 1;
-    default_path(port, p->path, sizeof p->path);
+    if (!default_path(port, p->path, sizeof p->path)) {
+        p->path[0] = 0;
+        p->present = 0;
+        errno = ENAMETOOLONG;
+        set_error("memory card path too long", NULL);
+        return;
+    }
     p->present = p->path[0] != 0;
     p->memory_only = 0;
 }
@@ -200,11 +216,44 @@ static int save_image(McPort *p)
     if (fwrite(p->image, 1, PE_MC_IMAGE_SIZE, f) != PE_MC_IMAGE_SIZE) {
         set_error("write", tmp); fclose(f); remove(tmp); return 0;
     }
+#ifndef _WIN32
+    /* Flush the complete replacement before exposing it at the card path.
+     * All failures here precede rename, so callers can still restore their
+     * cached image without disagreeing with the file on disk. This syncs the
+     * file contents only; directory-entry durability is not guaranteed. */
+    if (fflush(f) != 0) { set_error("flush", tmp); fclose(f); remove(tmp); return 0; }
+    int sync_result;
+    do { sync_result = fsync(fileno(f)); } while (sync_result != 0 && errno == EINTR);
+    if (sync_result != 0) { set_error("sync", tmp); fclose(f); remove(tmp); return 0; }
+#endif
     if (fclose(f) != 0) { set_error("close", tmp); remove(tmp); return 0; }
 #ifdef _WIN32
-    remove(p->path);
-#endif
+    /* Replace in place without first deleting the existing card. Both files
+     * are in the same directory; a failed replacement must not be followed
+     * by a separate deletion of the destination. */
+    if (!MoveFileExA(tmp, p->path, MOVEFILE_REPLACE_EXISTING)) {
+        unsigned long error = (unsigned long)GetLastError();
+        snprintf(g_last_error, sizeof g_last_error,
+                 "replace %.180s: Windows error %lu", p->path, error);
+        fprintf(stderr, "[MEMCARD] %s\n", g_last_error);
+        remove(tmp);
+        return 0;
+    }
+#else
     if (rename(tmp, p->path) != 0) { set_error("rename to", p->path); remove(tmp); return 0; }
+#endif
+    return 1;
+}
+
+/* Preserve the loaded image if persistence fails.  Memory-only cards never
+ * persist and therefore need no rollback allocation. */
+static int snapshot_before_save(McPort *p, uint8_t **snapshot)
+{
+    *snapshot = NULL;
+    if (p->memory_only || !p->present) return 1;
+    *snapshot = malloc(PE_MC_IMAGE_SIZE);
+    if (!*snapshot) { errno = ENOMEM; set_error("snapshot card", NULL); return 0; }
+    memcpy(*snapshot, p->image, PE_MC_IMAGE_SIZE);
     return 1;
 }
 
@@ -238,9 +287,27 @@ static McPort *load_port(int port)
             }
             fprintf(stderr, "[MEMCARD] created formatted card image %s\n", p->path);
         } else {
-            size_t n = fread(p->image, 1, PE_MC_IMAGE_SIZE, f);
-            int extra = fgetc(f) != EOF;
-            fclose(f);
+            size_t n;
+            int extra = 0, read_failed, read_errno, close_failed, close_errno;
+            errno = 0;
+            n = fread(p->image, 1, PE_MC_IMAGE_SIZE, f);
+            read_failed = ferror(f);
+            read_errno = errno;
+            if (!read_failed) {
+                errno = 0;
+                extra = fgetc(f) != EOF;
+                if (ferror(f)) { read_failed = 1; read_errno = errno; }
+            }
+            errno = 0;
+            close_failed = fclose(f) != 0;
+            close_errno = errno;
+            if (read_failed || close_failed) {
+                errno = read_failed ? read_errno : close_errno;
+                if (!errno) errno = EIO;
+                set_error(read_failed ? "read" : "close", p->path);
+                p->loaded = 0;
+                return NULL;
+            }
             if (n != PE_MC_IMAGE_SIZE || extra) {
                 /* Not a raw 128 KiB image: an unformatted card to the game;
                  * the file is only replaced if the game formats it. */
@@ -257,7 +324,16 @@ static McPort *load_port(int port)
 void PE_Memcard_SetPath(int port, const char *path)
 {
     McPort *p;
+    char path_copy[sizeof g_ports[0].path];
+    size_t path_length = 0;
+    int too_long = 0;
     if (port < 0 || port >= PE_MC_PORTS) return;
+    /* path can point into this port's own storage via PE_Memcard_Path. */
+    if (path) {
+        path_length = strnlen(path, sizeof path_copy);
+        too_long = path_length == sizeof path_copy;
+        if (!too_long) memcpy(path_copy, path, path_length + 1u);
+    }
     p = &g_ports[port];
     for (int i = 0; i < MC_MAX_FDS; i++)
         if (g_files[i].used && g_files[i].port == port) g_files[i].used = 0;
@@ -265,9 +341,14 @@ void PE_Memcard_SetPath(int port, const char *path)
     memset(p, 0, sizeof *p);
     p->configured = 1;
     if (!path) return;
+    if (too_long) {
+        errno = ENAMETOOLONG;
+        set_error("memory card path too long", NULL);
+        return;
+    }
     p->present = 1;
-    if (!path[0]) p->memory_only = 1;
-    else snprintf(p->path, sizeof p->path, "%s", path);
+    if (!path_length) p->memory_only = 1;
+    else memcpy(p->path, path_copy, path_length + 1u);
 }
 
 void PE_Memcard_Reset(void)
@@ -318,6 +399,15 @@ static int parse_device(const char *name, const char **rest)
     return name[2] - '0';
 }
 
+/* A wildcard makes the remainder irrelevant; otherwise a pattern longer
+ * than the card's name field cannot match without truncation. */
+static int card_pattern_fits(const char *pattern)
+{
+    for (unsigned i = 0; i <= MC_NAME_MAX; i++)
+        if (pattern[i] == 0 || pattern[i] == '*') return 1;
+    return 0;
+}
+
 static uint8_t *dir_frame(McPort *p, int block)
 {
     return p->image + (unsigned)block * PE_MC_FRAME_SIZE;
@@ -328,7 +418,7 @@ static int name_equals(const uint8_t *frame, const char *name)
     char stored[MC_NAME_MAX + 1];
     memcpy(stored, frame + 0x0A, MC_NAME_MAX);
     stored[MC_NAME_MAX] = 0;
-    return strncmp(stored, name, MC_NAME_MAX) == 0;
+    return strcmp(stored, name) == 0;
 }
 
 static int find_file(McPort *p, const char *name)
@@ -338,6 +428,85 @@ static int find_file(McPort *p, const char *name)
         if (get32(f) == MC_STATE_FIRST && name_equals(f, name)) return b;
     }
     return -1;
+}
+
+/* Validate a live chain before following it.  Read-only recovery permits a
+ * bad directory checksum, but never an invalid shape or cross-file first. */
+static int valid_live_chain(McPort *p, int first, int checksums, uint16_t *out_mask)
+{
+    if (first < 1 || first > (int)MC_DIR_FRAMES) return 0;
+    uint32_t bytes = get32(dir_frame(p, first) + 4);
+    if (!bytes || bytes > MC_DIR_FRAMES * PE_MC_BLOCK_SIZE || bytes % PE_MC_BLOCK_SIZE) return 0;
+    uint32_t count = bytes / PE_MC_BLOCK_SIZE;
+    uint16_t mask = 0;
+    int block = first;
+    for (uint32_t i = 0; i < count; i++) {
+        if (block < 1 || block > (int)MC_DIR_FRAMES || (mask & (1u << block))) return 0;
+        const uint8_t *frame = dir_frame(p, block);
+        uint32_t expected = i == 0 ? MC_STATE_FIRST : i + 1u == count ? MC_STATE_LAST : MC_STATE_MIDDLE;
+        if (get32(frame) != expected) return 0;
+        if (checksums && PE_Memcard_FrameChecksum(frame) != frame[PE_MC_FRAME_SIZE - 1u]) return 0;
+        mask |= (uint16_t)(1u << block);
+        uint16_t next = get16(frame + 8);
+        if (i + 1u == count) { if (next != 0xFFFFu) return 0; }
+        else { if (next >= MC_DIR_FRAMES) return 0; block = (int)next + 1; }
+    }
+    if (out_mask) *out_mask = mask;
+    return 1;
+}
+
+/* Read-only recovery can ignore checksums, but a structurally valid chain
+ * must not overlap another valid chain or share its file name. */
+static int safe_chain_for_read(McPort *p, int first)
+{
+    uint16_t mask;
+    if (!valid_live_chain(p, first, 0, &mask)) return 0;
+    const uint8_t *frame = dir_frame(p, first);
+    for (int b = 1; b <= (int)MC_DIR_FRAMES; b++) {
+        const uint8_t *other = dir_frame(p, b);
+        uint16_t other_mask;
+        if (b == first || get32(other) != MC_STATE_FIRST) continue;
+        if (!strncmp((const char *)frame + 0x0A, (const char *)other + 0x0A, MC_NAME_MAX)) return 0;
+        if (valid_live_chain(p, b, 0, &other_mask) && (mask & other_mask)) return 0;
+    }
+    return 1;
+}
+
+/* Refuse writes when any directory frame is corrupt or live chains overlap. */
+static int safe_directory_for_mutation(McPort *p)
+{
+    uint16_t occupied = 0;
+    for (int b = 1; b <= (int)MC_DIR_FRAMES; b++) {
+        const uint8_t *frame = dir_frame(p, b);
+        uint32_t state = get32(frame);
+        if (PE_Memcard_FrameChecksum(frame) != frame[PE_MC_FRAME_SIZE - 1u]) return 0;
+        if (state != MC_STATE_FIRST && state != MC_STATE_MIDDLE && state != MC_STATE_LAST &&
+            state != MC_STATE_FREE && state != MC_STATE_DEL_FIRST &&
+            state != MC_STATE_DEL_MIDDLE && state != MC_STATE_DEL_LAST) return 0;
+        if (state == MC_STATE_FIRST) {
+            uint16_t mask;
+            if (!valid_live_chain(p, b, 1, &mask) || (occupied & mask)) return 0;
+            for (int prev = 1; prev < b; prev++) {
+                const uint8_t *other = dir_frame(p, prev);
+                if (get32(other) == MC_STATE_FIRST && !strncmp((const char *)frame + 0x0A,
+                                                               (const char *)other + 0x0A, MC_NAME_MAX)) return 0;
+            }
+            occupied |= mask;
+        }
+    }
+    /* A live continuation without a first block may contain recoverable data. */
+    for (int b = 1; b <= (int)MC_DIR_FRAMES; b++) {
+        uint32_t state = get32(dir_frame(p, b));
+        if ((state == MC_STATE_MIDDLE || state == MC_STATE_LAST) &&
+            !(occupied & (1u << b))) return 0;
+    }
+    return 1;
+}
+
+static void bad_directory(McPort *p)
+{
+    errno = EIO;
+    set_error("invalid card directory", p->memory_only ? NULL : p->path);
 }
 
 static int block_is_free(McPort *p, int b)
@@ -389,8 +558,9 @@ static int create_file(McPort *p, const char *name, uint32_t blocks)
 
 static McFile *get_file(int fd)
 {
+    if (fd < MC_FD_BASE || fd >= MC_FD_BASE + MC_MAX_FDS) return NULL;
     int i = fd - MC_FD_BASE;
-    if (i < 0 || i >= MC_MAX_FDS || !g_files[i].used) return NULL;
+    if (!g_files[i].used) return NULL;
     return &g_files[i];
 }
 
@@ -401,7 +571,7 @@ int PE_Memcard_Open(const char *name, uint32_t mode)
     const char *rest;
     int port = parse_device(name, &rest), first, slot = -1;
     McPort *p;
-    if (port < 0 || !rest[0]) return -1;
+    if (port < 0 || !rest[0] || strnlen(rest, MC_NAME_MAX + 1u) > MC_NAME_MAX) return -1;
     p = load_port(port);
     if (!p || !PE_Memcard_ImageIsFormatted(p->image)) return -1;
     for (int i = 0; i < MC_MAX_FDS; i++) if (!g_files[i].used) { slot = i; break; }
@@ -409,13 +579,23 @@ int PE_Memcard_Open(const char *name, uint32_t mode)
     first = find_file(p, rest);
     if (mode & 0x200u) {                         /* FCREAT */
         if (first >= 0) return -1;               /* already exists */
+        if (!safe_directory_for_mutation(p)) { bad_directory(p); return -1; }
+        uint8_t *snapshot;
+        if (!snapshot_before_save(p, &snapshot)) return -1;
         first = create_file(p, rest, mode >> 16);
-        if (first < 0) return -1;
-        if (!save_image(p)) return -1;
+        if (first < 0) { free(snapshot); return -1; }
+        if (!save_image(p)) {
+            if (snapshot) memcpy(p->image, snapshot, PE_MC_IMAGE_SIZE);
+            free(snapshot); return -1;
+        }
+        free(snapshot);
         fprintf(stderr, "[MEMCARD] port %d: created %s (%u block(s) from %d)\n",
                 port, rest, (mode >> 16) ? mode >> 16 : 1u, first);
     } else if (first < 0) {
         return -1;
+    } else {
+        if (!safe_chain_for_read(p, first)) { bad_directory(p); return -1; }
+        if ((mode & 2u) && !safe_directory_for_mutation(p)) { bad_directory(p); return -1; }
     }
     g_files[slot].used = 1;
     g_files[slot].port = port;
@@ -423,6 +603,8 @@ int PE_Memcard_Open(const char *name, uint32_t mode)
     g_files[slot].size = get32(dir_frame(p, first) + 4);
     g_files[slot].pos = 0;
     g_files[slot].mode = mode;
+    g_files[slot].write_succeeded = 0;
+    g_files[slot].write_failed = 0;
     return slot + MC_FD_BASE;
 }
 
@@ -445,12 +627,17 @@ static int transfer(int fd, uint8_t *dst, const uint8_t *src, int32_t length, in
     McFile *f = get_file(fd);
     McPort *p;
     int32_t done = 0;
+    uint32_t original_pos;
+    uint8_t *snapshot = NULL;
     if (!f || length < 0) return -1;
     if ((length & 0x7F) || (f->pos & 0x7Fu)) return -1;
     if (write ? !(f->mode & 2u) : !(f->mode & 1u)) return -1;
     p = load_port(f->port);
     if (!p) return -1;
+    if (write && length > 0 && !safe_directory_for_mutation(p)) { bad_directory(p); return -1; }
     if ((uint32_t)length > f->size - f->pos) length = (int32_t)(f->size - f->pos);
+    original_pos = f->pos;
+    if (write && length > 0 && !snapshot_before_save(p, &snapshot)) return -1;
     while (done < length) {
         long off = file_offset(p, f->first_block, f->pos);
         uint32_t chunk = PE_MC_BLOCK_SIZE - (f->pos % PE_MC_BLOCK_SIZE);
@@ -461,7 +648,12 @@ static int transfer(int fd, uint8_t *dst, const uint8_t *src, int32_t length, in
         done += (int32_t)chunk;
         f->pos += chunk;
     }
-    if (write && done > 0 && !save_image(p)) return -1;
+    if (write && done > 0 && !save_image(p)) {
+        if (snapshot) memcpy(p->image, snapshot, PE_MC_IMAGE_SIZE);
+        f->pos = original_pos;
+        free(snapshot); return -1;
+    }
+    free(snapshot);
     return done;
 }
 
@@ -472,18 +664,32 @@ int PE_Memcard_Read(int fd, void *dst, int32_t length)
 
 int PE_Memcard_Write(int fd, const void *src, int32_t length)
 {
-    return transfer(fd, NULL, (const uint8_t *)src, length, 1);
+    int result = transfer(fd, NULL, (const uint8_t *)src, length, 1);
+    McFile *f = get_file(fd);
+    if (f) {
+        if (result < 0 || result != length) f->write_failed = 1;
+        else if (result > 0) f->write_succeeded = 1;
+    }
+    return result;
 }
 
 int PE_Memcard_Close(int fd)
 {
     McFile *f = get_file(fd);
     if (!f) return -1;
-    if (f->mode & 2u)
-        fprintf(stderr, "[MEMCARD] port %d: closed file at block %d after writing to %u/%u%s%s\n",
-                f->port, f->first_block, f->pos, f->size,
-                g_ports[f->port].memory_only ? "" : ", saved ",
-                g_ports[f->port].memory_only ? "" : g_ports[f->port].path);
+    if (f->mode & 2u) {
+        if (f->write_failed)
+            fprintf(stderr, "[MEMCARD] port %d: closed file at block %d; one or more writes failed or were incomplete\n",
+                    f->port, f->first_block);
+        else if (!f->write_succeeded)
+            fprintf(stderr, "[MEMCARD] port %d: closed file at block %d without writes\n",
+                    f->port, f->first_block);
+        else
+            fprintf(stderr, "[MEMCARD] port %d: closed file at block %d after writing to %u/%u%s%s\n",
+                    f->port, f->first_block, f->pos, f->size,
+                    g_ports[f->port].memory_only ? "" : ", saved ",
+                    g_ports[f->port].memory_only ? "" : g_ports[f->port].path);
+    }
     f->used = 0;
     return fd;
 }
@@ -495,12 +701,19 @@ int PE_Memcard_Format(const char *device)
     if (port < 0) return 0;
     p = load_port(port);
     if (!p) return 0;
+    uint8_t *snapshot;
+    if (!snapshot_before_save(p, &snapshot)) return 0;
+    PE_Memcard_FormatImage(p->image);
+    if (!save_image(p)) {
+        if (snapshot) memcpy(p->image, snapshot, PE_MC_IMAGE_SIZE);
+        free(snapshot); return 0;
+    }
+    free(snapshot);
+    p->formatted = 1;
     for (int i = 0; i < MC_MAX_FDS; i++)
         if (g_files[i].used && g_files[i].port == port) g_files[i].used = 0;
-    PE_Memcard_FormatImage(p->image);
-    p->formatted = 1;
     fprintf(stderr, "[MEMCARD] port %d: formatted\n", port);
-    return save_image(p) ? 1 : 0;
+    return 1;
 }
 
 /* psx-spx: '?' matches any one character, '*' matches the remainder. */
@@ -547,7 +760,7 @@ int PE_Memcard_FirstFile(const char *pattern, PeMcDirEntry *out)
     const char *rest;
     int port = parse_device(pattern, &rest);
     g_search.active = 0;
-    if (port < 0 || !load_port(port)) return 0;
+    if (port < 0 || !card_pattern_fits(rest) || !load_port(port)) return 0;
     g_search.active = 1;
     g_search.port = port;
     g_search.next_block = 1;
@@ -565,11 +778,14 @@ int PE_Memcard_Delete(const char *name)
     const char *rest;
     int port = parse_device(name, &rest), b;
     McPort *p;
-    if (port < 0) return 0;
+    if (port < 0 || !rest[0] || strnlen(rest, MC_NAME_MAX + 1u) > MC_NAME_MAX) return 0;
     p = load_port(port);
     if (!p || !PE_Memcard_ImageIsFormatted(p->image)) return 0;
     b = find_file(p, rest);
     if (b < 0) return 0;
+    if (!safe_directory_for_mutation(p)) { bad_directory(p); return 0; }
+    uint8_t *snapshot;
+    if (!snapshot_before_save(p, &snapshot)) return 0;
     for (int guard = 0; b >= 1 && b <= (int)MC_DIR_FRAMES && guard < (int)MC_DIR_FRAMES; guard++) {
         uint8_t *f = dir_frame(p, b);
         uint32_t s = get32(f);
@@ -580,11 +796,16 @@ int PE_Memcard_Delete(const char *name)
         if (next == 0xFFFFu) break;
         b = next + 1;
     }
+    if (!save_image(p)) {
+        if (snapshot) memcpy(p->image, snapshot, PE_MC_IMAGE_SIZE);
+        free(snapshot); return 0;
+    }
+    free(snapshot);
     for (int i = 0; i < MC_MAX_FDS; i++)
         if (g_files[i].used && g_files[i].port == port &&
             block_is_free(p, g_files[i].first_block)) g_files[i].used = 0;
     fprintf(stderr, "[MEMCARD] port %d: deleted %s\n", port, rest);
-    return save_image(p) ? 1 : 0;
+    return 1;
 }
 
 /* ── libcard card status ─────────────────────────────────────────────── */

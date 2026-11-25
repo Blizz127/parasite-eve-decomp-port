@@ -1,0 +1,244 @@
+/* Synthetic non-wrapping GPU-model readback; no game data or devices. */
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include "pe_guest_ram.h"
+#include "pe_gpu.h"
+#include "pe_gpu_queue_ring.h"
+#include "psx_compat.h"
+#include "pe_bootstrap.h"
+#include "game_port.h"
+#include "pe_irq.h"
+#include "pe_irq_delivery.h"
+#include "pe_guestcode.h"
+#include "pe_mdec.h"
+#include "pe_cdreg.h"
+#include "pe_spu_dma.h"
+#define CHECK(x) do { if (!(x)) { fprintf(stderr,"width %u entry %u failed line %d\n",width,entry,__LINE__); abort(); } } while (0)
+int PE_MMIO_InShadowBlock(pe_addr_t a,size_t n) { (void)a;(void)n;abort(); }
+void *PE_MMIO_Translate(pe_addr_t a,size_t n) { (void)a;(void)n;abort(); }
+uint32_t PE_MMIO_Load(pe_addr_t a,size_t n)
+{
+    if(a==0x1f8010f4u && n==4) return PE_GPU_ReadDICR();
+    if(a==0x1f801070u && n==2) return PE_IRQ_ReadStatus();
+    if(a==0x1f801074u && n==2) return PE_IRQ_GetMask();
+    abort();
+}
+void PE_MMIO_Store(pe_addr_t a,size_t n,uint32_t v)
+{
+    if(a==0x1f8010f4u && n==4) { PE_IRQ_ObserveDicrWrite(v);PE_GPU_WriteDICR(v);return; }
+    if(a==0x1f801070u && n==2) { PE_IRQ_ObserveIstatWrite((uint16_t)v);PE_IRQ_WriteStatus((uint16_t)v);return; }
+    if(a==0x1f801074u && n==2) { PE_IRQ_ExchangeMask((uint16_t)v);return; }
+    abort();
+}
+static unsigned simulated_stop_epoch;
+static int readiness_failure_mode;
+int pe_plat_gpu_readback_wait_existing(uint32_t ready)
+{
+    if(ready!=0x04000000u && ready!=0x08000000u) abort();
+    if(readiness_failure_mode) {
+        if(readiness_failure_mode==2) simulated_stop_epoch++;
+        return 0;
+    }
+    return 1;
+}
+uint32_t pe_plat_gpu_seed_deadline_host(void) { return 0; }
+void PE_MDEC_GetState(PeMdecState *out) { (void)out;abort(); }
+uint32_t PE_CdReg_ReadU32(pe_addr_t a) { (void)a;abort(); }
+pe_addr_t PE_SpuDma_ReadMADR(void) { abort(); }
+int PE_Irq_LockDepth(void) { return 0; }
+unsigned PE_Port_StopEpoch(void) { return simulated_stop_epoch; }
+void Bootstrap_ReturnVoid(const char *a,const char *b) { (void)a;(void)b;abort(); }
+int32_t PE_Bios_Printf(pe_addr_t a,const uint32_t *b,int c) { (void)a;(void)b;(void)c;abort(); }
+int PE_Port_ShouldStop(void) { return simulated_stop_epoch!=0; }
+const PeGuestCodeEntry *PE_GuestCode_Resolve(pe_addr_t a) { (void)a;abort(); }
+void func_8007C13C(void) { abort(); }
+void func_8007C214(void) { abort(); }
+void func_801214D4(void) { abort(); }
+void func_80191DC8(void) { abort(); }
+int PE_GuestHook_Call(const char *slot,const char *caller,pe_addr_t fn,
+                      unsigned arity,uintptr_t a0,uintptr_t a1,uintptr_t a2,uintptr_t a3,int *ret)
+{ (void)slot;(void)caller;(void)fn;(void)arity;(void)a0;(void)a1;(void)a2;(void)a3;(void)ret;abort(); }
+void PE_GuestHook_Refuse(const char *slot,const char *caller,pe_addr_t fn,
+                         unsigned arity,uintptr_t a0,uintptr_t a1,uintptr_t a2,uintptr_t a3,const char *why)
+{ (void)slot;(void)caller;(void)fn;(void)arity;(void)a0;(void)a1;(void)a2;(void)a3;(void)why;abort(); }
+void PE_Port_RequestStop(PEPortStopReason reason) { (void)reason; abort(); }
+void Bootstrap_ReturnVoid1(const char *a,const char *b,uint32_t c) { (void)a;(void)b;(void)c;abort(); }
+/* Queue/worker/callback adapters are fixture-only; the pump and reader are native. */
+static unsigned worker_calls, drawsync_calls;
+static pe_addr_t expected_destination;
+static int worker_result;
+static uint64_t pump_order;
+static PeGpuPumpTrace pump_trace;
+PeGpuPumpTrace *pe_plat_pump_trace_existing(void) { return &pump_trace; }
+void pe_plat_pump_enter_existing(void) { }
+uint64_t pe_plat_pump_next_existing(void) { return ++pump_order; }
+uint16_t pe_plat_irq_set_mask(uint16_t value) { return PE_IRQ_ExchangeMask(value); }
+int pe_plat_pump_load_existing(uint32_t index,uint32_t field,uint32_t *out)
+{ if(!PE_GpuQueue_ReadWord(index,field,out)) abort();return 1; }
+int pe_plat_pump_worker_existing(pe_addr_t worker,pe_addr_t arg,uint32_t aux,uint32_t consumer)
+{
+    if(worker!=0x800768a0u || arg!=0x801e0000u || aux!=expected_destination || consumer || PE_IRQ_GetMask()) abort();
+    unsigned epoch=PE_Port_StopEpoch();
+    worker_calls++;
+    worker_result=pe_plat_gpu_readback_worker_host(arg,aux);
+    return PE_Port_StopEpoch()==epoch; /* Integer result is not a stop. */
+}
+int pe_plat_pump_drawsync_existing(pe_addr_t callback)
+{
+    if(callback!=0x8017f200u || PE_LoadU32(0x80095754u)!=0 ||
+       PE_IRQ_GetMask()!=8 || PE_GPU_DMA2Pending()) abort();
+    drawsync_calls++;
+    return 1;
+}
+static uint32_t expected_word(unsigned i,unsigned width)
+{
+    unsigned left=2*i+1,right=left+1;
+    return left | ((right<=width?right:0u)<<16);
+}
+int main(void)
+{
+    const pe_addr_t rect=0x801e0000u,dst=0x80140000u;
+    const unsigned widths[]={3,32,33};
+    unsigned width=0,entry=0;
+    PE_RamInit();
+    for(unsigned c=0;c<sizeof widths/sizeof widths[0];c++) {
+        width=widths[c];
+        unsigned words=(width+1u)/2u,prefix=words%16u;
+        for(entry=0;entry<4;entry++) {
+            if(entry==3 && words<16) continue;
+            PE_RamReset();PE_GPU_Init();PE_IRQ_Reset();PE_IRQ_DeliveryTraceReset();
+            PE_StoreU16(0x80095750u,1024);PE_StoreU16(0x80095752u,512);
+            uint32_t xy=(80u<<16)|100u,wh=(1u<<16)|width;
+            PE_StoreU32(rect,xy);PE_StoreU32(rect+4,entry==1?0xdeadbeefu:wh);
+            PE_StoreU32(dst-4,0x89abcdefu);
+            for(unsigned i=0;i<=words;i++) PE_StoreU32(dst+4*i,0xa5a5a5a5u);
+            CHECK(PE_GPU_WriteGP0(0xa0000000u) && PE_GPU_WriteGP0(xy) && PE_GPU_WriteGP0(wh));
+            for(unsigned i=0;i<words;i++) CHECK(PE_GPU_WriteGP0(expected_word(i,width)));
+            PE_GPU_EnableDMA2();
+            int result;
+            if (entry>=2) {
+                PE_IRQ_ExchangeMask(8);worker_calls=drawsync_calls=0;pump_order=0;
+                expected_destination=dst;worker_result=99;
+                if (entry==3) {
+                    PE_GPU_SetDMA2InterruptEnabled(1);
+                    PE_StoreU16(0x800945e4u,1);PE_StoreU16(0x80094614u,8);
+                    PE_StoreU32(0x800945f4u,0x80074520u);PE_StoreU32(0x800956bcu,0x1f8010f4u);PE_StoreU32(0x800956c8u,0x80076ee4u);
+                }
+                PE_StoreU32(0x80095874u,1);PE_StoreU32(0x80095878u,0);
+                PE_StoreU32(0x80095754u,1);PE_StoreU32(0x80095758u,0x8017f200u);
+                PE_StoreU32(0x800bd030u,0x800768a0u);
+                PE_StoreU32(0x800bd034u,rect);PE_StoreU32(0x800bd038u,dst);
+                int returned=0;result=PE_func_80076EE4_Pump(&returned);
+                CHECK(returned==1 && worker_calls==1 && worker_result==0 && PE_LoadU32(0x80095878u)==1 && PE_IRQ_GetMask()==8);
+                CHECK(drawsync_calls==(words>=16?0u:1u));
+            } else result=entry?pe_plat_gpu_readback_inline_host(xy,wh,dst):
+                                pe_plat_gpu_readback_worker_host(rect,dst);
+            CHECK(result==0 && PE_LoadU32(rect+4)==(entry==1?0xdeadbeefu:wh));
+            for(unsigned i=0;i<words;i++) CHECK(PE_LoadU32(dst+4*i)==(i<prefix?expected_word(i,width):0xa5a5a5a5u));
+            if(words>=16) {
+                uint64_t token=PE_GPU_DMA2EventToken();
+                CHECK(token && PE_GPU_DMA2Pending() && PE_GPU_ReadDMA2MADR()==((dst+4*prefix)&0x00ffffffu));
+                CHECK(PE_GPU_ReadDMA2BCR()==((words/16u)<<16|16u) && PE_GPU_ReadDMA2CHCR()==PE_GPU_DMA2_CHCR_STORE);
+                CHECK(!PE_GPU_ServiceDMA2Completion(token+1) && PE_GPU_DMA2Pending());
+                CHECK(PE_GPU_ServiceDMA2Completion(token) && !PE_GPU_DMA2Pending());
+            } else CHECK(!PE_GPU_DMA2Pending());
+            if (entry==2 && words>=16) {
+                int returned=0;
+                CHECK(PE_func_80076EE4_Pump(&returned)==0 && returned==1);
+            }
+            if (entry==3) {
+                PeIrqGeneration generation=PE_IRQ_Generation();
+                CHECK(PE_GPU_DMA2CompletionPending() && PE_GPU_DICRRisingEdgePending());
+                CHECK(PE_IRQ_BridgeDICRRisingEdge(generation-1u)==PE_IRQ_EDGE_STALE);
+                CHECK(PE_IRQ_BridgeDICRRisingEdge(generation)==PE_IRQ_EDGE_ASSERTED);
+                CHECK(PE_IRQ_ServicePendingForGeneration(generation)==PE_IRQ_SERVICE_RETURNED);
+                PeIrqDeliveryTrace trace;PE_IRQ_GetDeliveryTrace(&trace);
+                CHECK(trace.cpu_ack_count==1 && trace.last_cpu_source==3 &&
+                      trace.dma_ack_count==1 && trace.last_dma_channel==2 &&
+                      trace.cpu_ack_order<trace.cpu_callback_order &&
+                      trace.cpu_callback_order<trace.dma_ack_order &&
+                      trace.dma_ack_order<trace.dma_callback_order &&
+                      !PE_GPU_DMA2CompletionPending() && !(PE_IRQ_ReadStatus()&8u));
+            }
+            if (entry>=2) CHECK(drawsync_calls==1 && PE_LoadU32(0x80095754u)==0 && PE_IRQ_GetMask()==8);
+            for(unsigned i=0;i<words;i++) CHECK(PE_LoadU32(dst+4*i)==expected_word(i,width));
+            CHECK(PE_LoadU32(dst-4)==0x89abcdefu && PE_LoadU32(dst+4*words)==0xa5a5a5a5u);
+            printf("readback width=%u entry=%u prefix=%u DMA=%u passed\n",width,entry,prefix,words>=16);
+        }
+    }
+    static const pe_addr_t invalid_destinations[]={0u,0x801ffffeu,0x801fffc0u,0xfffffffcu};
+    width=32;
+    for(unsigned bad=0;bad<sizeof invalid_destinations/sizeof invalid_destinations[0];bad++) {
+        for(entry=0;entry<3;entry++) {
+            PE_RamReset();PE_GPU_Init();PE_IRQ_Reset();
+            PE_StoreU16(0x80095750u,1024);PE_StoreU16(0x80095752u,512);
+            uint32_t xy=(10u<<16)|10u,wh=(2u<<16)|32u;
+            PE_StoreU32(rect,xy);PE_StoreU32(rect+4,entry==1?0xdeadbeefu:wh);
+            PE_Fill(0x801fffc0u,64u,0xa5u);
+            CHECK(PE_GPU_WriteGP0(0xa0000000u) && PE_GPU_WriteGP0(xy) &&
+                  PE_GPU_WriteGP0((1u<<16)|1u) && PE_GPU_WriteGP0(0x0000beefu));
+            PE_GPU_EnableDMA2();
+            PeGpuState before,after;PE_GPU_GetState(&before);
+            int result;
+            if(entry==2) {
+                PE_IRQ_ExchangeMask(8);worker_calls=drawsync_calls=0;pump_order=0;
+                expected_destination=invalid_destinations[bad];worker_result=99;
+                PE_StoreU32(0x80095874u,1);PE_StoreU32(0x80095878u,0);
+                PE_StoreU32(0x80095754u,1);PE_StoreU32(0x80095758u,0x8017f200u);
+                PE_StoreU32(0x800bd030u,0x800768a0u);
+                PE_StoreU32(0x800bd034u,rect);PE_StoreU32(0x800bd038u,expected_destination);
+                int returned=0;result=PE_func_80076EE4_Pump(&returned);
+                CHECK(result==0 && returned==1 && worker_calls==1 && worker_result==-1 &&
+                      drawsync_calls==1 && PE_LoadU32(0x80095878u)==1);
+            } else {
+                result=entry?pe_plat_gpu_readback_inline_host(xy,wh,invalid_destinations[bad]):
+                             pe_plat_gpu_readback_worker_host(rect,invalid_destinations[bad]);
+                CHECK(result==-1);
+            }
+            PE_GPU_GetState(&after);
+            CHECK(before.status==after.status && before.gp0_state==after.gp0_state &&
+                  before.gp1_dma_direction==after.gp1_dma_direction &&
+                  before.image_x==after.image_x && before.image_y==after.image_y &&
+                  before.image_width==after.image_width && before.image_height==after.image_height &&
+                  before.image_current_pixel==after.image_current_pixel &&
+                  before.image_remaining_pixels==after.image_remaining_pixels &&
+                  before.dma2_madr==after.dma2_madr && before.dma2_bcr==after.dma2_bcr &&
+                  before.dma2_chcr==after.dma2_chcr && before.dma2_active==after.dma2_active &&
+                  before.dma_event_count==after.dma_event_count);
+            uint16_t pixel=0;CHECK(PE_GPU_ReadVRAM(10,10,&pixel) && pixel==0xbeefu);
+            for(unsigned i=0;i<64;i++) CHECK(PE_LoadU8(0x801fffc0u+i)==0xa5u);
+            CHECK(PE_LoadU32(rect+4)==(entry==1?0xdeadbeefu:wh));
+        }
+    }
+    puts("invalid destination controls: 4 addresses x 3 entries passed");
+    width=3;entry=2;
+    for(int mode=1;mode<=2;mode++) {
+        PE_RamReset();PE_GPU_Init();PE_IRQ_Reset();
+        simulated_stop_epoch=0;readiness_failure_mode=mode;
+        PE_StoreU16(0x80095750u,1024);PE_StoreU16(0x80095752u,512);
+        uint32_t xy=(10u<<16)|10u,wh=(1u<<16)|3u;
+        PE_StoreU32(rect,xy);PE_StoreU32(rect+4,wh);
+        PE_StoreU32(dst-4,0x89abcdefu);PE_StoreU32(dst,0xa5a5a5a5u);PE_StoreU32(dst+4,0x76543210u);
+        CHECK(PE_GPU_WriteGP0(0xa0000000u) && PE_GPU_WriteGP0(xy) &&
+              PE_GPU_WriteGP0((1u<<16)|1u) && PE_GPU_WriteGP0(0x0000beefu));
+        PE_GPU_EnableDMA2();
+        PeGpuState before,after;PE_GPU_GetState(&before);
+        PE_IRQ_ExchangeMask(8);worker_calls=drawsync_calls=0;pump_order=0;
+        expected_destination=dst;worker_result=99;
+        PE_StoreU32(0x80095874u,1);PE_StoreU32(0x80095878u,0);
+        PE_StoreU32(0x80095754u,1);PE_StoreU32(0x80095758u,0x8017f200u);
+        PE_StoreU32(0x800bd030u,0x800768a0u);PE_StoreU32(0x800bd034u,rect);PE_StoreU32(0x800bd038u,dst);
+        int returned=99;CHECK(PE_func_80076EE4_Pump(&returned)==0);
+        CHECK(worker_calls==1 && worker_result==-1 && simulated_stop_epoch==(unsigned)(mode==2));
+        if(mode==1) CHECK(returned==1 && PE_LoadU32(0x80095878u)==1 && PE_IRQ_GetMask()==8 && drawsync_calls==1);
+        else CHECK(returned==0 && PE_LoadU32(0x80095878u)==0 && PE_IRQ_GetMask()==0 && drawsync_calls==0 && PE_LoadU32(0x80095754u)==1);
+        PE_GPU_GetState(&after);
+        CHECK(before.status==after.status && before.gp0_state==after.gp0_state &&
+              before.dma2_chcr==after.dma2_chcr && before.dma2_active==after.dma2_active &&
+              before.image_current_pixel==after.image_current_pixel && before.image_remaining_pixels==after.image_remaining_pixels);
+        CHECK(PE_LoadU32(dst-4)==0x89abcdefu && PE_LoadU32(dst)==0xa5a5a5a5u && PE_LoadU32(dst+4)==0x76543210u);
+    }
+    puts("queued readiness controls: ordinary failure and synthetic stop passed");
+    PE_RamDestroy();return 0;
+}

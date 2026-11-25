@@ -80,6 +80,8 @@ static inline uint8_t HostPadSDL_AxisToByte(int16_t v)
 void     HostPadSDL_RawMapDefaults(HostPadRawMap *m);
 /* Parse "c,o,s,t,l1,r1,l2,r2,select,start"; returns 0 on success (m unchanged on error). */
 int      HostPadSDL_RawMapParse(HostPadRawMap *m, const char *spec);
+/* A raw hotkey index claimed by any game button is suppressed; the map is
+ * not changed, so an unclaimed hotkey works again after a later reparse. */
 uint16_t HostPadSDL_MapJoystick(const HostPadRawMap *m, const uint8_t *btn, int nbtn,
                                 const int16_t *axis, int naxis, unsigned hat, int swap_xy,
                                 uint8_t *hotkeys);

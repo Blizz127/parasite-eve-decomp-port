@@ -509,8 +509,8 @@ static void test_credits_attach_from_host_boot(void)
 /* Bounded credits runs from the production entry state: host-mode libds boot
  * (ResetCallback, host DsInit, CdReset), the pad records and the boot input
  * config (func_8003E974), no button held, and an 80000-sector fixture.  Each
- * runs in a forked child under alarm(): the generated loops have no stop test,
- * so a hang must fail the test, not the suite.  A test VBlank hook in VSync
+ * runs in a forked child under a CPU-time limit: the generated loops have no
+ * stop test, so a hang must fail the test, not the suite.  A test VBlank hook in VSync
  * slot 7 (the game uses 0 and 4) counts VBlanks and injects the stop or the
  * pad press a case needs.
  *
@@ -734,7 +734,12 @@ static void CxaChild(int scenario, CxaRun *r)
     r->presented = (uint32_t)pr;
 }
 
-/* 1 when the child ran to completion inside the bound and wrote its result. */
+/* 1 when the child ran to completion inside the bound and wrote its result.
+ * The bound is seconds of the child's own CPU time (SIGXCPU), so a loaded
+ * machine cannot fail it: credits_pad_code_mode (about 60 s of CPU) overran a
+ * 240 s wall-clock alarm at load average ~650 on 2026-11-09.  A wall-clock
+ * alarm at ten times the bound still ends a child that blocks without
+ * computing. */
 static int CxaFork(int scenario, CxaRun *r, unsigned bound)
 {
     int fds[2], status = 0;
@@ -746,8 +751,12 @@ static int CxaFork(int scenario, CxaRun *r, unsigned bound)
     pid = fork();
     if (pid == 0) {
         CxaRun mine;
+        struct rlimit cpu;
         close(fds[0]);
-        alarm(bound);
+        cpu.rlim_cur = bound;
+        cpu.rlim_max = bound + 5u;
+        if (setrlimit(RLIMIT_CPU, &cpu) != 0) _exit(4);
+        alarm(bound * 10u);
         CxaChild(scenario, &mine);
         _exit(write(fds[1], &mine, sizeof mine) == (ssize_t)sizeof mine ? 0 : 3);
     }

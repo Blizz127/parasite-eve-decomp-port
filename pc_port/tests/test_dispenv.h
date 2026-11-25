@@ -5,6 +5,11 @@ static void DAY1_SeedDisplayDispatch(void)
     PE_StoreU32(0x80095714u,0x80076B20u);
     PE_StoreU32(0x80095748u,0x80071A74u);
     for(unsigned i=0;i<sizeof(DAY1_dispenv_table);i++)PE_StoreU8(0x80095820u+i,DAY1_dispenv_table[i]);
+    /* Retail ResetGraph light-mode callback and its GPU register pointers. */
+    PE_StoreU32(0x80095738u,0x80077144u);
+    PE_StoreU32(0x80095860u,0x1F8010A8u);
+    PE_StoreU32(0x80095870u,0x1F8010F0u);
+    PE_StoreU32(0x80095854u,0x1F801814u);
 }
 static void test_DAY1_dispenv(void)
 {

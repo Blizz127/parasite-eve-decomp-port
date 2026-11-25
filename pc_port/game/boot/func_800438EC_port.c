@@ -38,11 +38,14 @@ void func_800439D8(void)
 
 void func_800438EC(void)
 {
-    pe_addr_t window,node;
+    pe_addr_t window,node,existing;
     uint32_t enabled,count=0u;
     unsigned i;
-    if (func_80062A34(1u,0u)) return;
-    window=func_80062D2C(0u,0u,0u,0u);node=func_8006322C(0u,window,window);
+    if (PE_Port_ShouldStop()) return;
+    existing=func_80062A34(1u,0u);
+    if (PE_Port_ShouldStop() || existing) return;
+    window=func_80062D2C(0u,0u,0u,0u);if (PE_Port_ShouldStop()) return;
+    node=func_8006322C(0u,window,window);if (PE_Port_ShouldStop()) return;
     PE_StoreU32(window+44u,0x80043DA4u);PE_StoreU32(node+48u,0x8004F838u);func_80062CB8(node);
     enabled=PE_LoadU32(0x8009CEF0u)&(func_8005B89C()?0x1Fu:0x1EFu);
     for (i=0;i<9;i++) {count+=enabled&1u;enabled>>=1u;}
@@ -53,13 +56,19 @@ void func_800438EC(void)
 
 void func_8005C174(int32_t battle)
 {
+    uint32_t style;
+    if (PE_Port_ShouldStop()) return;
     PE_StoreU32(0x8009D028u,(uint32_t)battle);
-    PE_StoreU32(0x8009D02Cu,func_80033A20());func_800339A0(0u);func_80051510();
+    style=func_80033A20();if (PE_Port_ShouldStop()) return;
+    PE_StoreU32(0x8009D02Cu,style);func_800339A0(0u);func_80051510();
+    if (PE_Port_ShouldStop()) return;
     D_8009D048=0x800C0E48u;PE_StoreU32(0x8009D048u,D_8009D048);
-    D_8009D050=func_80052F70();PE_StoreU32(0x8009D050u,D_8009D050);
+    style=func_80052F70();if (PE_Port_ShouldStop()) return;
+    D_8009D050=style;PE_StoreU32(0x8009D050u,D_8009D050);
     D_8009D058=0x8009D05Cu;PE_StoreU32(0x8009D058u,D_8009D058);
     D_8009D064=2u;PE_StoreU32(0x8009D064u,D_8009D064);
-    func_800438EC();func_800525EC();
+    func_800438EC();if (PE_Port_ShouldStop()) return;
+    func_800525EC();
 }
 
 void func_80052E30(uint32_t a0);

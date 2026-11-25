@@ -26,6 +26,26 @@ static void test_DAY1_clear_image_packets(void)
     PASS();
 }
 
+static void test_clear_image_packet_rect_alias(void)
+{
+    TEST("clear_image_packet_rect_alias");
+    ResetTestState(); PE_GPU_Init();
+    PE_Fill(0x800a3300u, 56u, 0xa5u);
+    PE_StoreU32(0x800a3300u, 0x00070001u);
+    PE_StoreU32(0x800a3304u, 0x00f00140u);
+    PE_StoreU32(0x80095750u, 0x00400040u);
+    ASSERT(PE_GPU_WriteGP0(0xe1000321u) && PE_GPU_WriteGP0(0xe3012345u) &&
+           PE_GPU_WriteGP0(0xe40abcdeu) && PE_GPU_WriteGP0(0xe53fe801u),
+           "GPU environment seed rejected");
+    ASSERT(func_80076434(0x800a3300u, 0x00123456u) == 0 && !PE_Port_ShouldStop(),
+           "aliased clear worker stopped");
+    ASSERT(PE_LoadU32(0x800a3300u) == 0x080a3328u &&
+           PE_LoadU32(0x800a331cu) == 0x080a3328u &&
+           PE_LoadU32(0x800a3320u) == 0xe3000000u,
+           "clear worker did not reload the overlapping RECT after packet writes");
+    PASS();
+}
+
 static void test_DAY1_clear_image_dispatch_pixels(void)
 {
     TEST_RETAIL_DISC1("DAY1_clear_image_dispatch_pixels"); TEST_RETAIL_FIXUPS(RETAILFIX_dispenv);

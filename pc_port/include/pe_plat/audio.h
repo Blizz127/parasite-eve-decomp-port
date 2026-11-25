@@ -83,4 +83,24 @@ void pe_plat_audio_commit_registers(void);
 }
 #endif
 
+/* _spu_setReverbAttr (pe_plat_spu_reverb.c, clean-room from black-box
+ * vectors: pc_port/tools/pe_cd_leaf_vectors.py reverb). */
+void pe_plat_spu_set_reverb_attr(uint32_t attr);
+/* SpuSetReverbModeType (pe_plat_spu_modetype.c, clean-room from black-box
+ * vectors: pc_port/tools/pe_cd_leaf_vectors.py modetype).  Its callees are
+ * the existing providers func_8007DAE0/func_80085BB4 (pe_plat/state.h),
+ * func_8008D140 (above) and PE_SpuReverb_ClearWorkArea (pe_spu_dma.h). */
+int pe_plat_spu_set_reverb_mode_type(int mode);
+/* _spu_FiDMA, the DMA4 completion handler (pe_plat_spu_fidma.c, clean-room
+ * from black-box vectors: pc_port/tools/pe_cd_leaf_vectors.py fidma). */
+void pe_plat_spu_fidma(void);
+
+#define func_8008D140 pe_plat_spu_set_reverb_attr
+#define func_8008CF70 pe_plat_spu_set_reverb_mode_type
+#define func_8007D614 pe_plat_spu_fidma
+/* Canonical guest-name prototypes for the bindings above (generated
+ * from the pe_plat prototypes; tools read callee signatures from these). */
+void func_8008D140(uint32_t attr);
+int func_8008CF70(int mode);
+void func_8007D614(void);
 #endif /* PE_PLAT_AUDIO_H */

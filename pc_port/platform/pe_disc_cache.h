@@ -21,7 +21,8 @@ extern "C" {
 #endif
 
 /* Path of the configured Disc 1 image into out (env / local file); 0 if
- * one is configured (existence not checked), -1 if none. */
+ * configured and complete (existence not checked), -1 otherwise. On failure,
+ * a non-NULL buffer with nonzero size is set to an empty string. */
 int PE_DiscCache_ImagePath(char *out, size_t out_size);
 
 /* Boot EXE (whole file, PS-X header at 0).  NULL when no disc/cache is

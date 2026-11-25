@@ -9,4 +9,8 @@ void pe_plat_gpu_tex_window_values(uint32_t packet, const int16_t rect[4]);
 void pe_plat_gpu_draw_area_values(uint32_t packet, const int16_t rect[4]);
 #define func_80075B4C pe_plat_gpu_set_tex_window
 #define func_80075B84 pe_plat_gpu_set_draw_area
+/* Canonical guest prototypes (read by the port generators; they expand to
+ * the pe_plat declarations above). */
+void func_80075B4C(uint32_t packet, uint32_t rect);
+void func_80075B84(uint32_t packet, uint32_t rect);
 #endif

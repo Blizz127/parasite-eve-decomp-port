@@ -37,6 +37,7 @@
 #include "psx_compat.h"
 #include "pe_port_compat.h"
 #include "game_port.h"
+#include "pe_plat/cd.h"   /* func_80081268 is bound to pe_plat_ds_81268 (clean-room) */
 
 #define GA_D_8009D254 0x8009D254u
 #define GA_D_8009D278 0x8009D278u

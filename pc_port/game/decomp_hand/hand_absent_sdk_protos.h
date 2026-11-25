@@ -21,22 +21,8 @@
 
 void      func_80038954(pe_addr_t a0, pe_addr_t a1, pe_addr_t a2, int a3);
 int       func_8005CAEC(void);
-int       func_800727B4(pe_addr_t name, int arg);
-int       func_80072950(pe_addr_t a0, int a1, int a2);
-void      func_80073D88(void);
-void      func_80073DB8(void);
 pe_addr_t func_80073E28(void);
-void      func_80073F00(void);
-pe_addr_t func_800743B4(void);
-void      func_8007440C(void);
-pe_addr_t func_800744D4(void);
-int       func_80074C14(int a0);
-int       func_80074CC8(int a0);
-void      func_80074FD4(int a0, unsigned char a1, unsigned char a2,
-                        unsigned char a3);
-pe_addr_t func_800751E4(pe_addr_t a0, int a1);
 unsigned int func_80075B1C(void);
-void      func_80075CE8(pe_addr_t dd, pe_addr_t env);
 /* trailing a1: the caller's live $a1, forwarded (see the definitions) */
 void      func_80090AEC(pe_addr_t a0, unsigned int a1);
 void      func_80090B5C(pe_addr_t a0, unsigned int a1);

@@ -48,7 +48,7 @@ typedef struct {
 typedef struct {
     HostPadComboOrigin o[HOST_PAD_COMBO_ORIGINS];
     uint16_t tap;         /* a short lone press being delivered late */
-    uint64_t tap_until;   /* ms */
+    uint64_t select_tap_since, start_tap_since; /* ms, independent windows */
     int      drain;       /* deliver nothing until the buttons are released */
     uint64_t drain_since; /* ms */
     int      armed;       /* menu navigation presses count (buttons released once) */

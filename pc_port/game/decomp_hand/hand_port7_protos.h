@@ -10,7 +10,6 @@ int func_80068710(pe_addr_t o, pe_addr_t it, unsigned char dir, unsigned char wr
 /* src/func_80083644.c: pad-record reply parser (default mode handler). */
 int func_80083644(pe_addr_t a0);
 /* src/func_80084C4C.c: pad-record receive hook (installed at D_8009B744). */
-void func_80084C4C(pe_addr_t a0);
 
 /* src/func_8001CBA0.c: push an object out across polygon edge i. */
 void func_8001CBA0(pe_addr_t o, pe_addr_t p, unsigned short n, short i);
@@ -19,7 +18,6 @@ int func_8001CE88(short x, short z, pe_addr_t p, unsigned short n);
 /* src/func_8008A068.c: SEQ header parse + 24-voice channel init. */
 void func_8008A068(pe_addr_t a0);
 /* src/func_80081E70.c: CD data-ready (DsRead) interrupt callback. */
-void func_80081E70(unsigned char intr, pe_addr_t result);
 /* src/func_8001D170.c: actor vs boundary-polygon step (push-out / cancel). */
 void func_8001D170(void);
 /* src/func_800DE7A8.c: battle particle pool callback (move / draw). */

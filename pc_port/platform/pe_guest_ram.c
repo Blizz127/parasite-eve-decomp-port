@@ -46,6 +46,7 @@ void PE_RamReset(void)
 
 void PE_RamDestroy(void)
 {
+    if (g_pe_ram) ++g_pe_ram_generation;
     free(g_pe_ram);
     g_pe_ram = NULL;
 }
@@ -59,11 +60,10 @@ bool PE_AddressIsRam(pe_addr_t address)
 
 bool PE_RangeIsRam(pe_addr_t address, size_t size)
 {
-    if (size == 0) return PE_AddressIsRam(address);
-    /* Check for overflow: address + size must not wrap */
-    if (address > PE_RAM_END) return false;
-    if ((uint64_t)address + (uint64_t)size > (uint64_t)PE_RAM_END) return false;
-    return address >= PE_RAM_BASE;
+    if (!PE_AddressIsRam(address)) return false;
+    /* Avoid adding size to address: size_t can be UINT64_MAX on a 64-bit
+     * host, so even a uint64_t sum can wrap. */
+    return size <= (size_t)(PE_RAM_END - address);
 }
 
 bool PE_AddAddress(pe_addr_t base, uint32_t delta, pe_addr_t *result)
@@ -153,14 +153,17 @@ const void *PE_TranslateConst(pe_addr_t address, size_t size)
 
 pe_addr_t PE_HostToGuest(const volatile void *host)
 {
-    const uint8_t *p = (const uint8_t *)(uintptr_t)host;
-
-    if (p == NULL)
+    if (host == NULL)
         return 0u;
-    if (g_pe_ram && p >= g_pe_ram && p < g_pe_ram + PE_RAM_SIZE)
-        return PE_RAM_BASE + (pe_addr_t)(p - g_pe_ram);
-    if (p >= g_pe_scratchpad && p < g_pe_scratchpad + PE_SCRATCHPAD_SIZE)
-        return PE_SCRATCHPAD_BASE + (pe_addr_t)(p - g_pe_scratchpad);
+    /* RAM and scratchpad are distinct C objects. Compare their integer
+     * representations rather than ordering pointers to unrelated objects. */
+    uintptr_t p = (uintptr_t)host;
+    uintptr_t ram = (uintptr_t)g_pe_ram;
+    uintptr_t scratch = (uintptr_t)g_pe_scratchpad;
+    if (g_pe_ram && p >= ram && p - ram < PE_RAM_SIZE)
+        return PE_RAM_BASE + (pe_addr_t)(p - ram);
+    if (p >= scratch && p - scratch < PE_SCRATCHPAD_SIZE)
+        return PE_SCRATCHPAD_BASE + (pe_addr_t)(p - scratch);
     fprintf(stderr, "FATAL: PE_HostToGuest: host pointer %p is not guest "
             "memory\n", (const void *)p);
     abort();
@@ -240,18 +243,23 @@ void PE_StoreU32(pe_addr_t address, uint32_t value)
 
 /* Native guest frames (see pe_guest_ram.h). */
 static pe_addr_t g_pe_frame_sp = PE_GUEST_FRAME_HI;
+/* Positive frames are at least eight bytes, so a slot per aligned address
+ * records the exact enter size without imposing a separate nesting limit. */
+static uint32_t g_pe_frame_sizes[(PE_GUEST_FRAME_HI - PE_GUEST_FRAME_LO) / 8u];
 
 pe_addr_t PE_GuestFrame_Enter(uint32_t size)
 {
-    uint32_t n = (size + 7u) & ~7u;
-    if (n > g_pe_frame_sp - PE_GUEST_FRAME_LO) {
+    /* Reject before rounding so size + 7 cannot wrap. */
+    if (size > PE_GUEST_FRAME_HI - PE_GUEST_FRAME_LO ||
+        ((size + 7u) & ~7u) > g_pe_frame_sp - PE_GUEST_FRAME_LO) {
         fprintf(stderr, "FATAL: PE_GuestFrame_Enter: %u-byte native guest frame "
                 "overflows [0x%08X,0x%08X) (sp=0x%08X)\n", (unsigned)size,
                 (unsigned)PE_GUEST_FRAME_LO, (unsigned)PE_GUEST_FRAME_HI,
                 (unsigned)g_pe_frame_sp);
         abort();
     }
-    g_pe_frame_sp -= n;
+    g_pe_frame_sp -= (size + 7u) & ~7u;
+    if (size) g_pe_frame_sizes[(g_pe_frame_sp - PE_GUEST_FRAME_LO) / 8u] = size;
     return g_pe_frame_sp;
 }
 
@@ -261,6 +269,21 @@ void PE_GuestFrame_Leave(pe_addr_t base, uint32_t size)
         fprintf(stderr, "FATAL: PE_GuestFrame_Leave: 0x%08X is not the frame "
                 "top 0x%08X\n", (unsigned)base, (unsigned)g_pe_frame_sp);
         abort();
+    }
+    if (size > PE_GUEST_FRAME_HI - PE_GUEST_FRAME_LO ||
+        ((size + 7u) & ~7u) > PE_GUEST_FRAME_HI - g_pe_frame_sp) {
+        fprintf(stderr, "FATAL: PE_GuestFrame_Leave: invalid %u-byte frame "
+                "at 0x%08X\n", (unsigned)size, (unsigned)base);
+        abort();
+    }
+    if (size) {
+        uint32_t index = (g_pe_frame_sp - PE_GUEST_FRAME_LO) / 8u;
+        if (g_pe_frame_sizes[index] != size) {
+            fprintf(stderr, "FATAL: PE_GuestFrame_Leave: size %u does not match "
+                    "the active frame at 0x%08X\n", (unsigned)size, (unsigned)base);
+            abort();
+        }
+        g_pe_frame_sizes[index] = 0;
     }
     g_pe_frame_sp += (size + 7u) & ~7u;
 }

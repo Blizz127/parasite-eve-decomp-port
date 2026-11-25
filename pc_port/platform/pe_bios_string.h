@@ -40,7 +40,11 @@ pe_addr_t func_80071A44(pe_addr_t dst, int32_t fillbyte, int32_t len);
  * `args` are the 32-bit argument words in call order (a2, a3, stack...);
  * %s arguments are guest addresses.  Writes the NUL; returns the length. */
 int32_t PE_Bios_Sprintf(pe_addr_t dst, pe_addr_t fmt, const uint32_t *args, int nargs);
-/* Same, into a host buffer of `cap` bytes (always NUL-terminated). */
+/* Same, into a host buffer of `cap` bytes (NUL-terminated when cap > 0).
+ * With cap == 0, dst may be NULL and the logical output length is returned.
+ * Out-of-range decimal width/precision, INT32_MIN dynamic width or a result
+ * longer than INT32_MAX returns -1 and clears the buffer; guest sprintf
+ * clears its destination on that error. */
 int32_t PE_Bios_SprintfHost(char *dst, uint32_t cap, pe_addr_t fmt, const uint32_t *args, int nargs);
 /* BIOS printf (A0:0x3F, the EXE's stub 0x80071A74): formats like
  * PE_Bios_Sprintf and writes the text to the host TTY (stderr, prefixed

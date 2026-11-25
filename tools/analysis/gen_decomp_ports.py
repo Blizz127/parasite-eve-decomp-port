@@ -643,6 +643,66 @@ def parse_matched() -> dict[str, dict]:
 # header (PE_PLAT_HEADERS), so pc_port_definitions() reports the provider to
 # every consumer: this generator's conflict skip, the overlay passes and the
 # guest-code dispatch registry of gen_overlay_ports.py.
+# Psy-Q SDK leaves that are dead in the retail program: no call, jump, data
+# word or lui/addiu address pair references them anywhere in the EXE or in any
+# PE.IMG overlay, except their own cluster members.  They are neither emitted
+# nor offered to the guest-code dispatch registry, so the port does not link
+# them; a computed call into one would be a loud boundary.  Evidence:
+# docs/evidence/native-dead-sdk-pad-20261030/.
+DEAD_SDK_UNLINKED = {
+    "func_8007DEC0": "libapi PAD_init: unreferenced",
+    "func_8007DF50": "libapi InitPAD: unreferenced",
+    "func_8007DFE0": "libapi StartPAD: unreferenced",
+    "func_8007E010": "libapi StopPAD: unreferenced",
+    "func_8007E048": "libapi pad helper: only called by PAD_init/InitPAD",
+    "func_8007E0C0": "libapi pad helper: only called by StopPAD",
+    "func_8007E0F8": "libapi pad helper: only referenced by 0x8007E048",
+    "func_8007E160": "libapi pad helper: only referenced by 0x8007E048",
+    # Second scan (all runtime rows; lui+addiu/ori within 32 words, overlays too):
+    "func_80075C44": "libgpu SetPriority: unreferenced",
+    "func_80075C6C": "libgpu SetDrawStp: unreferenced",
+    "func_8007D6D0": "libspu _spu_Fr_: unreferenced",
+    "func_8007EE64": "libds DsClose: unreferenced",
+    # func_800809E0 (libds DS_status) is also unreferenced, but stays linked:
+    # PORTABSENT_generated_tty_caller calls it through the dispatch registry.
+    # Since cdgen10 it is the clean-room pe_plat_ds_status (PE_PLAT_REPLACED).
+    "func_80080D34": "libds DsControlF: unreferenced",
+    "func_80082514": "libpad PadChkVsync: unreferenced",
+    "func_80082554": "libpad PadStopCom: unreferenced",
+    "func_80082574": "libpad PadChkMtap: unreferenced",
+    "func_800835B0": "libpad _padSetCmd: unreferenced",
+    # Unreferenced in retail and with no caller in the port (hand ports removed):
+    "func_8007485C": "libgpu LoadClut: unreferenced",
+    "func_800748C0": "libgpu LoadClut2: unreferenced",
+    "func_800755BC": "libgpu GetDrawEnv: unreferenced",
+    "func_80075AE8": "libgpu GetDispEnv: unreferenced",
+    "func_800776D4": "libgpu StoreImage2: unreferenced",
+    "func_80077904": "libgpu DrawOTag2: unreferenced",
+    "func_8007A468": "libcd CdSync: unreferenced",
+    # Only called by the libpad setters now replaced clean-room:
+    "func_80083BB8": "libpad _padSetActAlign: caller replaced (pe_plat_pad_set.c)",
+    "func_80083D04": "libpad _padSetMainMode: caller replaced (pe_plat_pad_set.c)",
+    "func_800835A4": "libpad _padSetAct: caller replaced (pe_plat_pad_set.c)",
+    # Only called by func_80082534, now host code (pe_save.c):
+    "func_80082DBC": "libpad PadStopCom: caller replaced (pe_save.c)",
+    "func_80074774": "libgpu LoadTPage: unreferenced",
+    "func_80074C14": "libgpu SetGraphQueue: unreferenced",
+    "func_80074FD4": "libgpu ClearImage2: unreferenced",
+    "func_800751E4": "libgpu ClearOTag: unreferenced",
+    "func_80075CE8": "libgpu SetDrawEnv: unreferenced",
+    "func_800775E8": "libgpu LoadImage2: unreferenced",
+    "func_800777C0": "libgpu MoveImage2: unreferenced",
+    "func_8007A360": "libcd CdReset: unreferenced",
+    "func_80082778": "libpad PadInfoAct: unreferenced",
+    "func_80074CC8": "libgpu DrawSyncCallback: unreferenced",
+    "func_8007DE78": "libcard StopCARD: unreferenced",
+    "func_800829C4": "libcard mem_card8: unreferenced",
+    # Only called (jal at 0x80073AF4 / 0x80073B18) by VSync 0x80073A44, which the
+    # port implements as the HostFB_VSync shim (psx_compat.h); no translated
+    # VSync body is linked and no data word or address pair points at it:
+    "func_80073BBC": "libetc text_178 (VSync wait): caller replaced (HostFB_VSync shim)",
+}
+
 PE_PLAT_REPLACED = {
     "func_8007FA2C": "pc_port/game/boot/cd_stream_port.c",  # CD startup state
     "func_8007A4D0": "pc_port/game/boot/cd_stream_port.c",  # CD command control
@@ -710,6 +770,138 @@ PE_PLAT_REPLACED = {
     "func_8007F7A8": "pc_port/platform/pe_plat_cd.c",  # DS disc type
     "func_8007C444": "pc_port/platform/pe_plat_cd.c",  # clear ring status
     "func_80078C94": "pc_port/platform/pe_plat_gte.c",  # matrix translation
+    "func_80078E04": "pc_port/platform/pe_plat_gte_regs.c",  # libgte SetRotMatrix (clean-room)
+    "func_80078E34": "pc_port/platform/pe_plat_gte_regs.c",  # libgte SetLightMatrix (clean-room)
+    "func_80078E64": "pc_port/platform/pe_plat_gte_regs.c",  # libgte SetColorMatrix (clean-room)
+    "func_80078E94": "pc_port/platform/pe_plat_gte_regs.c",  # libgte SetTransMatrix (clean-room)
+    "func_80078FC4": "pc_port/platform/pe_plat_gte_regs.c",  # libgte SetBackColor (clean-room)
+    "func_80078FE4": "pc_port/platform/pe_plat_gte_regs.c",  # libgte SetFarColor (clean-room)
+    "func_80079004": "pc_port/platform/pe_plat_gte_regs.c",  # libgte SetGeomOffset (clean-room)
+    "func_80079024": "pc_port/platform/pe_plat_gte_regs.c",  # libgte SetGeomScreen (clean-room)
+    "func_80078CC4": "pc_port/platform/pe_plat_gte_regs.c",  # libgte ScaleMatrix (clean-room)
+    "func_80078A94": "pc_port/platform/pe_plat_gte_stack.c",  # libgte PushMatrix (clean-room)
+    "func_80078B38": "pc_port/platform/pe_plat_gte_stack.c",  # libgte PopMatrix (clean-room)
+    "func_80077CF4": "pc_port/platform/pe_plat_gte_trig.c",  # libgte rsin (clean-room)
+    "func_80077D30": "pc_port/platform/pe_plat_gte_trig.c",  # libgte sine-table index helper (clean-room)
+    "func_80077DC4": "pc_port/platform/pe_plat_gte_trig.c",  # libgte rcos (clean-room)
+    "func_800794C4": "pc_port/platform/pe_plat_gte_trig.c",  # libgte RotMatrix (clean-room)
+    "func_800799E4": "pc_port/platform/pe_plat_gte_trig.c",  # libgte RotMatrixZYX (clean-room)
+    "func_80079E14": "pc_port/platform/pe_plat_gte_trig.c",  # libgte RotMatrixZ (clean-room)
+    "func_800786E4": "pc_port/platform/pe_plat_gte_cmd.c",  # libgte MulRotMatrix (clean-room)
+    "func_800787D4": "pc_port/platform/pe_plat_gte_cmd.c",  # libgte CompMatrix (clean-room)
+    "func_80078C34": "pc_port/platform/pe_plat_gte_cmd.c",  # libgte ApplyMatrixSV (clean-room)
+    "func_800783E4": "pc_port/platform/pe_plat_gte_cmd2.c",  # libgte LoadAverageShort12 (clean-room)
+    "func_80078554": "pc_port/platform/pe_plat_gte_cmd2.c",  # libgte LoadAverageCol (clean-room)
+    "func_800791D0": "pc_port/platform/pe_plat_gte_cmd2.c",  # libgte OuterProduct0 (clean-room)
+    "func_80079244": "pc_port/platform/pe_plat_gte_cmd2.c",  # libgte RotTransPers (clean-room)
+    "func_80079274": "pc_port/platform/pe_plat_gte_cmd2.c",  # libgte RotTransPers3 (clean-room)
+    "func_800792D4": "pc_port/platform/pe_plat_gte_cmd2.c",  # libgte RotTrans (clean-room)
+    "func_80079384": "pc_port/platform/pe_plat_gte_cmd2.c",  # libgte RotAverageNclip3 (clean-room)
+    "func_80079414": "pc_port/platform/pe_plat_gte_cmd2.c",  # libgte RotAverageNclip4 (clean-room)
+    "func_80077E64": "pc_port/platform/pe_plat_gte_div.c",  # libgte SetFogNearFar (clean-room)
+    "func_80078004": "pc_port/platform/pe_plat_gte_div.c",  # libgte SquareRoot0 (clean-room)
+    "func_80079FB4": "pc_port/platform/pe_plat_gte_div.c",  # libgte ratan2 (clean-room)
+    "func_80078134": "pc_port/platform/pe_plat_gte_vn.c",  # libgte VectorNormal (clean-room)
+    "func_8007E594": "pc_port/platform/pe_plat_ds_leaf.c",  # libds CQ_clear_queue (clean-room)
+    "func_8007E5C4": "pc_port/platform/pe_plat_ds_leaf.c",  # libds command-queue pop (clean-room)
+    "func_8007E6B0": "pc_port/platform/pe_plat_ds_leaf.c",  # libds command-queue next slot (clean-room)
+    "func_8007FBF0": "pc_port/platform/pe_plat_ds_leaf.c",  # libds status-lane getter (clean-room)
+    "func_8007B964": "pc_port/platform/pe_plat_cd_leaf.c",  # libcd CD_vol (clean-room)
+    "func_8007BAC0": "pc_port/platform/pe_plat_cd_leaf.c",  # libcd CD_initvol (clean-room)
+    "func_8007B9EC": "pc_port/platform/pe_plat_cd_leaf.c",  # native flush, register-owner integration
+    "func_8007F994": "pc_port/platform/pe_plat_cd_initialize_callbacks.c",  # independent host initializer
+    "func_80081414": "pc_port/platform/pe_plat_cd_search_file_host.c",
+    "func_8007EE84": "pc_port/platform/pe_plat_cd_queue_command_host.c",
+    "func_8007F0C8": "pc_port/platform/pe_plat_cd_command_sequence_host.c",
+    "func_8007F418": "pc_port/platform/pe_plat_cd_response_query_host.c",
+    "func_8007FE24": "pc_port/game/boot/cd_stream_port.c",
+    "func_8007ED58": "pc_port/platform/pe_plat_cd_reset_host.c",
+    "func_8007EC14": "pc_port/platform/pe_plat_cd_public_init_host.c",
+    "func_80081314": "pc_port/platform/pe_plat_cd_read_stream_host.c",
+    "func_80080DC4": "pc_port/platform/pe_plat_cd_issue_step_host.c",
+    "func_80080D5C": "pc_port/platform/pe_plat_cd_command_wait_host.c",
+    "func_8007FCFC": "pc_port/platform/pe_plat_cd_issue_wrapper.c",  # independent command wrapper
+    "func_800800F4": "pc_port/platform/pe_plat_cd_retry.c",  # independent CD command retry
+    "func_80080164": "pc_port/platform/pe_plat_cd_status_callback.c",  # independent CD status provider
+    "func_80080220": "pc_port/platform/pe_plat_cd_command_complete.c",  # independent CD status provider
+    "func_8008068C": "pc_port/platform/pe_plat_cd_unexpected_status.c",  # independent CD status provider
+    "func_800811E4": "pc_port/platform/pe_plat_cd_poll.c",  # independent host read-poll adapter
+    "func_8007C214": "pc_port/platform/pe_plat_cd_data_ready.c",  # independent data-ready callback
+    "func_8007C394": "pc_port/platform/pe_plat_cd_leaf.c",  # native StFreeRing (existing oracle evidence)
+    "func_8007C484": "pc_port/platform/pe_plat_cd_ring_host.c",  # native StGetNext plus host feeder scheduling
+    "func_8008D140": "pc_port/platform/pe_plat_spu_reverb.c",  # libspu _spu_setReverbAttr (clean-room)
+    "func_8008CF70": "pc_port/platform/pe_plat_spu_modetype.c",  # libspu SpuSetReverbModeType (clean-room)
+    "func_800739C4": "pc_port/platform/pe_plat_math_err.c",  # libmath _err_math (clean-room)
+    "func_8007D614": "pc_port/platform/pe_plat_spu_fidma.c",  # libspu _spu_FiDMA (clean-room)
+    "func_8007DD74": "pc_port/platform/pe_plat_card_clear.c",  # libcard _card_clear (clean-room)
+    "func_800723A4": "pc_port/platform/pe_plat_qsort.c",  # libc qsort (clean-room)
+    "func_80082ADC": "pc_port/platform/pe_plat_card_leaf.c",  # libcard timer-callback init (clean-room)
+    "func_80082CDC": "pc_port/platform/pe_plat_card_leaf.c",  # libcard pending-word read-and-clear (clean-room)
+    "func_80078934": "pc_port/platform/pe_plat_gte_lv.c",  # libgte ApplyMatrixLV (clean-room)
+    "func_80084FC4": "pc_port/platform/pe_plat_pad_rc2.c",  # libpad setRC2wait (clean-room)
+    "func_80084FE4": "pc_port/platform/pe_plat_pad_rc2.c",  # libpad chkRC2wait (clean-room)
+    "func_80083578": "pc_port/platform/pe_plat_card_sio.c",  # libcard SIO0 RX-ready poll (clean-room)
+    "func_800813E8": "pc_port/platform/pe_plat_cd_gen.c",  # libds text_D4 (clean-room)
+    "func_800822BC": "pc_port/platform/pe_plat_cd_gen.c",  # libds ER_clear (clean-room)
+    "func_80082400": "pc_port/platform/pe_plat_cd_gen.c",  # libds text_EC (clean-room)
+    "func_80080F64": "pc_port/platform/pe_plat_cd_gen.c",  # libcd CdRom_SetMode2Callback (clean-room)
+    "func_8007FB04": "pc_port/platform/pe_plat_cd_gen.c",  # libcd 7FB04 (clean-room)
+    "func_8007BBB0": "pc_port/platform/pe_plat_cd_gen.c",  # libcd CD_initintr (clean-room)
+    "func_8007C2A0": "pc_port/platform/pe_plat_cd_gen.c",  # libcd StGetBackloc (clean-room)
+    "func_800808BC": "pc_port/platform/pe_plat_cd_gen2.c",  # libcd CdRom_AbortCmd (clean-room)
+    "func_80081D74": "pc_port/platform/pe_plat_cd_gen2.c",  # libds DsStartReadySystem (clean-room)
+    "func_80081DF8": "pc_port/platform/pe_plat_cd_gen2.c",  # libds DsEndReadySystem (clean-room)
+    "func_800819D8": "pc_port/platform/pe_plat_cd_gen2.c",  # libds text_5C4 (clean-room)
+    "func_8007F69C": "pc_port/platform/pe_plat_cd_gen3.c",  # libds DsFlush (clean-room)
+    "func_80081268": "pc_port/platform/pe_plat_cd_gen4.c",  # libcd 0x80081268 (clean-room)
+    "func_8007FB44": "pc_port/platform/pe_plat_cd_gen5.c",  # libcd CdRom_TryIssueCmd (clean-room)
+    "func_8007FCBC": "pc_port/platform/pe_plat_cd_gen5.c",  # libcd 0x8007FCBC (clean-room)
+    "func_80080CDC": "pc_port/platform/pe_plat_cd_gen5.c",  # libds DsLastPos (clean-room)
+    "func_8008227C": "pc_port/platform/pe_plat_cd_gen5.c",  # libds text_508 (clean-room)
+    "func_80082204": "pc_port/platform/pe_plat_cd_gen5.c",  # libds text_490 (clean-room)
+    "func_8007F608": "pc_port/platform/pe_plat_cd_gen5.c",  # libds DsReady (clean-room)
+    "func_80077548": "pc_port/platform/pe_plat_gpu_gen.c",  # libgpu text_2B04 (clean-room)
+    "func_80077A00": "pc_port/platform/pe_plat_gpu_gen.c",  # libgpu text_2FBC (clean-room)
+    "func_80076C10": "pc_port/platform/pe_plat_gpu_gen.c",  # libgpu text_21CC (clean-room)
+    "func_80082444": "pc_port/platform/pe_plat_cd_gen6.c",  # libds text_130 (clean-room)
+    "func_8007F960": "pc_port/platform/pe_plat_cd_gen7.c",  # libds text_13CC (clean-room)
+    "func_800840DC": "pc_port/platform/pe_plat_card_gen8.c",  # libcard 0x800840DC (clean-room)
+    "func_80077144": "pc_port/platform/pe_plat_gpu_gen9.c",  # libgpu text_2700 ResetGraph core (clean-room)
+    "func_800809E0": "pc_port/platform/pe_plat_ds_gen10.c",  # libds DS_status (clean-room)
+    "func_80080F98": "pc_port/platform/pe_plat_ds_gen11.c",  # libds read-progress callback caller (clean-room)
+    "func_8008214C": "pc_port/platform/pe_plat_ds_gen11.c",  # libds text_3D8 (clean-room)
+    "func_80074BB8": "pc_port/platform/pe_plat_gpu_gen12.c",  # libgpu SetGraphDebug (clean-room)
+    "func_8007DDD4": "pc_port/platform/pe_plat_card_gen13.c",  # libcard InitCARD (clean-room)
+    "func_8007DE40": "pc_port/platform/pe_plat_card_gen13.c",  # libcard StartCARD (clean-room)
+    "func_80082B08": "pc_port/platform/pe_plat_card_gen14.c",  # libcard slot poll (clean-room)
+    "func_80083DF0": "pc_port/platform/pe_plat_card_gen14.c",  # libpad card-object reset (clean-room)
+    "func_800719C4": "pc_port/platform/pe_plat_gpu_gen15.c",  # libgpu flag-tested field address (clean-room)
+    "func_8007E4E0": "pc_port/platform/pe_plat_card_gen15.c",  # libcard _copy_memcard_patch (clean-room)
+    "func_80081D18": "pc_port/platform/pe_plat_ds_gen16.c",  # libds text_904 (clean-room)
+    "func_80084EB0": "pc_port/platform/pe_plat_card_gen17.c",  # libcard _dirFailAuto (clean-room)
+    "func_80084B78": "pc_port/platform/pe_plat_pad_gen18.c",  # libpad text_34 card-object dispatch (clean-room)
+    "func_800727B4": "pc_port/platform/pe_plat_api_gen19.c",  # libapi firstfile (clean-room)
+    "func_80072950": "pc_port/platform/pe_plat_api_gen19.c",  # libapi text_19C device hook (clean-room)
+    "func_80083F04": "pc_port/platform/pe_plat_card_gen20.c",  # libcard card-object sync (clean-room)
+    "func_80083F44": "pc_port/platform/pe_plat_card_gen20.c",  # libcard card-object command (clean-room)
+    "func_8008401C": "pc_port/platform/pe_plat_card_gen20.c",  # libcard card-object write (clean-room)
+    "func_800834E8": "pc_port/platform/pe_plat_card_gen21.c",  # libcard SIO acknowledge wait (clean-room)
+    "func_800830DC": "pc_port/platform/pe_plat_card_gen22.c",  # libcard SIO byte exchange (clean-room)
+    "func_800832B4": "pc_port/platform/pe_plat_card_gen22.c",  # libcard SIO byte write (clean-room)
+    "func_80084168": "pc_port/platform/pe_plat_pad_gen23.c",  # libpad padif transfer (black-box vectors)
+    "func_80083014": "pc_port/platform/pe_plat_pad_gen24.c",  # libpad text_770 card transfer step (black-box vectors)
+    "func_80082B70": "pc_port/platform/pe_plat_card_gen25.c",  # libcard MemCard_TimerCallback (black-box vectors)
+    "func_80084C4C": "pc_port/platform/pe_plat_pad_gen26.c",  # libpad text_108 pad-record step (black-box vectors)
+    "func_80081E70": "pc_port/platform/pe_plat_ds_gen28.c",  # libds text_FC DS ready callback (black-box vectors)
+    "func_8007C044": "pc_port/platform/pe_plat_cd_gen29.c",  # libcd CD_getsector2 (black-box vectors)
+    "func_8007E8F4": "pc_port/platform/pe_plat_ds_gen30.c",  # libds text_360 pending-command dispatch (black-box vectors)
+    "func_8007C304": "pc_port/platform/pe_plat_cd_gen32.c",  # StSetStream (independent black-box vectors)
+    "func_8007EB88": "pc_port/platform/pe_plat_ds_gen31.c",  # libds text_5F4 command-queue push (black-box vectors)
+    "func_80076170": "pc_port/platform/pe_plat_gpu_words.c",  # libgpu draw-area top-left word (clean-room)
+    "func_80076208": "pc_port/platform/pe_plat_gpu_words.c",  # libgpu draw-area bottom-right word (clean-room)
+    "func_800762BC": "pc_port/platform/pe_plat_gpu_words.c",  # libgpu texture-window word (clean-room)
+    "func_80077AC4": "pc_port/platform/pe_plat_gpu_words.c",  # libgpu AddPrim (clean-room)
+    "func_80074924": "pc_port/platform/pe_plat_gpu_drawenv.c",  # libgpu SetDefDrawEnv (clean-room)
     "func_8007A400": "pc_port/platform/pe_plat_cd.c",  # command name
     "func_8007A434": "pc_port/platform/pe_plat_cd.c",  # interrupt name
     "func_80071944": "pc_port/platform/pe_plat_gpu_address.c",  # optional texture chunk
@@ -737,6 +929,8 @@ PE_PLAT_REPLACED = {
     "func_80077CB4": "pc_port/platform/pe_plat_gpu_primitive.c",  # packet append
     "func_80077A28": "pc_port/platform/pe_plat_libc.c",  # byte fill
     "func_80074330": "pc_port/platform/pe_plat_libc.c",  # word clear
+    "func_800744A4": "pc_port/platform/pe_plat_libc.c",  # same word clear (vectors)
+    "func_8007474C": "pc_port/platform/pe_plat_libc.c",  # same word clear (vectors)
     "func_80077B04": "pc_port/platform/pe_plat_gpu_primitive.c",  # semi-transparency
     "func_80077B34": "pc_port/platform/pe_plat_gpu_primitive.c",  # texture shade
     "func_80077B84": "pc_port/platform/pe_plat_gpu_primitive.c",  # poly G3
@@ -803,11 +997,79 @@ PE_PLAT_REPLACED = {
     "func_80073E10": "pc_port/platform/pe_libetc.c",  # SetIntrMask (I_MASK exchange)
     "func_80073D24": "pc_port/platform/pe_libetc.c",  # VSyncCallback (slot 4)
     "func_80073D58": "pc_port/platform/pe_libetc.c",  # VSyncCallbacks (slot n)
+    "func_80074478": "pc_port/platform/pe_libetc.c",  # VSyncCallbacks' target (equivalent)
     "func_80075B1C": "pc_port/platform/pe_plat_gpu_status.c",  # GetODE (psx-spx GPUSTAT.31)
     "func_80075B4C": "pc_port/platform/pe_plat_gpu_area.c",  # SetTexWindow (psx-spx GP0 E2h)
     "func_80075B84": "pc_port/platform/pe_plat_gpu_area.c",  # SetDrawArea (psx-spx GP0 E3h/E4h)
     "func_80073C94": "pc_port/platform/pe_plat_irq_callback.c",  # ResetCallback (clean-room)
+    "func_80073E28": "pc_port/platform/pe_plat_irq_callback.c",  # same as ResetCallback (vectors)
     "func_80073CC4": "pc_port/platform/pe_plat_irq_callback.c",  # InterruptCallback (clean-room)
+    "func_800740D0": "pc_port/platform/pe_plat_irq_callback.c",  # same as InterruptCallback (vectors)
+    "func_80073CF4": "pc_port/platform/pe_plat_irq_callback.c",  # DMACallback (clean-room)
+    "func_800746A0": "pc_port/platform/pe_plat_irq_callback.c",  # same as DMACallback (vectors)
+    "func_80073D88": "pc_port/platform/pe_plat_irq_callback.c",  # StopCallback (clean-room)
+    "func_80074218": "pc_port/platform/pe_plat_irq_callback.c",  # same as StopCallback (vectors)
+    "func_80073DB8": "pc_port/platform/pe_plat_irq_callback.c",  # RestartCallback (clean-room)
+    "func_800742B8": "pc_port/platform/pe_plat_irq_callback.c",  # same as RestartCallback (vectors)
+    "func_8007440C": "pc_port/platform/pe_plat_irq_callback.c",  # VBlank handler (clean-room)
+    "func_800743B4": "pc_port/platform/pe_plat_irq_callback.c",  # startIntrVSync (clean-room)
+    "func_800744D4": "pc_port/platform/pe_plat_irq_callback.c",  # startIntrDMA (clean-room)
+    "func_80074520": "pc_port/platform/pe_plat_irq_callback.c",  # DMA interrupt handler (clean-room)
+    "func_80073F00": "pc_port/platform/pe_plat_irq_callback.c",  # CPU interrupt dispatcher (clean-room)
+    "func_80082534": "pc_port/platform/pe_save.c",
+    "func_8007506C": "pc_port/game/boot/func_8007506C_port.c",
+    "func_800750CC": "pc_port/game/boot/func_8007506C_port.c",
+    "func_80074F44": "pc_port/platform/pe_libgpu.c",
+    "func_800753B4": "pc_port/game/boot/func_800753B4_port.c",
+    "func_80075358": "pc_port/game/boot/func_80075358_port.c",
+    "func_80075424": "pc_port/platform/pe_libgpu.c",
+    "func_8010BD4C": "pc_port/game/boot/func_8010BD4C_port.c",
+    "func_8010C0D8": "pc_port/game/boot/func_8010BE3C_port.c",
+    "func_800752AC": "pc_port/game/boot/func_800752AC_port.c",
+    "func_80076354": "pc_port/game/boot/func_800752AC_port.c",
+    "func_800773D0": "pc_port/game/boot/func_80076C34_port.c",
+    "func_800754E4": "pc_port/platform/pe_libgpu.c",
+    "func_80076434": "pc_port/platform/pe_plat_gpu_clear_worker_host.c",
+    "func_80076664": "pc_port/platform/pe_plat_gpu_upload_worker_host.c",
+    "func_800768A0": "pc_port/platform/pe_plat_gpu_readback_worker_host.c",
+    "func_80076EE4": "pc_port/platform/pe_plat_gpu_queue_pump_host.c",
+    "func_8007512C": "pc_port/game/boot/func_8007512C_port.c",
+    "func_8007A2A4": "pc_port/game/boot/cd_stream_port.c",
+    "func_8007BBFC": "pc_port/game/boot/cd_stream_port.c",
+    "func_8007AAB4": "pc_port/platform/pe_plat_cd_ack_host.c",
+    "func_8007BF44": "pc_port/platform/pe_plat_cd_sector_dma_host.c",
+    "func_8007C564": "pc_port/platform/pe_plat_cd_stream_handler_host.c",
+    "func_8007CEAC": "pc_port/platform/pe_plat_cd_dma_issue_host.c",
+    "func_8007B558": "pc_port/platform/pe_plat_cd_command_issue_host.c",
+    "func_8007B010": "pc_port/platform/pe_plat_cd_status_poll_host.c",
+    "func_80074E28": "pc_port/game/boot/func_8007506C_port.c",
+    "func_800844E4": "pc_port/platform/pe_save.c",
+    "func_800825C0": "pc_port/platform/pe_plat_pad.c",  # PadGetState (clean-room)
+    "func_80082680": "pc_port/platform/pe_plat_pad_info.c",  # PadInfoMode (clean-room)
+    "func_80082974": "pc_port/platform/pe_plat_pad_set.c",  # PadSetAct (clean-room)
+    "func_800828F4": "pc_port/platform/pe_plat_pad_set.c",  # PadSetActAlign (clean-room)
+    "func_8008292C": "pc_port/platform/pe_plat_pad_set.c",  # PadSetMainMode (clean-room)
+    "func_80084B20": "pc_port/platform/pe_plat_pad_leaf.c",  # libpad port -> record (clean-room)
+    "func_80084F8C": "pc_port/platform/pe_plat_pad_leaf.c",  # libpad record busy (clean-room)
+    "func_80084AE8": "pc_port/platform/pe_plat_pad_leaf.c",  # libpad record -> port (clean-room)
+    "func_800847A0": "pc_port/platform/pe_plat_pad_leaf.c",  # libpad command shift (clean-room)
+    "func_80083E70": "pc_port/platform/pe_plat_pad_leaf.c",  # libpad command 'E' (clean-room)
+    "func_80083EE4": "pc_port/platform/pe_plat_pad_leaf.c",  # libpad command 'K' (clean-room)
+    "func_80083C20": "pc_port/platform/pe_plat_pad_leaf.c",  # libpad command 'M' (ALIGN handler) (clean-room)
+    "func_80083E50": "pc_port/platform/pe_plat_pad_leaf.c",  # libpad command 'C' (clean-room)
+    "func_80083E84": "pc_port/platform/pe_plat_pad_leaf.c",  # libpad command 'L' (clean-room)
+    "func_80083EA4": "pc_port/platform/pe_plat_pad_leaf.c",  # libpad command 'F' (clean-room)
+    "func_80083EC4": "pc_port/platform/pe_plat_pad_leaf.c",  # libpad command 'G' (clean-room)
+    "func_800835C0": "pc_port/platform/pe_plat_pad_state.c",  # libpad send state step (clean-room)
+    "func_8008389C": "pc_port/platform/pe_plat_pad_state.c",  # libpad query state step (clean-room)
+    "func_80083790": "pc_port/platform/pe_plat_pad_state.c",  # libpad act size (clean-room)
+    "func_80083D9C": "pc_port/platform/pe_plat_pad_state.c",  # libpad main-mode handler (clean-room)
+    "func_80084644": "pc_port/platform/pe_plat_pad_state.c",  # libpad record init (clean-room)
+    "func_80084B44": "pc_port/platform/pe_plat_pad_state.c",  # libpad hook install (clean-room)
+    "func_80083644": "pc_port/platform/pe_plat_pad_actinfo.c",  # libpad act-info receive step (clean-room)
+    "func_80083C3C": "pc_port/platform/pe_plat_pad_actinfo.c",  # libpad ALIGN handler (clean-room)
+    "func_8008284C": "pc_port/platform/pe_plat_pad_actinfo.c",  # libpad PadInfoComb (clean-room)
+    "func_800837C8": "pc_port/platform/pe_plat_pad_actinfo.c",  # libpad act-info load (clean-room)
     "func_80036DC8": "pc_port/platform/pe_plat_libc.c",  # sound startup
     "func_80072334": "pc_port/platform/pe_plat_libc.c",  # guest byte copy
     "func_800725DC": "pc_port/platform/pe_plat_libc.c",  # startup guard
@@ -818,13 +1080,104 @@ PE_PLAT_REPLACED = {
     "func_8007A344": "pc_port/platform/pe_plat_cd.c",   # CdLastCom
     "func_8007A354": "pc_port/platform/pe_plat_cd.c",   # CdLastPos
 }
-PE_PLAT_HEADERS = {"pc_port/platform/pe_libsnd.c": "pc_port/include/pe_plat/state.h",
+PE_PLAT_HEADERS = {
+    "pc_port/game/boot/func_8010BD4C_port.c": "pc_port/include/pe_plat/mdec_expand.h",
+    "pc_port/game/boot/func_8010BE3C_port.c": "pc_port/include/pe_plat/mdec_callback.h","pc_port/game/boot/func_8007512C_port.c": "pc_port/include/psx_compat.h",
+                   "pc_port/game/boot/func_80076C34_port.c": "pc_port/include/psx_compat.h",
+                   "pc_port/game/boot/func_800752AC_port.c": "pc_port/include/psx_compat.h",
+                   "pc_port/game/boot/func_80075358_port.c": "pc_port/include/psx_compat.h",
+                   "pc_port/game/boot/func_800753B4_port.c": "pc_port/include/psx_compat.h",
+                   "pc_port/platform/pe_libgpu.c": "pc_port/include/psx_compat.h",
+                   "pc_port/platform/pe_plat_gpu_clear_worker_host.c": "pc_port/include/psx_compat.h",
+                   "pc_port/platform/pe_plat_gpu_upload_worker_host.c": "pc_port/include/psx_compat.h",
+                   "pc_port/platform/pe_plat_gpu_readback_worker_host.c": "pc_port/include/psx_compat.h",
+                   "pc_port/platform/pe_plat_gpu_queue_pump_host.c": "pc_port/include/psx_compat.h",
+                   "pc_port/game/boot/func_8007506C_port.c": "pc_port/include/psx_compat.h",
+                   "pc_port/platform/pe_libsnd.c": "pc_port/include/pe_plat/state.h",
                    "pc_port/game/boot/func_8007A214_port.c": "pc_port/include/pe_plat/cd_stream.h",
                    "pc_port/game/boot/cd_stream_port.c": "pc_port/include/pe_plat/cd_stream.h",
                    "pc_port/platform/pe_plat_cd.c": "pc_port/include/pe_plat/cd.h",
                    "pc_port/game/boot/func_800850F4_port.c": "pc_port/include/pe_plat/state.h",
                    "pc_port/platform/pe_plat_cd_sync.c": "pc_port/include/pe_plat/cd.h",
                    "pc_port/platform/pe_plat_gte.c": "pc_port/include/pe_plat/gte.h",
+                   "pc_port/platform/pe_plat_gte_regs.c": "pc_port/include/pe_plat/gte.h",
+                   "pc_port/platform/pe_plat_gte_stack.c": "pc_port/include/pe_plat/gte.h",
+                   "pc_port/platform/pe_plat_gte_trig.c": "pc_port/include/pe_plat/gte.h",
+                   "pc_port/platform/pe_plat_gte_cmd.c": "pc_port/include/pe_plat/gte.h",
+                   "pc_port/platform/pe_plat_gte_cmd2.c": "pc_port/include/pe_plat/gte.h",
+                   "pc_port/platform/pe_plat_gte_div.c": "pc_port/include/pe_plat/gte.h",
+                   "pc_port/platform/pe_plat_gte_vn.c": "pc_port/include/pe_plat/gte.h",
+                   "pc_port/platform/pe_plat_ds_leaf.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_cd_initialize_callbacks.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_cd_search_file_host.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_cd_queue_command_host.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_cd_command_sequence_host.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_cd_response_query_host.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_cd_reset_host.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_cd_public_init_host.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_cd_read_stream_host.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_cd_issue_step_host.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_cd_command_wait_host.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_cd_issue_wrapper.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_cd_retry.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_cd_status_callback.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_cd_command_complete.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_cd_unexpected_status.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_cd_poll.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_cd_data_ready.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_cd_leaf.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_cd_sector_dma_host.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_cd_stream_handler_host.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_cd_dma_issue_host.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_cd_command_issue_host.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_cd_status_poll_host.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_cd_ack_host.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_cd_ring_host.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_spu_reverb.c": "pc_port/include/pe_plat/audio.h",
+                   "pc_port/platform/pe_plat_spu_modetype.c": "pc_port/include/pe_plat/audio.h",
+                   "pc_port/platform/pe_plat_math_err.c": "pc_port/include/pe_plat/libc.h",
+                   "pc_port/platform/pe_plat_spu_fidma.c": "pc_port/include/pe_plat/audio.h",
+                   "pc_port/platform/pe_plat_card_clear.c": "pc_port/include/pe_plat/bios_file.h",
+                   "pc_port/platform/pe_plat_qsort.c": "pc_port/include/pe_plat/libc.h",
+                   "pc_port/platform/pe_plat_card_leaf.c": "pc_port/include/pe_plat/bios_file.h",
+                   "pc_port/platform/pe_plat_gte_lv.c": "pc_port/include/pe_plat/gte.h",
+                   "pc_port/platform/pe_plat_pad_rc2.c": "pc_port/include/pe_plat/pad.h",
+                   "pc_port/platform/pe_plat_card_sio.c": "pc_port/include/pe_plat/bios_file.h",
+                   "pc_port/platform/pe_plat_cd_gen.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_cd_gen2.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_cd_gen3.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_cd_gen4.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_cd_gen5.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_gpu_gen.c": "pc_port/include/pe_plat/gpu_primitive.h",
+                   "pc_port/platform/pe_plat_gpu_gen9.c": "pc_port/include/pe_plat/gpu_primitive.h",
+                   "pc_port/platform/pe_plat_ds_gen10.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_ds_gen11.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_gpu_gen12.c": "pc_port/include/pe_plat/gpu_primitive.h",
+                   "pc_port/platform/pe_plat_card_gen13.c": "pc_port/include/pe_plat/bios_file.h",
+                   "pc_port/platform/pe_plat_card_gen14.c": "pc_port/include/pe_plat/bios_file.h",
+                   "pc_port/platform/pe_plat_gpu_gen15.c": "pc_port/include/pe_plat/gpu_primitive.h",
+                   "pc_port/platform/pe_plat_card_gen15.c": "pc_port/include/pe_plat/bios_file.h",
+                   "pc_port/platform/pe_plat_ds_gen16.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_card_gen17.c": "pc_port/include/pe_plat/bios_file.h",
+                   "pc_port/platform/pe_plat_pad_gen18.c": "pc_port/include/pe_plat/pad.h",
+                   "pc_port/platform/pe_plat_api_gen19.c": "pc_port/include/pe_plat/bios_file.h",
+                   "pc_port/platform/pe_plat_card_gen20.c": "pc_port/include/pe_plat/bios_file.h",
+                   "pc_port/platform/pe_plat_card_gen21.c": "pc_port/include/pe_plat/bios_file.h",
+                   "pc_port/platform/pe_plat_card_gen22.c": "pc_port/include/pe_plat/bios_file.h",
+                   "pc_port/platform/pe_plat_pad_gen23.c": "pc_port/include/pe_plat/pad.h",
+                   "pc_port/platform/pe_plat_pad_gen24.c": "pc_port/include/pe_plat/pad.h",
+                   "pc_port/platform/pe_plat_card_gen25.c": "pc_port/include/pe_plat/bios_file.h",
+                   "pc_port/platform/pe_plat_pad_gen26.c": "pc_port/include/pe_plat/pad.h",
+                   "pc_port/platform/pe_plat_ds_gen28.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_cd_gen29.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_ds_gen30.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_cd_gen32.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_ds_gen31.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_cd_gen6.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_cd_gen7.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_card_gen8.c": "pc_port/include/pe_plat/bios_file.h",
+                   "pc_port/platform/pe_plat_gpu_words.c": "pc_port/include/pe_plat/gpu_primitive.h",
+                   "pc_port/platform/pe_plat_gpu_drawenv.c": "pc_port/include/pe_plat/gpu_primitive.h",
                    "pc_port/platform/pe_plat_gpu_primitive.c": "pc_port/include/pe_plat/gpu_primitive.h",
                    "pc_port/platform/pe_plat_gpu_address.c": "pc_port/include/pe_plat/gpu_address.h",
                    "pc_port/platform/pe_plat_state.c": "pc_port/include/pe_plat/state.h",
@@ -837,7 +1190,14 @@ PE_PLAT_HEADERS = {"pc_port/platform/pe_libsnd.c": "pc_port/include/pe_plat/stat
                    "pc_port/platform/pe_libetc.c": "pc_port/include/pe_plat/bios_sys.h",
                    "pc_port/platform/pe_plat_gpu_status.c": "pc_port/include/pe_plat/gpu_status.h",
                    "pc_port/platform/pe_plat_gpu_area.c": "pc_port/include/pe_plat/gpu_area.h",
-                   "pc_port/platform/pe_plat_irq_callback.c": "pc_port/include/pe_plat/irq_callback.h"}
+                   "pc_port/platform/pe_plat_irq_callback.c": "pc_port/include/pe_plat/irq_callback.h",
+                   "pc_port/platform/pe_save.c": "pc_port/include/pe_plat/pad.h",
+                   "pc_port/platform/pe_plat_pad.c": "pc_port/include/pe_plat/pad.h",
+                   "pc_port/platform/pe_plat_pad_info.c": "pc_port/include/pe_plat/pad.h",
+                   "pc_port/platform/pe_plat_pad_set.c": "pc_port/include/pe_plat/pad.h",
+                   "pc_port/platform/pe_plat_pad_leaf.c": "pc_port/include/pe_plat/pad.h",
+                   "pc_port/platform/pe_plat_pad_state.c": "pc_port/include/pe_plat/pad.h",
+                   "pc_port/platform/pe_plat_pad_actinfo.c": "pc_port/include/pe_plat/pad.h"}
 
 
 def pe_plat_providers() -> dict[str, str]:
@@ -876,6 +1236,13 @@ def pc_port_definitions() -> dict[str, set[str]]:
         if "decomp_ovl" in path.parts:
             continue
         rel = path.relative_to(REPO_ROOT).as_posix()
+        # Test harnesses define link-time stand-ins (`int func_X(...) {...}`)
+        # that never reach the runtime.  Counting them as hand ports silently
+        # dropped load-bearing TUs (2026-11-09: test_effect_stack_ram_generation.c
+        # suppressed func_800C9B68/800CD8C8/800CE144 -> parasite-eve-port link
+        # failure).  A real hand port never lives under pc_port/tests.
+        if rel.startswith("pc_port/tests/"):
+            continue
         text = path.read_text(encoding="utf-8", errors="replace")
         for m in DEF_RE.finditer(text):
             # A `static` definition is file-local: not linkable by a generated
@@ -888,6 +1255,13 @@ def pc_port_definitions() -> dict[str, set[str]]:
     # translated TU (none is generated for it).
     for name, src in pe_plat_providers().items():
         defined.setdefault(name, set()).add(src)
+    # Dead SDK leaves are not linked: drop their (stale) generated TUs.
+    for name in DEAD_SDK_UNLINKED:
+        gen = f"pc_port/game/decomp/{name}_port.c"
+        if name in defined:
+            defined[name].discard(gen)
+            if not defined[name]:
+                del defined[name]
     return defined
 
 
@@ -3537,6 +3911,52 @@ def e21_lower_nonmatching(defs: dict, known: set, sigs: dict, dsigs: dict) -> di
     return out
 
 
+# These are data locations, not data values.  The matched sprite helper copies
+# three 18-byte rodata pools to its stack before selecting a two-byte entry.
+# Keep those local copies (including their lifetimes and element types), but
+# never embed the retail initializer bytes in the host executable.
+GUEST_LOCAL_ARRAYS = {
+    "func_800323C8": {
+        "uv": (0x80010DFC, 18),
+        "wh": (0x80010E10, 18),
+        "xy": (0x80010E24, 18),
+    },
+}
+
+
+def restore_guest_local_arrays(name: str, text: str) -> str:
+    arrays = GUEST_LOCAL_ARRAYS.get(name)
+    if arrays is None:
+        return text
+    body = extract_body(text, name)
+    if body is None:
+        raise ValueError(f"{name}: retail local-array function shape changed")
+    adapted = body
+    for local, (addr, size) in arrays.items():
+        pattern = re.compile(
+            rf"^(?P<indent>[ \t]*)unsigned char {local}\s*\[\s*{size}\s*\]"
+            rf"\s*=\s*\{{(?P<values>[^{{}}]*)\}}\s*;", re.MULTILINE)
+        matches = list(pattern.finditer(adapted))
+        if len(matches) != 1:
+            raise ValueError(f"{name}: retail local-array shape changed: {local}")
+        match = matches[0]
+        values = match.group("values").strip().rstrip(",").split(",")
+        if len(values) != size or any(
+                not re.fullmatch(r"\s*(?:0x[0-9A-Fa-f]+|[0-9]+)\s*", v)
+                for v in values):
+            raise ValueError(f"{name}: retail local-array initializer changed: {local}")
+        indent = match.group("indent")
+        replacement = (
+            f"{indent}unsigned char {local}[{size}];\n"
+            f"{indent}memcpy({local}, PE_Translate(0x{addr:08X}u, sizeof({local})), "
+            f"sizeof({local}));")
+        adapted = adapted[:match.start()] + replacement + adapted[match.end():]
+    text = text.replace(body, adapted, 1)
+    return ("/* Host data adapter: local retail tables are copied from the user's\n"
+            " * loaded guest image; matching src/ initializers are not embedded. */\n"
+            '#include <string.h>\n' + text)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--check", action="store_true",
@@ -3609,6 +4029,9 @@ def main() -> int:
 
         for name in sorted(matched):
             src = REPO_ROOT / SRC_DIR / f"{name}.c"
+            if name in DEAD_SDK_UNLINKED:
+                skipped[name] = "dead SDK leaf, not linked: " + DEAD_SDK_UNLINKED[name]
+                continue
             if not src.exists():
                 skipped[name] = "no src file"
                 continue
@@ -3686,6 +4109,13 @@ def main() -> int:
             if args.only and name not in set(args.only):
                 continue
             rendered.append((name, e21_plans[name]))
+
+        # Matched leaves may express retail rodata copies as C initializers.
+        # The host runtime must get that data from the user's loaded image.
+        # Apply this after both render paths, before compile/write; a changed
+        # mapped declaration fails closed rather than emitting literal data.
+        rendered = [(name, restore_guest_local_arrays(name, text))
+                    for name, text in rendered]
 
         uncompilable: dict[str, str] = {}
         if not args.no_compile_check:

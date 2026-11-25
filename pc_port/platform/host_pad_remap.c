@@ -251,7 +251,7 @@ static void parse_key(HostPadRemap *r, FILE *log, const char *src, int line,
         }
         if (HostPadRemap_KeyReserved(ks)) {
             warn(r, log, src, line,
-                 "'%.*s' is reserved (Esc and F1-F8 stay with the menus), key.%.*s ignored",
+                 "'%.*s' is reserved for host controls (Esc, F1-F8, F11-F12), key.%.*s ignored",
                  clip(tl), tok, clip(bl), bn);
             return;
         }
@@ -440,7 +440,8 @@ uint16_t HostPadRemap_PadWord(const HostPadRemap *r, uint16_t keys_held,
 
 int HostPadRemap_KeyReserved(unsigned long keysym)
 {
-    return keysym == 0xFF1Bul || (keysym >= 0xFFBEul && keysym <= 0xFFC5ul);
+    return keysym == 0xFF1Bul || (keysym >= 0xFFBEul && keysym <= 0xFFC5ul) ||
+           keysym == 0xFFC8ul || keysym == 0xFFC9ul;
 }
 
 uint16_t HostPadRemap_Key(const HostPadRemap *r, unsigned long keysym)

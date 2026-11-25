@@ -26,7 +26,8 @@ static void test_DAY2_cd_vblank(void)
         ASSERT(PE_Callback_Bind(0x8007FE24u,func_8007FE24)==0,"bind CD VBlank updater");
         (void)func_80073D58(0u,0x8007FE24u);
         int completed=PE_Callback_DispatchChecked();
-        for(unsigned i=0;i<4;i++) PE_StoreU8(0x80130000u+i,PE_CdReg_ReadU8(0x1F801800u+i));
+        /* Oracle fixture records register writes, not device read semantics. */
+        PE_StoreU32(0x80130000u,PE_CdReg_ReadU32(PE_CDREG_BASE));
         PE_StoreU32(0x80130004u,PE_CdReg_ReadU32(0x1F801020u));
         uint64_t hash=hit_camera_hash(CDVB_ranges,5);
         if(hash!=CDVB_cases[k].hash) fprintf(stderr,"CD VBlank case%u state%u phase%u pending%u hash%016llX/%016llX\n",k,CDVB_cases[k].state,CDVB_cases[k].phase,CDVB_cases[k].pending,(unsigned long long)hash,(unsigned long long)CDVB_cases[k].hash);

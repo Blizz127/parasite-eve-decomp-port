@@ -57,7 +57,11 @@ def main():
     ap.add_argument("--screenshot")
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--skip-normal-start-check", action="store_true")
+    ap.add_argument("--finish-at-frame-limit", action="store_true",
+                    help="after checkpoints, wait for clean frame-limit exit (deterministic captures)")
     a = ap.parse_args()
+    if a.finish_at_frame_limit and a.max_frames <= 0:
+        ap.error("--finish-at-frame-limit requires a positive --max-frames")
     if a.list:
         for n, k, v, d in CHECKPOINTS:
             print(f"{n:16s} {k:8s} {v if isinstance(v, str) else hex(v):32s} {d}")
@@ -87,12 +91,15 @@ def main():
     idx = 0
     frame, token, story, peak = 0, 0, 0, 0
     fail = None
+    frame_limit_exit = False
     with open(log, "w") as lf:
         p = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                              text=True, errors="replace")
         for line in p.stderr:
             lf.write(line)
             lf.flush()
+            if line.strip() == "[HOST] stop_reason=frame-limit":
+                frame_limit_exit = True
             m = RE_ROUTE.search(line)
             if m:
                 frame, token, story = int(m.group(1)), int(m.group(2), 16), int(m.group(3), 16)
@@ -117,7 +124,7 @@ def main():
                 print(f"REGRESS ok   {n:16s} frame={frame} token={token:08X} story={story:X}  ({d})",
                       flush=True)
                 idx += 1
-            if idx == len(targets):
+            if idx == len(targets) and not a.finish_at_frame_limit:
                 break
             # A later token/story checkpoint firing first means this one was skipped.
             for j in range(idx + 1, len(targets)):
@@ -128,18 +135,23 @@ def main():
             if fail:
                 break
         if p.poll() is None:
-            p.terminate()
+            if not (a.finish_at_frame_limit and idx == len(targets) and not fail):
+                p.terminate()
             try:
                 p.wait(timeout=20)
             except subprocess.TimeoutExpired:
                 p.kill()
         rc = p.wait()
     dt = time.time() - t0
+    if a.finish_at_frame_limit and idx == len(targets) and not fail:
+        if rc != 0 or not frame_limit_exit:
+            print(f"REGRESS FAIL fixed_finish: port_rc={rc} frame_limit_exit={frame_limit_exit}")
+            return 1
     if idx == len(targets) and not fail:
         print(f"REGRESS PASS until={a.until} frame={frame} token={token:08X} story={story:X} "
               f"elapsed={dt:.0f}s log={log}")
         return 0
-    n, k, v, d = targets[idx]
+    n, k, v, d = targets[min(idx, len(targets) - 1)]
     print(f"REGRESS FAIL {n} ({d}) last frame={frame} token={token:08X} story={story:X} "
           f"peak_story={peak:X} port_rc={rc} reason={fail or 'run ended before checkpoint'} "
           f"elapsed={dt:.0f}s log={log} screenshot={shot}")

@@ -133,10 +133,11 @@ int func_80049354(int a0, int a1)
     return 1;
 }
 
-/* src/func_80042264.c: memory-card load verify.  Snapshot the 0x12E4-byte
- * save block D_8009EFD0 into D_800C0DE0, advance the D_800A0ED0 cursor past
- * it, run func_8003FBD8, then take (and zero) the stored 32-bit checksum
- * word and compare it with ~CRC-16/CCITT (poly 0x1021, init 0xFFFF) over the
+/* Memory-card load verify. Unlike src/func_80042264.c, defer applying the
+ * snapshot and field state until after checksum validation so a damaged save
+ * cannot overwrite live state. The stored word follows the 0x12E4 snapshot
+ * and 0x8A8 serialized field bytes. Compare it with ~CRC-16/CCITT (poly
+ * 0x1021, init 0xFFFF) over the
  * 0x2000 bytes at D_8009EED0.  Match: func_8005C374, D_800A185C = 1, and the
  * 0x54 "loaded" message with func_80042228 as its callback; mismatch: the
  * 0x55/0x56 error pair.  The CRC is carried in 32 bits exactly as the leaf's
@@ -152,16 +153,12 @@ void func_80042264(void)
     const pe_addr_t tab = 0x8009EED0u;
     unsigned k;
 
-    PE_StoreU32(0x800A0ED0u, 0x8009EFD0u);
-    for (k = 0; k < 0x12E4u; k += 4u)
-        PE_StoreU32(0x800C0DE0u + k, PE_LoadU32(0x8009EFD0u + k));
-    PE_StoreU32(0x800A0ED0u, PE_LoadU32(0x800A0ED0u) + 0x12E4u);
-    func_8003FBD8();   /* absent_save_port.c */
+    /* Verify before applying any snapshot or field state. */
     crc = 0xFFFFu;
     i = 0;
-    p = PE_LoadU32(0x800A0ED0u);
+    p = 0x8009EFD0u + 0x12E4u + 0x8A8u;
     stored = PE_LoadU32(p);
-    PE_StoreU32(0x800A0ED0u, PE_LoadU32(0x800A0ED0u) + 4u);
+    PE_StoreU32(0x800A0ED0u, p + 4u);
     PE_StoreU32(p, 0u);
     do {
         crc = crc ^ ((uint32_t)PE_LoadU8(tab + i) << 8);
@@ -176,6 +173,11 @@ void func_80042264(void)
         i++;
     } while (i < 0x2000u);
     if ((~crc & 0xFFFFu) == stored) {
+        for (k = 0; k < 0x12E4u; k += 4u)
+            PE_StoreU32(0x800C0DE0u + k, PE_LoadU32(0x8009EFD0u + k));
+        PE_StoreU32(0x800A0ED0u, 0x8009EFD0u + 0x12E4u);
+        func_8003FBD8();
+        PE_StoreU32(0x800A0ED0u, p + 4u);
         func_8005C374();
         PE_StoreU32(0x800A185Cu, 1u);
         func_8004D9D8();

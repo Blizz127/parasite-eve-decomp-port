@@ -348,12 +348,22 @@ static void winmm_submit(const int16_t *s, int frames)
     SetEvent(D.done_event);          /* wake the writer: new audio is queued */
 }
 
-static void winmm_close(void)
+/* Returns 0 when the writer thread was not seen to exit.  Then nothing is
+ * freed or closed: the writer may still be inside a waveOut call using the
+ * device, headers, buffers, event and lock, so they are deliberately kept
+ * (leaked) rather than released under it. */
+static int winmm_close(void)
 {
-    if (!D.wo) return;
+    DWORD w;
+    if (!D.wo) return 1;
     InterlockedExchange(&D.running, 0);
     SetEvent(D.done_event);
-    WaitForSingleObject(D.thread, 5000);
+    w = WaitForSingleObject(D.thread, 5000);
+    if (w != WAIT_OBJECT_0) {
+        fprintf(stderr, "[AUDIO] writer thread did not stop (wait %lu); "
+                "device left open, audio output disabled\n", (unsigned long)w);
+        return 0;
+    }
     CloseHandle(D.thread); D.thread = NULL;
     waveOutReset(D.wo);
     for (int i = 0; i < D.nbufs; i++) {
@@ -368,29 +378,41 @@ static void winmm_close(void)
             (unsigned long long)D.in_frames, (unsigned long long)D.out_frames,
             (unsigned long long)D.underruns, (unsigned long long)D.overflow_events,
             (unsigned long long)D.overflow_drops, (unsigned long long)D.ff_dropped);
+    /* Everything is released: a reopen starts from an empty ring, fresh
+     * resampler/writer state and zeroed per-session stats. */
+    memset(&D, 0, sizeof(D));
+    return 1;
 }
 
 /* ── public ────────────────────────────────────────────────────────── */
 
-static int g_open, g_device;
+/* g_device_stuck: an earlier close could not confirm the writer exited, so
+ * its device and buffers are still in use and a new device must not be
+ * opened over them (host_audio.c has the same open/close contract). */
+static int g_open, g_device, g_device_stuck, g_exit_registered;
 
 int HostAudio_Open(int want_device)
 {
     const char *wav = getenv("PE_AUDIO_WAV");
-    if (g_open) return 1;
+    if (g_open) return g_wav != NULL || g_device;
     if (wav && *wav) {
         g_wav = fopen(wav, "wb");
         if (g_wav) {
+            g_wav_frames = g_wav_last_patch = 0;
             wav_header();
             fprintf(stderr, "[AUDIO] writing WAV dump %s\n", wav);
         } else {
             fprintf(stderr, "[AUDIO] cannot open PE_AUDIO_WAV %s\n", wav);
         }
     }
-    if (want_device) g_device = winmm_open();
-    g_open = 1;
-    atexit(HostAudio_Close);
-    return g_wav != NULL || g_device;
+    if (want_device && g_device_stuck)
+        fprintf(stderr, "[AUDIO] previous output still shutting down; audio output silent\n");
+    else if (want_device)
+        g_device = winmm_open();
+    g_open = g_wav != NULL || g_device;
+    if (g_open && !g_exit_registered && atexit(HostAudio_Close) == 0)
+        g_exit_registered = 1;
+    return g_open;
 }
 
 int HostAudio_DeviceOpen(void) { return g_device; }
@@ -452,7 +474,8 @@ void HostAudio_Close(void)
         fclose(g_wav);
         g_wav = NULL;
     }
-    if (g_device) winmm_close();
+    if (g_device && !winmm_close()) g_device_stuck = 1;
     g_device = 0;
+    g_open = 0;
 }
 #endif /* _WIN32 */

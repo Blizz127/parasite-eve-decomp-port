@@ -16,3 +16,26 @@
 extern int func_800527B4(void);
 
 /* func_80050C70: ported from the matching decomp -- generated TU pc_port/game/decomp/func_80050C70_port.c (src/func_80050C70.c); hand port retired after differential verification (docs/evidence/portverify/REPORT.md). */
+
+/* Preserve 32-bit guest address wrap for the indexed string byte. */
+void func_80050F10(int a0)
+{
+    func_8005E8C4();
+    func_8005E8A4(2, 0);
+    func_8005EED4(PE_LoadU8(PE_LoadU32(0x8009CF54u) + (uint32_t)a0));
+    func_8005E914();
+}
+
+void func_80050AD8(int32_t index)
+{
+    uint32_t base = PE_LoadU32(0x8009CF20u);
+    int value;
+    if (index < (int)PE_LoadU8(base + 0x14u)) {
+        value = PE_LoadU8(base + (uint32_t)index + 0x15u) & 0x1F;
+        if (!value) return;
+        value += PE_LoadU32(0x8009CF18u) ? 0x22 : 0x36;
+    } else {
+        value = 0x46;
+    }
+    func_8005EB64(value);
+}

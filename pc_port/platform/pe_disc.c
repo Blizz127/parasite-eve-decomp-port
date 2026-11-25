@@ -4,6 +4,8 @@
  */
 #include "pe_disc.h"
 
+#include <ctype.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -68,18 +70,84 @@ static bool PE_Disc_Validate(PE_Disc *d, char *err, size_t err_size)
 
 /* ── Cue sheet ──────────────────────────────────────────────────────── */
 
+/* Recognize a complete TRACK directive, not a comment or file name that
+ * happens to contain the mode token. Keywords are ASCII case-insensitive. */
+static bool PE_Cue_WordEqual(const char *a, const char *b)
+{
+    while (*a && *b) {
+        unsigned char x = (unsigned char)*a++, y = (unsigned char)*b++;
+        if (x >= 'a' && x <= 'z') x = (unsigned char)(x - 'a' + 'A');
+        if (y >= 'a' && y <= 'z') y = (unsigned char)(y - 'a' + 'A');
+        if (x != y) return false;
+    }
+    return !*a && !*b;
+}
+
+/* 0 is not a TRACK directive, 1 is the supported track, -1 is an
+ * unsupported or incomplete TRACK directive. */
+static int PE_Cue_TrackKind(const char *line)
+{
+    char directive[16], number[16], mode[32];
+    int fields = sscanf(line, " %15s %15s %31s", directive, number, mode);
+    if (fields < 1 || !PE_Cue_WordEqual(directive, "TRACK")) return 0;
+    if (fields != 3 || !PE_Cue_WordEqual(mode, "MODE2/2352")) return -1;
+    const char *p = number;
+    while (*p == '0') ++p;
+    return strcmp(p, "1") == 0 ? 1 : -1;
+}
+
+/* Track-start INDEX 01 must agree with the raw mapping: LBA 0 is byte 0.
+ * 0 is not INDEX, 1 is zero-start INDEX 01, 2 is another numeric INDEX,
+ * and -1 is an incomplete or unsupported track-start declaration. */
+static int PE_Cue_IndexKind(const char *line)
+{
+    char directive[16], number[16], time[32];
+    int number_end = -1;
+    int fields = sscanf(line, " %15s %15s%n %31s", directive, number, &number_end, time);
+    if (fields < 1 || !PE_Cue_WordEqual(directive, "INDEX")) return 0;
+    if (fields != 3 || number_end < 0 ||
+        !isspace((unsigned char)line[number_end])) return -1;
+    for (const char *p = number; *p; ++p)
+        if (*p < '0' || *p > '9') return -1;
+    const char *p = number;
+    while (*p == '0') ++p;
+    if (strcmp(p, "1") != 0) return 2;
+    return strcmp(time, "00:00:00") == 0 ? 1 : -1;
+}
+
+/* An overlong physical line with only whitespace, or with a TRACK/INDEX
+ * keyword split at its first chunk boundary, cannot be classified safely. */
+static bool PE_Cue_AmbiguousPrefix(const char *line)
+{
+    while (isspace((unsigned char)*line)) ++line;
+    if (!*line) return true;
+    const char *keywords[] = {"TRACK", "INDEX"};
+    for (unsigned k = 0; k < 2; ++k) {
+        const char *p = line, *word = keywords[k];
+        bool matches = true;
+        while (*p && *word && !isspace((unsigned char)*p)) {
+            unsigned char c = (unsigned char)*p++;
+            if (c >= 'a' && c <= 'z') c = (unsigned char)(c - 'a' + 'A');
+            if (c != (unsigned char)*word++) { matches = false; break; }
+        }
+        if (matches && !*p && *word) return true;
+    }
+    return false;
+}
+
 /* Parse the sibling .cue of bin_path, if it exists.  Returns:
- *   1  cue found and declares a MODE2/2352 track
+ *   1  cue found and declares only track 1 in MODE2/2352
  *   0  no sibling cue exists
- *  -1  cue exists but does not declare MODE2/2352 */
+ *  -1  cue cannot be read completely or has unsupported tracks */
 static int PE_Disc_CheckCue(const char *bin_path)
 {
     char cue[4096];
     FILE *fp;
     char line[512];
-    int ok = 0;
+    int ok = 0, invalid_track = 0, index01_seen = 0, at_line_start = 1;
 
-    snprintf(cue, sizeof(cue), "%s", bin_path);
+    int path_len = snprintf(cue, sizeof(cue), "%s", bin_path);
+    if (path_len < 0 || (size_t)path_len >= sizeof(cue)) return -1;
     {
         char *dot = strrchr(cue, '.');
         char *slash = strrchr(cue, '/');
@@ -87,6 +155,8 @@ static int PE_Disc_CheckCue(const char *bin_path)
         char *backslash = strrchr(cue, '\\');
         if (backslash && (!slash || backslash > slash)) slash = backslash;
         if (dot && (!slash || dot > slash)) {
+            if ((size_t)(dot - cue) > sizeof(cue) - sizeof(".cue"))
+                return -1;
             strcpy(dot, ".cue");
         } else {
             size_t n = strlen(cue);
@@ -95,12 +165,25 @@ static int PE_Disc_CheckCue(const char *bin_path)
         }
     }
     fp = fopen(cue, "r");
-    if (!fp) return 0;
+    if (!fp) return errno == ENOENT ? 0 : -1;
     while (fgets(line, sizeof(line), fp)) {
-        if (strstr(line, "MODE2/2352")) ok = 1;
+        size_t n = strlen(line);
+        int complete = n < sizeof(line) - 1u || (n && line[n - 1u] == '\n');
+        if (at_line_start) {
+            int track = PE_Cue_TrackKind(line);
+            int index = PE_Cue_IndexKind(line);
+            if (!complete && PE_Cue_AmbiguousPrefix(line)) invalid_track = 1;
+            if (track && (!complete || track < 0 || ok)) invalid_track = 1;
+            else if (track > 0) ok = 1;
+            if (index && (!complete || index < 0 || !ok || (index == 1 && index01_seen)))
+                invalid_track = 1;
+            else if (index == 1) index01_seen = 1;
+        }
+        at_line_start = complete;
     }
-    fclose(fp);
-    return ok ? 1 : -1;
+    int failed = ferror(fp);
+    if (fclose(fp) != 0) failed = 1;
+    return !failed && ok && !invalid_track ? 1 : -1;
 }
 
 /* ── Lifecycle ──────────────────────────────────────────────────────── */
@@ -140,12 +223,18 @@ PE_Disc *PE_Disc_Open(const char *bin_path, char *err, size_t err_size)
         free(d);
         return NULL;
     }
+    if ((uint64_t)end / PE_DISC_RAW_SECTOR > UINT32_MAX) {
+        snprintf(err, err_size, "image has too many sectors");
+        fclose(d->fp);
+        free(d);
+        return NULL;
+    }
     d->user_sectors = (uint32_t)((uint64_t)end / PE_DISC_RAW_SECTOR);
 
     cue = PE_Disc_CheckCue(bin_path);
     if (cue < 0) {
         snprintf(err, err_size,
-                 "sibling .cue does not declare MODE2/2352");
+                 "sibling .cue unreadable or unsupported track/index layout");
         fclose(d->fp);
         free(d);
         return NULL;
@@ -163,7 +252,8 @@ PE_Disc *PE_Disc_OpenMemory(const uint8_t *image, size_t size)
     PE_Disc *d;
     char err[128];
 
-    if (!image || size % PE_DISC_RAW_SECTOR != 0) return NULL;
+    if (!image || size % PE_DISC_RAW_SECTOR != 0 ||
+        (uint64_t)size / PE_DISC_RAW_SECTOR > UINT32_MAX) return NULL;
     d = calloc(1, sizeof(*d));
     if (!d) return NULL;
     d->mem = image;
@@ -244,11 +334,16 @@ static bool PE_Iso_ExtentInRange(const PE_Disc *d, uint32_t extent,
     return last <= d->user_sectors;
 }
 
+static bool PE_Iso_IsPVD(const uint8_t *pvd)
+{
+    return pvd[0] == 1 && memcmp(pvd + 1, "CD001", 5) == 0 && pvd[6] == 1;
+}
+
 bool PE_Disc_VerifyPVD(const PE_Disc *d)
 {
     uint8_t pvd[PE_DISC_USER_SECTOR];
     if (!PE_Disc_ReadUserSector(d, 16, pvd)) return false;
-    return pvd[0] == 1 && memcmp(pvd + 1, "CD001", 5) == 0 && pvd[6] == 1;
+    return PE_Iso_IsPVD(pvd);
 }
 
 bool PE_Disc_VolumeId(const PE_Disc *d, char *out, size_t out_size)
@@ -257,7 +352,7 @@ bool PE_Disc_VolumeId(const PE_Disc *d, char *out, size_t out_size)
     size_t n;
     if (!d || !out || out_size == 0) return false;
     if (!PE_Disc_ReadUserSector(d, 16, pvd)) return false;
-    if (pvd[0] != 1 || memcmp(pvd + 1, "CD001", 5) != 0) return false;
+    if (!PE_Iso_IsPVD(pvd)) return false;
     /* Volume identifier is 32 bytes at PVD+40, space-padded. */
     n = 32;
     while (n > 0 && pvd[40 + n - 1] == ' ') n--;
@@ -286,9 +381,12 @@ static bool PE_Iso_RootRecord(const PE_Disc *d, uint32_t *extent,
     uint8_t pvd[PE_DISC_USER_SECTOR];
     const uint8_t *rec;
     if (!PE_Disc_ReadUserSector(d, 16, pvd)) return false;
-    if (pvd[0] != 1 || memcmp(pvd + 1, "CD001", 5) != 0) return false;
+    if (!PE_Iso_IsPVD(pvd)) return false;
     rec = pvd + 156;
-    if (rec[0] < 34) return false; /* record length */
+    /* The embedded root record is a directory identified by the single
+     * special zero byte; reject an unrelated or truncated record. */
+    if (rec[0] < 34 || !(rec[25] & 0x02u) || rec[32] != 1u || rec[33] != 0u)
+        return false;
     *extent = PE_Iso_Le32(rec + 2);
     *size = PE_Iso_Le32(rec + 10);
     return PE_Iso_ExtentInRange(d, *extent, *size > 0 ? *size : 1);
@@ -376,7 +474,7 @@ bool PE_Disc_FindFile(const PE_Disc *d, const char *path,
 
     p = path + 1;
     for (depth = 0; depth < 8; depth++) {
-        char component[32];
+        char component[32], leaf_name[32];
         const char *sep = strchr(p, '\\');
         size_t len = sep ? (size_t)(sep - p) : strlen(p);
         uint32_t rec_extent, rec_size;
@@ -389,14 +487,21 @@ bool PE_Disc_FindFile(const PE_Disc *d, const char *path,
 
         r = PE_Iso_ScanDir(d, extent, dir_size, component,
                            &rec_extent, &rec_size, &is_dir,
-                           name_out, name_size);
+                           sep ? NULL : leaf_name, sizeof(leaf_name));
         if (r <= 0) return false;
         if (!sep) {
             /* leaf component */
+            if (!PE_Iso_ExtentInRange(d, rec_extent,
+                                      rec_size > 0 ? rec_size : 1)) return false;
+            if (name_out && name_size) {
+                size_t n = strlen(leaf_name);
+                if (n >= name_size) n = name_size - 1;
+                memcpy(name_out, leaf_name, n);
+                name_out[n] = '\0';
+            }
             *extent_lba = rec_extent;
             *size = rec_size;
-            return PE_Iso_ExtentInRange(d, rec_extent,
-                                        rec_size > 0 ? rec_size : 1);
+            return true;
         }
         if (!is_dir) return false;
         if (!PE_Iso_ExtentInRange(d, rec_extent,

@@ -665,6 +665,31 @@ static void HloSeedMessages(void)
     PE_StoreU8(tbl + 0x600u, 0xFFu);
 }
 
+/* An unterminated save name must not exhaust the drawing packet arena. */
+static void test_HANDLO_card_name_bounded(void)
+{
+    const pe_addr_t record = 0x800A0EF0u;
+    TEST("HANDLO_card_name_bounded");
+    ResetTestState();
+    HostFB_Init(); PE_GPU_Init();
+    func_80062F9C(); HloSeedMessages();
+    PE_StoreU32(0x8009CEF4u, HLO_ST);
+    PE_StoreU32(HLO_ST + 0x24u, 0x25u);
+    PE_StoreU8(0x800A0ED6u, 1u);
+    for (unsigned i = 0; i < 1200u; i++) PE_StoreU8(record + i, 0u);
+    PE_StoreU8(record, 1u); PE_StoreU8(record + 1u, 1u);
+    PE_StoreU8(record + 0x29u, 1u);
+    PE_StoreU8(record + 1100u, 0xFFu);
+    PE_StoreU32(0x8009D100u, HLO_ST + 0x2000u);
+    PE_StoreU32(0x8009D104u, HLO_ST + 0x2000u);
+    PE_StoreU32(0x8009D11Cu, HLO_ST + 0x1F00u);
+    func_800434C0(0);
+    ASSERT(PE_LoadU32(0x8009D100u) < HLO_ST + 0x3000u,
+           "unterminated name must leave space for the other menu entries");
+    ASSERT(!PE_Port_ShouldStop(), "damaged name must not stop the port");
+    PASS();
+}
+
 static void test_HANDLO_menu_draw_dispatch(void)
 {
     TEST("HANDLO_menu_draw_dispatch");
@@ -748,7 +773,11 @@ static void test_HANDLO_card_crc_verify(void)
            "func_8003FBD8 restored D_8009D1A0 (masked) before the checksum");
 
     HloSeedCardVerify(1u);                         /* off by one: mismatch */
+    PE_StoreU32(0x8009D280u, 0x12345678u);
+    PE_StoreU32(0x800C0DF0u, 0x87654321u);
     func_80042264();
+    ASSERT(PE_LoadU32(0x8009D280u) == 0x12345678u, "invalid save keeps live room state");
+    ASSERT(PE_LoadU32(0x800C0DF0u) == 0x87654321u, "invalid save keeps live snapshot");
     ASSERT(PE_LoadU32(0x800A185Cu) == 0u, "mismatch leaves D_800A185C clear");
     ASSERT(PE_LoadU32(0x8009CFFCu) == 0u, "mismatch arms no success callback");
     PASS();
@@ -884,6 +913,7 @@ static void test_HANDLO_all(void)
     test_HANDLO_consume_one_shot();
     test_HANDLO_sewer_exit_setup();
     test_HANDLO_card_crc_verify();
+    test_HANDLO_card_name_bounded();
     test_HANDLO_menu_draw_dispatch();
     test_HANDLO_mesh_uv_scroll();
     test_HANDLO_item_snapshot_restore();

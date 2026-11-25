@@ -13,12 +13,17 @@
  * - Power-on/reset value is 0 everywhere (quiescent: no command in
  *   flight, no interrupt pending — the BA14 tag test `[B288] & 7`
  *   reads clear, exactly the fresh-boot state).
- * - Writes latch per byte; reads return latched bytes.  No executed
+ * - Historical flat-shadow contract (superseded for IRQ byte reads):
+ *   Writes latch per byte; reads return latched bytes. No executed
  *   chain path reads back a shadow write on its taken arm (proven by
  *   walking every table deref in 7B9EC/7B010/7B558: the tag tests
  *   only ever observe the reset/zeroed state), so the shadow is
  *   behaviorally transparent — any quiescent completion model
  *   produces identical guest-RAM traces.
+ * - IRQ byte reads always select the independent interrupt tag/mask, even
+ *   when detached. Bank1 writes acknowledge tags or set the mask; bank2/3
+ *   audio writes cannot create/acknowledge a response. Only PushResponse
+ *   produces a response tag. Raw U32 shadow inspection remains diagnostic.
  * - U32 access is little-endian over the bytes (the 0x1325 result
  *   mailbox word at [B28C]).
  * - The PE_CdLoad/PE_CdStore wrappers replicate address decoding:

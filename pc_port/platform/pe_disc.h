@@ -9,7 +9,8 @@
  *   - ISO9660 primary volume descriptor at user sector 16 ("CD001")
  * The image is opened read-only and is never embedded, copied, staged, or
  * committed.  All reads are bounds-checked against the actual image size;
- * missing, truncated, malformed, or wrong-disc inputs are rejected safely.
+ * missing, truncated, malformed, wrong-disc or sector-count-overflow inputs
+ * are rejected safely.
  *
  * LBA numbering throughout this API is the absolute ISO9660 user-sector
  * numbering (the same numbering carried by CdlFILE extents), i.e. raw BIN
@@ -35,8 +36,8 @@ typedef struct PE_Disc PE_Disc;
 /* ── Lifecycle ──────────────────────────────────────────────────────── */
 
 /* Open and validate a BIN image.  When a sibling .cue exists it is parsed
- * and must declare MODE2/2352; the sync/mode bytes of sector 0 are always
- * verified empirically.  Returns NULL on any failure and fills err. */
+ * must be readable and declare only track 1 as MODE2/2352. If INDEX 01 is
+ * present, it must be 00:00:00. Sector 0 sync/mode bytes are always verified. Returns NULL on failure and fills err. */
 PE_Disc *PE_Disc_Open(const char *bin_path, char *err, size_t err_size);
 
 /* Test fixture: wrap an in-memory MODE2/2352 image (no cue check).  The
@@ -83,7 +84,8 @@ int PE_Disc_BootKind(const PE_Disc *d);
  * "\FMV1\PEDISC01.IDF;1").  At most 8 components, each at most 31 chars
  * (the retail DsSearchFile limits).  On success returns true and fills
  * extent_lba / size; when name_out is non-NULL the stored file identifier
- * (NUL-terminated, truncated to name_size-1) is copied out. */
+ * (NUL-terminated, truncated to name_size-1) is copied out. On failure,
+ * all output arguments are left unchanged. */
 bool PE_Disc_FindFile(const PE_Disc *d, const char *path,
                       uint32_t *extent_lba, uint32_t *size,
                       char *name_out, size_t name_size);

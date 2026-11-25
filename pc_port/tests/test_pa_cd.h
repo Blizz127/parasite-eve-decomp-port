@@ -174,16 +174,19 @@ static void test_PA_cd_spu_and_small(void)
     func_8007D614();
     PE_Event_Enable(spu_event);
     ASSERT(!PE_Event_ConsumeSpuDma(spu_event), "disabled SPU event recorded delivery");
-    /* with a callback: no func_80073A34, the slot is called with no args */
+    /* with a callback: no func_80073A34; the slot is called with retail $a0
+     * 0xF0000000 (clean-room vectors, native-spu-fidma-20261031).  A target
+     * with no native code is a named hook refusal that stops the port. */
     pacd_reset();
     PE_StoreU32(0x8009B44Cu, 1u);
     PE_StoreU32(0x8009B3FCu, PACD_S);
     PE_StoreU32(0x8009B434u, PACD_UNK);
     func_8007D614();
-    ASSERT(PE_Decomp_BoundaryCount() == 1 &&
-           strcmp(PE_Decomp_BoundaryName(0), "D_8009B434 (SPU DMA callback)") == 0 &&
-           g_bootstrap_arg4_call_count == 0,
-           "8007D614 calls D_8009B434() with no argument");
+    ASSERT(PE_Port_GetStopReason() == PE_PORT_STOP_UNRESOLVED_BOUNDARY &&
+           g_bootstrap_arg4_call_count == 1 &&
+           g_bootstrap_arg4_calls[0].target == PACD_UNK &&
+           g_bootstrap_arg4_calls[0].arg0 == 0xF0000000u,
+           "8007D614 unknown callback did not stop naming the target and $a0");
     pacd_reset();
     PE_StoreU32(0x8009B44Cu, 1u);
     PE_StoreU32(0x8009B3FCu, PACD_S);
@@ -308,22 +311,10 @@ static void test_PA_cd_tables(void)
     ASSERT(PE_LoadU32(0x800B28F8u) == 2u, "80082444 other a0 -> 2");
     ASSERT(PE_LoadU32(0x8009B70Cu) == 0u, "80082444 tail-calls func_80081DF8");
 
-    /* func_80082778 / func_8008284C through D_8009B738 = func_80084B20:
+    /* func_8008284C through D_8009B738 = func_80084B20:
      * record 0x800A5B70 + (port & 0xF0 ? 0xF0 : 0). */
     pacd_reset();
     PE_StoreU32(0x8009B738u, 0x80084B20u);
-    PE_StoreU8(0x800A5C60u + 0xE9u, 3u);
-    PE_StoreU32(0x800A5C60u + 4u, PACD_B);
-    for (unsigned k = 0; k < 15u; k++)
-        PE_StoreU8(PACD_B + k, (uint8_t)(0x10u + k));
-    ASSERT(func_80082778(0x10, -1, 0) == 3, "80082778 a1 < 0 -> count +0xE9");
-    ASSERT(func_80082778(0x10, 3, 1) == 0, "80082778 a1 >= count -> 0");
-    ASSERT(func_80082778(0x10, 1, 2) == 0x16, "80082778 row 1 byte 1");
-    ASSERT(func_80082778(0x10, 2, 5) == 0x1E, "80082778 row 2 byte 4");
-    ASSERT(func_80082778(0x10, 1, 6) == 0 && func_80082778(0x10, 1, 0) == 0,
-           "80082778 a2 outside 1..5 -> 0");
-    ASSERT(func_80082778(0x00, -1, 0) == 0, "80082778 port 0 record");
-
     PE_StoreU8(0x800A5B70u + 0xEAu, 2u);
     PE_StoreU32(0x800A5B70u + 8u, PACD_R);
     PE_StoreU8(PACD_R + 8u, 3u);                  /* row 1 count */
@@ -334,32 +325,6 @@ static void test_PA_cd_tables(void)
     ASSERT(func_8008284C(0, 1, -1) == 3, "8008284C a2 < 0 -> row count");
     ASSERT(func_8008284C(0, 1, 3) == 0, "8008284C a2 >= row count -> 0");
     ASSERT(func_8008284C(0, 1, 2) == 0xAB, "8008284C row data byte");
-    PASS();
-}
-
-static void test_PA_cd_ports(void)
-{
-    TEST("PA_cd_ports");
-    /* func_800829C4 */
-    pacd_reset();
-    PE_StoreU32(0x8009B774u, 1u);
-    PE_StoreU32(0x8009B778u, 0u);
-    ASSERT(func_800829C4(0) == 0, "800829C4 cur = (0 << 1) | (1 == 0)");
-    ASSERT(PE_LoadU32(0x8009B774u) == 1u, "800829C4 unchanged mask is a no-op");
-    PE_StoreU32(0x8009B758u, PACD_R);
-    PE_StoreU32(0x8009B728u, PACD_UNK);
-    PE_StoreU32(0x800A5AC0u, 0x96u);
-    PE_StoreU32(0x800A5AC4u, 0x95u);
-    ASSERT(func_800829C4(3) == 0, "800829C4 returns the previous mask");
-    ASSERT(PE_LoadU32(0x8009B774u) == 0u && PE_LoadU32(0x8009B778u) == 1u,
-           "800829C4 enables both ports");
-    ASSERT(PE_LoadU32(0x800A5AC0u) == 0u && PE_LoadU32(0x800A5AC4u) == 0u,
-           "800829C4 zeroes both idle counters");
-    ASSERT(g_bootstrap_arg4_call_count == 1 &&
-           pacd_call(0, "@800829C4:D_8009B728", PACD_UNK, PACD_R, 0u, 0u),
-           "800829C4 resets only the record idle >= 0x96");
-    ASSERT(PE_LoadU32(0x8009B75Cu) == 1u, "800829C4 re-arms D_8009B75C");
-    ASSERT(func_800829C4(0) == 3, "800829C4 cur = (1 << 1) | (0 == 0)");
     PASS();
 }
 
@@ -712,7 +677,6 @@ static void test_PA_cd_all(void)
     test_PA_cd_spu_and_small();
     test_PA_cd_poll();
     test_PA_cd_tables();
-    test_PA_cd_ports();
     test_PA_cd_irq();
     test_PA_cd_transfer();
     test_PA_cd_records();

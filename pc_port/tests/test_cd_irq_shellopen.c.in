@@ -1,0 +1,105 @@
+/* Synthetic tray -> native completion writer -> query chain. No media/devices. */
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include "pe_drive_tray.h"
+#include "pe_guest_ram.h"
+#include "pe_mmio.h"
+#include "pe_plat/cd.h"
+#include "pe_plat/cd_stream.h"
+#include "pe_sdk.h"
+#include "host_framebuffer.h"
+#include "pe_gpu.h"
+#include "pe_cdreg.h"
+#include "pe_bios_string.h"
+#include "pe_guestcode.h"
+#include "pe_bootstrap.h"
+#include "game_port.h"
+_Noreturn static void fail_at(int line) { fprintf(stderr,"fixture failure at line %d\n",line); exit(1); }
+#define abort() fail_at(__LINE__)
+
+int PE_MMIO_InShadowBlock(pe_addr_t a,size_t n) { (void)a;(void)n;abort(); }
+void *PE_MMIO_Translate(pe_addr_t a,size_t n) { (void)a;(void)n;abort(); }
+uint32_t PE_MMIO_Load(pe_addr_t a,size_t n) { (void)a;(void)n;abort(); }
+void PE_MMIO_Store(pe_addr_t a,size_t n,uint32_t v) { (void)a;(void)n;(void)v;abort(); }
+void PE_Port_RequestStop(PEPortStopReason r) { (void)r; abort(); }
+void Bootstrap_ReturnVoid1(const char *a,const char *b,uint32_t c) { (void)a;(void)b;(void)c;abort(); }
+void Bootstrap_ReturnVoid4Indirect(const char *a,const char *b,uintptr_t t,uintptr_t c,uintptr_t d,uintptr_t e,uintptr_t f)
+{ (void)a;(void)b;(void)t;(void)c;(void)d;(void)e;(void)f;abort(); }
+int PE_GuestCall(const char *a,pe_addr_t b,unsigned c,uintptr_t d,uintptr_t e,uintptr_t f,uintptr_t g)
+{ (void)a;(void)b;(void)c;(void)d;(void)e;(void)f;(void)g;abort(); }
+int32_t PE_Printf_Guest(pe_addr_t a,uint32_t b,uint32_t c,uint32_t d,uint32_t e,uint32_t f,uint32_t g,uint32_t h)
+{ (void)a;(void)b;(void)c;(void)d;(void)e;(void)f;(void)g;(void)h;abort(); }
+static unsigned vsync_calls,escapes,callback_calls,decode_calls,notice_calls;
+static int stopped;
+void PE_Port_EscapePoint(void) { escapes++; }
+int PE_Port_ShouldStop(void) { return stopped; }
+uint32_t HostFB_VSync(int mode) { if(mode!=-1) abort(); vsync_calls++; return 10; }
+uint32_t PE_GPU_VSyncQuery(void) { return 10; }
+unsigned short func_80073DE8(void) { return 1; }
+void PE_Cd_TimeoutRecover(void) { abort(); }
+
+void pe_plat_cd_status_callback(uint32_t,pe_addr_t);
+int PE_Cd_DispatchDataCallback(pe_addr_t a,uint32_t status,pe_addr_t p)
+{
+    if(status!=5 || p!=0x800a3460u) abort();
+    if(a==0x80080164u) { callback_calls++; pe_plat_cd_status_callback(status,p); return 1; }
+    if(a==0x80012340u) { notice_calls++; return 1; }
+    abort();
+}
+void pe_plat_cd_decode_status(int status,uint32_t p)
+{ if(status!=5 || p!=0x800a3460u || PE_LoadU8(p+1)!=0x4b) abort(); decode_calls++; }
+void pe_plat_cd_command_progress(unsigned char status,int p) { (void)status;(void)p;abort(); }
+void HostFB_DevicePoll(void) { abort(); }
+
+static void run(uint32_t slot,uint32_t previous,uint32_t sequence,uint32_t next_slot,
+                unsigned shell_open,unsigned notify_enabled)
+{
+    PE_RamReset(); PE_CdReg_Reset(); vsync_calls=escapes=callback_calls=decode_calls=notice_calls=0; stopped=0;
+    PE_StoreU32(0x8009b27cu,PE_CDREG_BASE);
+    PE_StoreU32(0x8009b280u,PE_CDREG_BASE+1u);
+    PE_StoreU32(0x8009b284u,PE_CDREG_BASE+2u);
+    PE_StoreU32(0x8009b288u,PE_CDREG_BASE+3u);
+    PE_StoreU32(0x80011b9cu,0x8007af5cu); /* synthetic IRQ-5 table entry */
+    PE_StoreU32(0x8009afb4u,0x80080164u); PE_StoreU32(0x8009b570u,0); PE_StoreU8(0x8009b56cu,shell_open?0x10:0);
+    PE_StoreU32(0x800a36a4u,0x80012340u); PE_StoreU32(0x8009b554u,notify_enabled);
+    const uint8_t response[2]={0x10,0x4b};
+    if(!PE_CdReg_PushResponse(5,response,2)) abort();
+    PE_StoreU32(0x800a3690u,slot); PE_StoreU32(0x8009b53cu,previous);
+    PE_Fill(0x80140000u,8,0x55);
+    if(PE_Tray_HostStop()!=sequence || PE_LoadU32(0x8009b53cu)!=sequence ||
+       PE_LoadU32(0x800a3690u)!=next_slot) abort();
+    pe_addr_t entry=0x800a3610u+16u*slot;
+    if(PE_LoadU32(entry)!=sequence || PE_LoadU8(entry+4)!=2) abort();
+    for(unsigned i=0;i<8;i++) if(PE_LoadU8(entry+5+i)!=0) abort();
+    if(pe_plat_cd_response_query_host(sequence,0x80140000u)!=2 || vsync_calls!=2 || escapes!=1) abort();
+    for(unsigned i=0;i<8;i++) if(PE_LoadU8(0x80140000u+i)!=0) abort();
+    if(PE_LoadU32(0x800a3478u)!=970 || PE_LoadU32(0x800a347cu)!=1 ||
+       PE_LoadU32(0x800a3480u)!=0x80011ba0u) abort();
+    if(callback_calls!=1 || decode_calls!=1 || PE_LoadU32(0x8009b570u)!=33 ||
+       PE_LoadU32(0x8009b574u)!=(shell_open?2u:1u) ||
+       PE_LoadU32(0x8009b578u)!=(shell_open?12u:11u) ||
+       notice_calls!=(shell_open && notify_enabled)) abort();
+    if(PE_LoadU8(0x8009b294u)!=2 || PE_LoadU8(0x800a3460u)!=0x10 ||
+       PE_LoadU8(0x800a3461u)!=0x4b) abort();
+    PE_CdReg_WriteU8(PE_CDREG_BASE,1);
+    if(PE_CdReg_ReadU8(PE_CDREG_BASE+3u)&7u) abort();
+    if(!PE_CdReg_PushResponse(1,response,2)) abort();
+    stopped=1; PE_Fill(0x80140000u,8,0x55);
+    if(pe_plat_cd_response_query_host(sequence,0x80140000u)!=0 || vsync_calls!=2 || escapes!=2) abort();
+    for(unsigned i=0;i<8;i++) if(PE_LoadU8(0x80140000u+i)!=0x55) abort();
+    if((PE_CdReg_ReadU8(PE_CDREG_BASE+3u)&7u)!=1u || callback_calls!=1) abort();
+    pe_addr_t frame=PE_GuestFrame_Enter(8);
+    if(frame!=PE_GUEST_FRAME_HI-8) abort();
+    PE_GuestFrame_Leave(frame,8);
+}
+int main(void)
+{
+    for(unsigned shell_open=0;shell_open<2;shell_open++)
+        for(unsigned notify=0;notify<2;notify++) {
+            run(0,0,1,1,shell_open,notify);
+            run(7,UINT32_MAX,1,0,shell_open,notify);
+        }
+    PE_RamDestroy(); puts("8 synthetic IRQ-5 shell-state and notification controls pass");
+    return 0;
+}

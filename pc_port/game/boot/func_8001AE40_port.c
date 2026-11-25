@@ -8,6 +8,7 @@
  */
 #include "psx_compat.h"
 #include "pe_port_compat.h"
+#include "pe_guest_decomp.h"
 #include "pe_sdk.h"
 #include "game_port.h"
 
@@ -38,9 +39,16 @@ static int32_t floor_abs(int32_t a)
 {
     return a < 0 ? (int32_t)(0u - (uint32_t)a) : a;
 }
-static int32_t floor_div(int32_t a, int32_t b)
+/* Zero uses the existing guest-trap STOP/record policy. The original also
+ * has an INT32_MIN/-1 BREAK guard; overflow still returns a fallback and its
+ * reachability and PS1 exception policy remain unverified. */
+static int32_t floor_div(int32_t a, int32_t b, unsigned entry_stop_epoch)
 {
-    if (b == 0) return a < 0 ? 1 : -1;
+    if (b == 0) {
+        PE_Decomp_GuestTrapDivZero("floor collision");
+        if (PE_Port_StopEpoch() != entry_stop_epoch) return 0;
+        return a < 0 ? 1 : -1;
+    }
     if (a == INT32_MIN && b == -1) return INT32_MIN;
     return a / b;
 }
@@ -51,13 +59,16 @@ static unsigned floor_stride(void)
 static int floor_valid(pe_addr_t rec)
 {
     pe_addr_t mesh = PE_LoadU32(MESH_P);
-    pe_addr_t base;
+    pe_addr_t base, ram_base, ram_rec;
     unsigned stride = floor_stride();
-    if (!mesh || !PE_RangeIsRam(mesh, 40u)) return 0;
+    if (!mesh || !PE_RangeIsRam(PE_RamCanonical(mesh, 40u), 40u)) return 0;
     base = PE_LoadU32(mesh + 0x1Cu);
-    return base != 0u && rec >= base && (rec - base) % stride == 0u
-        && (rec - base) / stride < PE_LoadU16(mesh + 4u)
-        && PE_RangeIsRam(rec, stride);
+    if (!base) return 0;
+    ram_base = PE_RamCanonical(base, 1u);
+    ram_rec = PE_RamCanonical(rec, stride);
+    return ram_rec >= ram_base && (ram_rec - ram_base) % stride == 0u
+        && (ram_rec - ram_base) / stride < PE_LoadU16(mesh + 4u)
+        && PE_RangeIsRam(ram_rec, stride);
 }
 static void floor_vertex(unsigned id, int32_t *x, int32_t *z)
 {
@@ -67,6 +78,9 @@ static void floor_vertex(unsigned id, int32_t *x, int32_t *z)
     *x = floor_s16(v);
     *z = floor_s16(v + (three_d ? 4u : 2u));
 }
+/* This 20-word cap differs from the bounded original when mesh count > 20.
+ * Real mesh counts and the writable extent remain unverified; see
+ * docs/evidence/native-floor-1ae40-match-20261105/REPORT.txt. */
 static void floor_clear_visited(void)
 {
     unsigned i, count = PE_LoadU16(PE_LoadU32(MESH_P) + 8u);
@@ -76,7 +90,7 @@ static void floor_clear_visited(void)
 
 /* 1B5FC's two layout arms share the same three-edge radius test.
  * Return zero with WALL/ID published on the first solid edge. */
-static int floor_edges(int32_t x, int32_t z, pe_addr_t rec, unsigned depth)
+static int floor_edges(int32_t x, int32_t z, pe_addr_t rec, unsigned depth, unsigned entry_stop_epoch)
 {
     int three_d = PE_LoadU32(PLANES) != 0u;
     unsigned vertex_off = three_d ? 8u : 2u;
@@ -98,6 +112,8 @@ static int floor_edges(int32_t x, int32_t z, pe_addr_t rec, unsigned depth)
         pe_addr_t normal;
         unsigned neighbor;
         floor_vertex(id, &px, &pz);
+        /* The 640-edge guard differs from the bounded original on a synthetic
+         * boundary case; real map bounds remain unverified (see floor evidence). */
         if (edge >= 640u || (PE_LoadU32(mark) & bit)) goto next;
         PE_StoreU32(mark, PE_LoadU32(mark) | bit);
         if ((px < x-radius && last_x < x-radius)
@@ -108,7 +124,8 @@ static int floor_edges(int32_t x, int32_t z, pe_addr_t rec, unsigned depth)
         dx = x-px; dz = z-pz;
         distance = floor_div(floor_sub(floor_mul(dz, last_x-px),
                                       floor_mul(dx, last_z-pz)),
-                             floor_s16(normal + 2u));
+                             floor_s16(normal + 2u), entry_stop_epoch);
+        if (PE_Port_StopEpoch() != entry_stop_epoch) return 0;
         if (floor_abs(distance) > radius) goto next;
         ax = id < last_id ? dx : x-last_x;
         az = id < last_id ? dz : z-last_z;
@@ -147,13 +164,13 @@ static int floor_edges(int32_t x, int32_t z, pe_addr_t rec, unsigned depth)
         last_id = id; last_x = px; last_z = pz;
     }
     for (i = 0; i < 3u; i++)
-        if (neighbors[i] && !floor_edges(x,z,neighbors[i],depth+1u)) return 0;
+        if (neighbors[i] && !floor_edges(x,z,neighbors[i],depth+1u,entry_stop_epoch)) return 0;
     return 1;
 }
 
 /* 1C7DC: project the attempted step onto the wall tangent, then move
  * outward by whole map units until the actor radius clears the edge. */
-static void floor_slide(pe_addr_t actor)
+static void floor_slide(pe_addr_t actor, unsigned entry_stop_epoch)
 {
     pe_addr_t n = PE_LoadU32(EDGES) + PE_LoadU16(WALL_ID)*12u;
     uint32_t tx = PE_LoadU32(n+4u), tz = PE_LoadU32(n+8u);
@@ -178,7 +195,9 @@ static void floor_slide(pe_addr_t actor)
             else z-=offset;
             distance = floor_div(floor_sub(
                 floor_mul(((int32_t)z>>16)-pz, dx),
-                floor_mul(((int32_t)x>>16)-px, dz)), floor_s16(n+2u));
+                floor_mul(((int32_t)x>>16)-px, dz)), floor_s16(n+2u),
+                entry_stop_epoch);
+            if (PE_Port_StopEpoch() != entry_stop_epoch) return;
             if (floor_abs(distance) > radius) {
                 PE_StoreU32(actor+0x28u,x);
                 PE_StoreU32(actor+0x30u,z);
@@ -249,6 +268,7 @@ static int floor_cached_wall(int32_t x, int32_t z, int32_t old_x, int32_t old_z)
 
 void func_8001AE40(pe_addr_t actor)
 {
+    unsigned entry_stop_epoch = PE_Port_StopEpoch();
     pe_addr_t rec = PE_LoadU32(actor+0x1A4u);
     int32_t x=floor_s16(actor+0x2Au), z=floor_s16(actor+0x32u);
     int32_t old_x=floor_s16(actor+0x42u), old_z=floor_s16(actor+0x4Au);
@@ -270,28 +290,34 @@ void func_8001AE40(pe_addr_t actor)
         || !floor_cached_wall(x,z,old_x,old_z)) {
         if (is_aya) PE_StoreU32(INPUT,PE_LoadU32(INPUT)&~8u);
         floor_clear_visited();
-        pass=floor_edges(x,z,rec,0);
+        pass=floor_edges(x,z,rec,0,entry_stop_epoch);
+        if (PE_Port_StopEpoch() != entry_stop_epoch) return;
     }
     if (!pass) {
         unsigned wall;
         if (!is_aya) goto reject;
-        floor_slide(actor);
+        floor_slide(actor,entry_stop_epoch);
         if (PE_Port_ShouldStop()) return;
         x=floor_s16(actor+0x2Au); z=floor_s16(actor+0x32u);
         floor_clear_visited();
         wall=PE_LoadU16(WALL_ID);
-        pass=floor_edges(x,z,rec,0);
+        pass=floor_edges(x,z,rec,0,entry_stop_epoch);
+        if (PE_Port_StopEpoch() != entry_stop_epoch) return;
         if (!pass) {
             if (wall==PE_LoadU16(WALL_ID)) {
                 floor_clear_visited();
                 PE_StoreU32(VISITED+(wall>>5)*4u,1u<<(wall&31u));
-                if (floor_edges(x,z,rec,0)) goto reject;
+                pass=floor_edges(x,z,rec,0,entry_stop_epoch);
+                if (PE_Port_StopEpoch() != entry_stop_epoch) return;
+                if (pass) goto reject;
             }
-            floor_slide(actor);
+            floor_slide(actor,entry_stop_epoch);
             if (PE_Port_ShouldStop()) return;
             x=floor_s16(actor+0x2Au); z=floor_s16(actor+0x32u);
             floor_clear_visited();
-            if (!floor_edges(x,z,rec,0)) goto reject;
+            pass=floor_edges(x,z,rec,0,entry_stop_epoch);
+            if (PE_Port_StopEpoch() != entry_stop_epoch) return;
+            if (!pass) goto reject;
         }
     }
     if (!func_8001C614(rec,x,z)) {
@@ -342,8 +368,8 @@ reject:
     PE_StoreU32(actor+0x98u,PE_LoadU32(actor+0x98u)|0x80000u);
 }
 
-/* Historical test/compatibility entry: use the full native polygon graph.
- * Its DIV guards trap as retail does; do not substitute a quotient here. */
+/* Historical test/compatibility entry for the native actor-list traversal.
+ * The floor division policy and its unresolved overflow case are noted above. */
 void func_8001A9F8(void);
 void func_8001A9F8_floor_cut(void)
 {

@@ -19,3 +19,11 @@
 #include "psx_compat.h"
 
 /* func_80042B38: ported from the matching decomp -- generated TU pc_port/game/decomp/func_80042B38_port.c (src/func_80042B38.c); hand port retired after differential verification (docs/evidence/portverify/REPORT.md). */
+
+/* The matching leaf's indexed byte store uses 32-bit guest address wrap.
+ * Its verbatim host-pointer lowering cannot represent that wrap. */
+void func_800428D4(void)
+{
+    uint32_t index = PE_LoadU32(0x800A1860u) - 1u;
+    PE_StoreU8(0x800A0ED5u + index * 0x418u, 0x0Du);
+}

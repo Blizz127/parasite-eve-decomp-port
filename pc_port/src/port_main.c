@@ -296,15 +296,16 @@ static void ScriptPadLoad(const char *s)
 static uint16_t ScriptPadSource(void)
 {
     static int by_vblank = -1;
-    int presented = 0;
+    uint64_t presented;
     uint16_t mask = 0xFFFFu;
     if (by_vblank < 0) {
         const char *c = getenv("PE_PAD_SCRIPT_CLOCK");
         by_vblank = c && !strcmp(c, "vblank");
     }
-    HostFB_GetState(NULL, NULL, &presented, NULL);
-    if (by_vblank) presented = (int)PE_GPU_VSyncQuery();
-    for (unsigned i = 0; i < g_script_pad_count && presented >= g_script_pad[i].frame; i++)
+    presented = HostFB_GetPresentCount();
+    if (by_vblank) presented = PE_GPU_VSyncQuery();
+    for (unsigned i = 0; i < g_script_pad_count &&
+         (g_script_pad[i].frame <= 0 || presented >= (uint64_t)g_script_pad[i].frame); i++)
         mask = g_script_pad[i].mask;
     return mask;
 }
@@ -579,9 +580,9 @@ static void PresentHook_BlitWindow(void)
         static const char *sdir = (const char *)1; static int sev;
         if (sdir == (const char *)1) { sdir = getenv("PE_SHOT_DIR"); sev = getenv("PE_SHOT_EVERY") ? atoi(getenv("PE_SHOT_EVERY")) : 60; }
         if (sdir && sev > 0 && (!g_opts.route_pad || getenv("PE_ROUTE_SHOTS"))) {
-            int presented = 0; HostFB_GetState(NULL, NULL, &presented, NULL);
+            uint64_t presented = HostFB_GetPresentCount();
             if (presented % sev == 0) {
-                char path[512]; snprintf(path, sizeof path, "%s/p%06d.ppm", sdir, presented);
+                char path[512]; snprintf(path, sizeof path, "%s/p%06llu.ppm", sdir, (unsigned long long)presented);
                 (void)HostFB_WritePPM(path);
             }
         }
@@ -1030,12 +1031,13 @@ static int RunCallbackOracleDump(void) {
 static void UpdateTitle(const char *phase, const char *func) {
     if (!g_opts.debug_overlay || !g_host_window_open) return;
     char buf[256];
-    int vs, ds, pr, mk;
-    HostFB_GetState(&vs, &ds, &pr, &mk);
+    int vs, ds, mk;
+    uint64_t pr = HostFB_GetPresentCount();
+    HostFB_GetState(&vs, &ds, NULL, &mk);
     snprintf(buf, sizeof(buf),
-        "%s | %s | %s | iter %d | frame %d | vsync %d | stubs %d",
+        "%s | %s | %s | iter %d | frame %llu | vsync %d | stubs %d",
         g_opts.window_title, phase, func ? func : "-",
-        g_port_main_iterations, pr, vs, g_stub_bootstrap_invocations);
+        g_port_main_iterations, (unsigned long long)pr, vs, g_stub_bootstrap_invocations);
     HostWindow_SetTitle(buf);
 }
 
@@ -1238,9 +1240,7 @@ static void port_write_stop_report(void)
     fprintf(f, "room token: %08X\nstory persist[74]: %08X\n",
             (unsigned)PE_LoadU32(0x8009D280u), (unsigned)PE_LoadU32(0x800A7918u));
     {
-        int vs_, ds_, pr_, mk_;
-        HostFB_GetState(&vs_, &ds_, &pr_, &mk_);
-        fprintf(f, "presents: %d\n", pr_);
+        fprintf(f, "presents: %llu\n", (unsigned long long)HostFB_GetPresentCount());
     }
     fclose(f);
     fprintf(stderr, "[HOST] stop report written to %s\n", path);
@@ -1266,17 +1266,16 @@ int main(int argc, char **argv) {
     PE_Port_SetSkipMovie(g_opts.skip_movie);
     PE_Port_SetSkipOpeningMenu(g_opts.skip_opening_menu);
     if (g_strict_stubs) Bootstrap_EnableStrict();
-    /* Native only (owner, 2026-10-07): a call into retail code the port has
-     * no C for is a CPU_BOUNDARY/REFUSED STOP, never emulated and never
-     * silently answered with 0.  PE_BOUNDARY_POLICY=record restores the old
-     * log-and-continue behaviour for diagnosis only. */
+    /* Unresolved decomp calls stop by default. PE_BOUNDARY_POLICY=record
+     * restores the log-and-continue behavior for diagnosis only. */
     {
         extern void PE_Decomp_SetBoundaryStop(int stop);
         const char *bp = getenv("PE_BOUNDARY_POLICY");
         int stop = !(bp && strcmp(bp, "record") == 0);
         PE_Decomp_SetBoundaryStop(stop);
-        fprintf(stderr, "[NATIVE] boundary policy=%s (no MIPS interpreter, "
-                "no CPU emulation in this binary)\n", stop ? "stop" : "record");
+        fprintf(stderr, "[NATIVE] boundary policy=%s (unresolved decomp calls "
+                "are %s; whole-engine coverage not established)\n",
+                stop ? "stop" : "record", stop ? "stopped" : "recorded");
     }
 
     /* Phase 6E-A: real Disc 1 image, read-only (never copied or staged). */
@@ -1580,12 +1579,12 @@ int main(int argc, char **argv) {
     }
 
     Stub_PrintSummary();
-    int vs, ds, pr, mk; HostFB_GetState(&vs, &ds, &pr, &mk);
+    int vs, ds, mk; uint64_t pr = HostFB_GetPresentCount(); HostFB_GetState(&vs, &ds, NULL, &mk);
     /* vsyncs = VSync() CALLS (counter queries included), not elapsed time;
      * vblanks = emulated VBlanks (PE_GPU_VSyncQuery), the unit the emulator
      * oracle and retail timings use. */
-    fprintf(stderr, "[FB] vsyncs=%d drawsyncs=%d presents=%d mask=%d main_iters=%d vblanks=%u\n",
-            vs, ds, pr, mk, g_port_main_iterations, (unsigned)PE_GPU_VSyncQuery());
+    fprintf(stderr, "[FB] vsyncs=%d drawsyncs=%d presents=%llu mask=%d main_iters=%d vblanks=%u\n",
+            vs, ds, (unsigned long long)pr, mk, g_port_main_iterations, (unsigned)PE_GPU_VSyncQuery());
     fprintf(stderr, "[HOST] stop_reason=%s\n",
             PE_Port_StopReasonName(PE_Port_GetStopReason()));
     fprintf(stderr, "[HOST] final room token=%08X story persist[74]=%08X\n",

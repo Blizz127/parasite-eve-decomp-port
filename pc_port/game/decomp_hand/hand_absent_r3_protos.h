@@ -22,8 +22,6 @@ void func_8003495C(void);
 void func_80042020(int slot, int n);
 void func_8004A0C8(void);
 int func_8005C688(int min_b, int min_c);
-int func_8007A360(int a0);
 int func_80081D74(int a0, int a1);
-int func_80083F44(pe_addr_t a0);
 
 #endif /* PE_HAND_ABSENT_R3_PROTOS_H */

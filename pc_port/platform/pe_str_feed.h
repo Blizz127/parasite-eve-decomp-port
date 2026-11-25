@@ -4,11 +4,10 @@
 /*
  * HOST_ADAPTED STR stream feeder (fmv lane).
  *
- * Production runs do not enable the modeled CD register device
- * (pe_cdreg.c), so the retail streaming library's IRQ-driven sector
- * assembly (7C13C → 7C564 → DMA3 → 7C214) never fills the ring that
- * StGetNext (func_8007C484) polls.  When CdReadS (func_80081314) opens a
- * stream with the device disabled, this feeder takes over the *producer*
+ * When the modeled CD register device (pe_cdreg.c) is disabled, its
+ * IRQ-driven sector assembly cannot fill the ring that StGetNext
+ * (func_8007C484) polls. When CdReadS (func_80081314) opens a stream with
+ * the device disabled, this feeder takes over the *producer*
  * half of the libcd stream ring: it reads raw sectors from the active
  * disc at the 2x drive rate (150 sectors/s = 2.5 per VBlank), assembles
  * STR video chunks into the StSetRing records/data exactly where

@@ -113,7 +113,11 @@ void func_800299CC_after_consume_cut(void)
     PE_StoreU32(GA_D_8009D278, PE_LoadU32(aya));
 
     /* 29A5C jal 5C498; 29A68 sh v0, gp+0x534. Before mode!=0. */
-    PE_StoreU16(0x8009D2A4u, (uint16_t)func_8005C498(0x800A76D8u));
+    {
+        int menu_result = func_8005C498(0x800A76D8u);
+        if (PE_Port_ShouldStop()) return;
+        PE_StoreU16(0x8009D2A4u, (uint16_t)menu_result);
+    }
 
     if (PE_LoadU32(GA_D_8009D28C) != 0u)
         return;
@@ -464,7 +468,11 @@ void func_800299CC(void)
     }
     PE_StoreU32(GA_D_8009D230, 0u);
     PE_StoreU32(GA_D_8009D278, PE_LoadU32(BT_AYA()));
-    PE_StoreU16(0x8009D2A4u, (uint16_t)func_8005C498(0x800A76D8u));
+    {
+        int menu_result = func_8005C498(0x800A76D8u);
+        if (PE_Port_ShouldStop()) return;
+        PE_StoreU16(0x8009D2A4u, (uint16_t)menu_result);
+    }
     if (BT_MODE() == 0u && PE_LoadU8(GA_D_8009D244) != 0u) {
         rec = BT_REC();
         if (PE_LoadU16(rec + 0x10u) >= 9000u) {

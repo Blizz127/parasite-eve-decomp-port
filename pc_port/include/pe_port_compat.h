@@ -10,6 +10,7 @@
 #include "pe_plat/gpu_status.h"  /* GetODE -> pe_plat name */
 #include "pe_plat/gpu_area.h"    /* SetTexWindow/SetDrawArea -> pe_plat names */
 #include "pe_plat/irq_callback.h" /* ResetCallback/InterruptCallback -> pe_plat names */
+#include "pe_plat/pad.h"          /* PadGetState -> pe_plat name */
 
 int func_801216C4(int mode, pe_addr_t buffers);
 void func_801223A8(int mode);
@@ -67,7 +68,7 @@ void func_8006E60C(void);
  * func_800844E4/func_80082534                — pe_save.c
  * func_8007EC14/func_8007ED58/func_8007F72C/func_8007F778/
  * func_8007FBF0/func_80080CC8/func_8007F7A8  — pe_libcd.c
- * func_8003E754/func_8003E944                — game/boot/*.c          */
+ * func_8003E754/func_8003E944                — game/boot/ sources       */
 #include "pe_sdk.h"
 
 /* ── func_8006A5BC callees ─────────────────────────────────────────── */
@@ -691,7 +692,7 @@ extern void func_80035C84(pe_addr_t actor);
 extern void func_8003999C(pe_addr_t actor, pe_addr_t table, pe_addr_t codep);
 extern void func_8007136C(pe_addr_t actor, pe_addr_t codep);
 extern void func_800710A4(pe_addr_t actor, pe_addr_t codep);
-extern void func_80078934(pe_addr_t matrix, pe_addr_t src, pe_addr_t dst);
+extern pe_addr_t func_80078934(pe_addr_t matrix, pe_addr_t src, pe_addr_t dst);
 extern void func_8002F76C(pe_addr_t actor);
 extern void func_80035558_walk_cut(void);
 extern void func_8001AE40(pe_addr_t actor);
@@ -1523,9 +1524,7 @@ extern int func_800825C0(uint32_t port);
 extern uint32_t func_80082680(uint32_t port,int32_t info,int32_t index);
 extern void func_800835A4(pe_addr_t pe_arg0, unsigned int arg1, unsigned char arg2);
 extern void func_80082974(uint32_t port,pe_addr_t motors,uint32_t count);
-extern int func_80083BB8(pe_addr_t record,pe_addr_t alignment);
 extern int func_800828F4(uint32_t port,pe_addr_t alignment);
-extern int func_80083D04(pe_addr_t record,uint32_t mode,uint32_t lock);
 extern int func_8008292C(uint32_t port,uint32_t mode,uint32_t lock);
 
 #endif

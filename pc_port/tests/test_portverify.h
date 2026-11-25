@@ -294,72 +294,6 @@ static void test_PV_67A78_null_header_low_ram(void)
     PASS();
 }
 
-/* Immediate libgpu entry points (src/func_800775E8.c, func_800777C0.c):
- * previously absent from the port.  Same GPU authority as the queued
- * wrappers (B54KR/B54KS); the rectangle is a guest address. */
-static void test_PV_777C0_immediate_moveimage(void)
-{
-    static const uint16_t pixels[] = {
-        0x101u, 0x102u, 0x103u, 0x104u,
-        0x201u, 0x202u, 0x203u, 0x204u
-    };
-    const pe_addr_t rect = 0x80170100u;
-    PeGpuState state;
-    TEST_RETAIL_DISC1("PV_777C0_immediate_moveimage"); TEST_RETAIL_FIXUPS(RETAILFIX_dispenv);
-    ResetTestState();
-    B54KR_SeedGpuStatic();
-    ASSERT(B54KR_UploadPixels(10u, 20u, 4u, 2u, pixels), "source upload failed");
-    PE_StoreU32(rect, 0x0014000Au);           /* x=10, y=20 */
-    PE_StoreU32(rect + 4u, 0x00020004u);      /* w=4, h=2 */
-    ASSERT(func_800777C0(rect, 100, 30) == 0 && !PE_Port_ShouldStop(),
-           "immediate MoveImage did not return 0");
-    ASSERT(PE_LoadU32(0x800957ECu) == 0x0014000Au &&
-           PE_LoadU32(0x800957F0u) == 0x001E0064u &&
-           PE_LoadU32(0x800957F4u) == 0x00020004u,
-           "packet xy/col/wh differ");
-    ASSERT(B54KR_PixelIs(100u, 30u, 0x101u) && B54KR_PixelIs(103u, 31u, 0x204u),
-           "moved pixels differ");
-    ASSERT(PE_LoadU32(PE_DMA_CallbackSlotAddress(2u)) == 0x80077A00u,
-           "DMA2 callback slot not func_80077A00");
-    ASSERT(PE_LoadU32(0x8009588Cu) == 0u &&
-           PE_LoadU32(0x80095888u) == PE_GPU_VSyncQuery() + 0xF0u,
-           "deadline preamble differs");
-    PE_GPU_GetState(&state);
-    ASSERT(state.move_count == 1u, "not exactly one move");
-
-    /* Zero height: -1 after the wait + callback install, packet untouched. */
-    PE_StoreU32(0x800957ECu, 0xA5A5A5A5u);
-    PE_StoreU32(rect + 4u, 0x00000004u);
-    ASSERT(func_800777C0(rect, 1, 2) == -1 &&
-           PE_LoadU32(0x800957ECu) == 0xA5A5A5A5u && !PE_Port_ShouldStop(),
-           "zero-size immediate MoveImage submitted");
-    PASS();
-}
-
-static void test_PV_775E8_immediate_loadimage(void)
-{
-    const pe_addr_t rect = 0x80170100u;
-    uint32_t i;
-    TEST_RETAIL_DISC1("PV_775E8_immediate_loadimage"); TEST_RETAIL_FIXUPS(RETAILFIX_dispenv);
-    ResetTestState();
-    HostFB_Init();
-    B54KR_SeedGpuStatic();
-    for (i = 0u; i < 16u; i++)
-        PE_StoreU32(0x80170000u + i * 4u,
-                    (0x3000u + i * 2u) | ((0x3001u + i * 2u) << 16));
-    PE_StoreU32(rect, 0x001E0014u);           /* x=20, y=30 */
-    PE_StoreU32(rect + 4u, 0x00020010u);      /* w=16, h=2 */
-    ASSERT(func_800775E8(rect, 0x80170000u) == 0 && !PE_Port_ShouldStop(),
-           "immediate LoadImage did not return 0");
-    ASSERT(PE_LoadU32(PE_DMA_CallbackSlotAddress(2u)) == 0x80077A00u,
-           "DMA2 callback slot not func_80077A00");
-    ASSERT(func_80074DC0(0) == 0 && !PE_GPU_DMA2Pending() && !PE_Port_ShouldStop(),
-           "DrawSync did not complete the direct transfer");
-    ASSERT(B54KR_PixelIs(20u, 30u, 0x3000u) && B54KR_PixelIs(35u, 31u, 0x301Fu),
-           "uploaded pixels differ");
-    PASS();
-}
-
 /* src/func_80048918.c (item/equipment window constructor): absent before
  * round 6 — its hand callers recorded a loud boundary instead.  Default mode
  * (no frame D_8009CF0C, no equip-slot group D_8009CF30, no D_8009CF1C). */
@@ -519,8 +453,6 @@ static void test_PV_all(void)
     test_PV_494AC_item_list_confirm_runs_native();
     test_PV_4A9A0_slot_detail_input_runs_native();
     test_PV_4D5CC_card_slot_runs_registry_callback();
-    test_PV_777C0_immediate_moveimage();
-    test_PV_775E8_immediate_loadimage();
     test_PV_1F814_null_actor_latch();
     test_PV_67A78_null_header_low_ram();
     test_PV_52F70_signed_cap();

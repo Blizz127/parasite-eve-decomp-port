@@ -23,6 +23,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <limits.h>
 
 /* ── framebuffer state ───────────────────────────────────────────────── */
 
@@ -37,7 +38,7 @@ static uint8_t fb_antialias[PE_PORT_FB_WIDTH * PE_PORT_FB_HEIGHT * 3];
 
 void HostFB_SetSSAA(int enabled) { fb_ssaa = enabled == 1; }
 int HostFB_GetSSAA(void) { return fb_ssaa; }
-static int     fb_presented = 0;
+static uint64_t fb_presented = 0;
 static int     fb_mask      = 0;   /* 0 = blanked, 1 = visible (SetDispMask) */
 static uint32_t fb_device_cycles = 0;
 static int     fb_vsync_count = 0;
@@ -76,16 +77,19 @@ void HostFB_Init(void)
 
 void HostFB_ClearImage(int x, int y, int w, int h, uint8_t r, uint8_t g, uint8_t b)
 {
-    /* Clamp to framebuffer bounds */
-    if (x < 0) { w += x; x = 0; }
-    if (y < 0) { h += y; y = 0; }
-    if (x + w > PE_PORT_FB_WIDTH)  w = PE_PORT_FB_WIDTH  - x;
-    if (y + h > PE_PORT_FB_HEIGHT) h = PE_PORT_FB_HEIGHT - y;
+    /* Intersect in widened arithmetic before narrowing to framebuffer bounds. */
     if (w <= 0 || h <= 0) return;
+    int64_t left = x, top = y;
+    int64_t right = (int64_t)x + w, bottom = (int64_t)y + h;
+    if (left < 0) left = 0;
+    if (top < 0) top = 0;
+    if (right > PE_PORT_FB_WIDTH) right = PE_PORT_FB_WIDTH;
+    if (bottom > PE_PORT_FB_HEIGHT) bottom = PE_PORT_FB_HEIGHT;
+    if (left >= right || top >= bottom) return;
 
-    for (int row = y; row < y + h; row++) {
-        uint8_t *dst = fb + (row * PE_PORT_FB_WIDTH + x) * 3;
-        for (int col = 0; col < w; col++) {
+    for (int row = (int)top; row < (int)bottom; row++) {
+        uint8_t *dst = fb + (row * PE_PORT_FB_WIDTH + (int)left) * 3;
+        for (int col = (int)left; col < (int)right; col++) {
             dst[0] = r;
             dst[1] = g;
             dst[2] = b;
@@ -97,8 +101,8 @@ void HostFB_ClearImage(int x, int y, int w, int h, uint8_t r, uint8_t g, uint8_t
 void HostFB_Present(void)
 {
     if (!PE_Port_FramePresentationAllowed()) return;
-    fb_presented++;
-    PE_Port_FramePresented(fb_presented);
+    if (fb_presented < UINT64_MAX) fb_presented++;
+    PE_Port_FramePresented(fb_presented > INT_MAX ? INT_MAX : (int)fb_presented);
     PE_Port_InvokePresentHook();
 }
 
@@ -172,8 +176,8 @@ void HostFB_PresentDispEnv(pe_addr_t env)
     fb_scan.rgb24 = PE_LoadU8(env + 17u) != 0u;
     fb_idle_vblanks = 0;
     ScanDisplay(dx, dy, dw, top, dh, fb_scan.rgb24);
-    fb_presented++;
-    PE_Port_FramePresented(fb_presented);
+    if (fb_presented < UINT64_MAX) fb_presented++;
+    PE_Port_FramePresented(fb_presented > INT_MAX ? INT_MAX : (int)fb_presented);
     PE_Port_InvokePresentHook();
 }
 
@@ -482,7 +486,7 @@ uint32_t HostFB_VSync(int mode)
 
 void HostFB_DrawSync(int mode)
 {
-    fb_drawsync_count++;
+    if (fb_drawsync_count < INT_MAX) fb_drawsync_count++;
     (void)mode;
 }
 
@@ -543,6 +547,8 @@ void HostFB_GetState(int *vsync, int *drawsync, int *presented, int *mask)
 {
     if (vsync)     *vsync     = fb_vsync_count;
     if (drawsync)  *drawsync  = fb_drawsync_count;
-    if (presented) *presented = fb_presented;
+    if (presented) *presented = fb_presented > INT_MAX ? INT_MAX : (int)fb_presented;
     if (mask)      *mask      = fb_mask;
 }
+
+uint64_t HostFB_GetPresentCount(void) { return fb_presented; }

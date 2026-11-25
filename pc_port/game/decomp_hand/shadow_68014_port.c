@@ -1,5 +1,5 @@
 /* func_80068014: per-actor floor shadow (retail 58814.s, 0x80068014..0x8006869C,
- * 0x228 words). Translated from retail asm, not yet matched C (still asm in
+ * 419 words, including the return delay slot). Translated from retail asm, not yet matched C (still asm in
  * configs/USA/disc1.yaml); a hand translation pending matching.
  * Called by the field dest tick 359B8 after 3AF14 for every drawn actor.
  *
@@ -87,7 +87,7 @@ int32_t func_80068014(pe_addr_t actor)
 
     bank = PE_LoadU32(0x8009CDDCu);
     packet = PE_LoadU32(actor + 0x278u) + bank * 40u;
-    if (!PE_RangeIsRam(packet, 40u)) {   /* no packet buffer: nothing to draw */
+    if (!PE_RangeIsRam(PE_RamCanonical(packet, 40u), 40u)) { /* no RAM packet */
         for (i = 0; i < 0x40u; i++) PE_StoreU8(SCR + i, saved[i]);
         return 0;
     }

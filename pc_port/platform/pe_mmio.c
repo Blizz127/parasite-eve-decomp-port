@@ -1,6 +1,7 @@
 /* MMIO dispatch table; contract in pe_mmio.h. */
 #include "pe_mmio.h"
 #include "pe_irq.h"
+#include "pe_irq_delivery.h"
 #include "pe_gpu.h"
 #include "pe_mdec.h"
 #include "pe_timer1.h"
@@ -24,13 +25,13 @@ typedef struct {
 } PeMmioReg;
 
 static uint32_t r_istat(void) { return PE_IRQ_ReadStatus(); }
-static int w_istat(uint32_t v) { PE_IRQ_WriteStatus((uint16_t)v); return 1; }
+static int w_istat(uint32_t v) { PE_IRQ_WriteStatus((uint16_t)v); PE_IRQ_ObserveIstatWrite((uint16_t)v); return 1; }
 static uint32_t r_imask(void) { return PE_IRQ_GetMask(); }
 static int w_imask(uint32_t v) { (void)PE_IRQ_ExchangeMask((uint16_t)v); return 1; }
 static uint32_t r_dpcr(void) { return PE_GPU_ReadDPCR(); }
 static int w_dpcr(uint32_t v) { PE_GPU_WriteDPCR(v); return 1; }
 static uint32_t r_dicr(void) { return PE_GPU_ReadDICR(); }
-static int w_dicr(uint32_t v) { PE_GPU_WriteDICR(v); return 1; }
+static int w_dicr(uint32_t v) { PE_GPU_WriteDICR(v); PE_IRQ_ObserveDicrWrite(v); return 1; }
 static uint32_t r_t1cnt(void) { return PE_Timer1_ReadCounter(); }
 static int w_t1cnt(uint32_t v) { PE_Timer1_WriteCounter((uint16_t)v); return 1; }
 static uint32_t r_t1tgt(void) { return PE_Timer1_ReadTarget(); }

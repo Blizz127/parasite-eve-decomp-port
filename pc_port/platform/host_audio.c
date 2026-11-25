@@ -229,6 +229,7 @@ static int pulse_open(void)
     int dev_ms, ring_ms;
     int err = 0;
 
+    memset(&P, 0, sizeof(P));
     if (ms < 40) ms = 40;
     if (ms > 500) ms = 500;
     dev_ms = ms * 3 / 5;             /* device share (PipeWire quantum room) */
@@ -274,6 +275,9 @@ static int pulse_open(void)
     if (pthread_create(&P.thread, NULL, writer, NULL) != 0) {
         P.running = 0;
         P.free_(P.pa); P.pa = NULL;
+        pthread_cond_destroy(&P.cv);
+        pthread_mutex_destroy(&P.mu);
+        dlclose(P.lib); P.lib = NULL;
         return 0;
     }
     fprintf(stderr, "[AUDIO] PulseAudio/PipeWire output open (44100 Hz stereo, "
@@ -351,21 +355,25 @@ static void pulse_close(void)
             (unsigned long long)P.overflow_drops,
             (unsigned long long)P.ff_dropped);
     P.free_(P.pa);
-    P.pa = NULL;
+    pthread_cond_destroy(&P.cv);
+    pthread_mutex_destroy(&P.mu);
+    dlclose(P.lib);
+    memset(&P, 0, sizeof(P));
 }
 #endif
 
 /* ── public ────────────────────────────────────────────────────────── */
 
-static int g_open, g_device;
+static int g_open, g_device, g_exit_registered;
 
 int HostAudio_Open(int want_device)
 {
     const char *wav = getenv("PE_AUDIO_WAV");
-    if (g_open) return 1;
+    if (g_open) return g_wav != NULL || g_device;
     if (wav && *wav) {
         g_wav = fopen(wav, "wb");
         if (g_wav) {
+            g_wav_frames = g_wav_last_patch = 0;
             wav_header();
             fprintf(stderr, "[AUDIO] writing WAV dump %s\n", wav);
         } else {
@@ -377,9 +385,10 @@ int HostAudio_Open(int want_device)
 #else
     (void)want_device;
 #endif
-    g_open = 1;
-    atexit(HostAudio_Close);
-    return g_wav != NULL || g_device;
+    g_open = g_wav != NULL || g_device;
+    if (g_open && !g_exit_registered && atexit(HostAudio_Close) == 0)
+        g_exit_registered = 1;
+    return g_open;
 }
 
 int HostAudio_DeviceOpen(void) { return g_device; }
@@ -460,4 +469,5 @@ void HostAudio_Close(void)
     if (g_device) pulse_close();
 #endif
     g_device = 0;
+    g_open = 0;
 }

@@ -35,12 +35,17 @@ static int MC_FrameOk(const uint8_t *f)
  * All private-instance identifiers and interception macros end at this include. */
 static const char *MC_Io_path;
 static int MC_Io_read_error, MC_Io_write_error, MC_Io_reads, MC_Io_writes;
+static int MC_Io_read_stage, MC_Io_stream_error;
+static FILE *MC_Io_read_target;
 
 static FILE *MC_Io_fopen(const char *path, const char *mode)
 {
     if (MC_Io_path && strcmp(path, MC_Io_path) == 0 && strcmp(mode, "rb") == 0) {
         MC_Io_reads++;
         if (MC_Io_read_error) { errno = MC_Io_read_error; return NULL; }
+        MC_Io_read_target = fopen(path, mode);
+        MC_Io_stream_error = 0;
+        return MC_Io_read_target;
     }
     if (MC_Io_path && strcmp(mode, "wb") == 0 &&
         strncmp(path, MC_Io_path, strlen(MC_Io_path)) == 0 &&
@@ -51,7 +56,37 @@ static FILE *MC_Io_fopen(const char *path, const char *mode)
     return fopen(path, mode);
 }
 
+static size_t MC_Io_fread(void *p, size_t size, size_t count, FILE *f)
+{
+    if (MC_Io_read_stage == 1 && f == MC_Io_read_target) {
+        size_t n = fread(p, size, count > 128u ? 128u : count, f);
+        MC_Io_stream_error = 1; errno = EIO; return n;
+    }
+    return fread(p, size, count, f);
+}
+static int MC_Io_fgetc(FILE *f)
+{
+    if (MC_Io_read_stage == 2 && f == MC_Io_read_target) {
+        MC_Io_stream_error = 1; errno = EIO; return EOF;
+    }
+    return fgetc(f);
+}
+static int MC_Io_ferror(FILE *f)
+{ return (f == MC_Io_read_target && MC_Io_stream_error) || ferror(f); }
+static int MC_Io_fclose(FILE *f)
+{
+    int selected = f == MC_Io_read_target;
+    int result = fclose(f);
+    if (selected) MC_Io_read_target = NULL;
+    if (selected && MC_Io_read_stage == 3) { errno = EIO; return EOF; }
+    return result;
+}
+
 #define fopen MC_Io_fopen
+#define fread MC_Io_fread
+#define fgetc MC_Io_fgetc
+#define ferror MC_Io_ferror
+#define fclose MC_Io_fclose
 #define McPort MC_Io_McPort
 #define McFile MC_Io_McFile
 #define g_ports MC_Io_ports
@@ -108,6 +143,10 @@ static FILE *MC_Io_fopen(const char *path, const char *mode)
 #define PE_Memcard_CardLoadResult MC_Io_CardLoadResult
 #include "../platform/pe_memcard.c"
 #undef fopen
+#undef fread
+#undef fgetc
+#undef ferror
+#undef fclose
 #undef McPort
 #undef McFile
 #undef g_ports
@@ -242,6 +281,89 @@ static void test_MC_create_error_stays_unloaded(void)
     ASSERT(first_failed && second_failed && reads == 2 && writes == 2,
            "failed missing-card creation propagates and retries instead of caching blank card");
     ASSERT(diagnostic && recovered, "creation error reported; normal creation recovers when writable");
+    PASS();
+}
+
+/* Read errors must not masquerade as an unformatted card. */
+static void test_MC_read_io_errors(void)
+{
+    static char path[512];
+    static uint8_t before[PE_MC_IMAGE_SIZE], after[PE_MC_IMAGE_SIZE];
+    const char *names[] = {"read-fault.mcd", "extra-byte-fault.mcd", "read-close-fault.mcd"};
+    FILE *f; size_t n; int result, failed, format_failed, diagnostic;
+    TEST("MC_read_io_errors");
+    for (int stage = 1; stage <= 3; stage++) {
+        MC_TestTempPath(path, sizeof path, names[stage - 1]);
+        PE_Memcard_FormatImage(before); before[0x2000] = 0x5Au;
+        f = fopen(path, "wb"); ASSERT(f, "create scratch card");
+        n = fwrite(before, 1, sizeof before, f); result = fclose(f);
+        ASSERT(n == sizeof before && !result, "write scratch card");
+        MC_Io_Reset(); MC_Io_path = path; MC_Io_read_error = MC_Io_write_error = 0;
+        MC_Io_SetPath(0, path); MC_Io_read_stage = stage;
+        failed = MC_Io_Image(0) == NULL;
+        format_failed = !MC_Io_Format("bu00:");
+        diagnostic = strstr(MC_Io_LastError(), stage == 3 ? "close" : "read") != NULL;
+        MC_Io_read_stage = 0;
+        ASSERT(failed && format_failed && diagnostic, "I/O failure refuses the card and format");
+        ASSERT(MC_Io_Image(0) && !memcmp(before, MC_Io_Image(0), sizeof before), "clean retry reloads the original card");
+        f = fopen(path, "rb"); ASSERT(f, "original card remains");
+        n = fread(after, 1, sizeof after, f); result = fclose(f);
+        ASSERT(n == sizeof after && !result && !memcmp(before, after, sizeof before), "disk card unchanged");
+        MC_Io_Reset(); MC_Io_path = NULL; remove(path);
+    }
+    PASS();
+}
+
+/* A failed persist must not leak a failed operation into a later save. */
+static void test_MC_failed_operations_rollback(void)
+{
+    static char path[512];
+    static uint8_t before[PE_MC_IMAGE_SIZE], after[PE_MC_IMAGE_SIZE];
+    uint8_t data[128], replacement[128];
+    PeMcDirEntry ent;
+    FILE *disk;
+    int fd, result;
+    size_t n;
+    TEST("MC_failed_operations_rollback");
+    memset(data, 0x31, sizeof data); memset(replacement, 0x75, sizeof replacement);
+    for (unsigned op = 0; op < 4u; op++) {
+        const char *names[] = {"rollback-delete.mcd", "rollback-create.mcd", "rollback-format.mcd", "rollback-write.mcd"};
+        MC_TestTempPath(path, sizeof path, names[op]);
+        MC_Io_Reset(); MC_Io_path = path; MC_Io_read_error = MC_Io_write_error = 0;
+        MC_Io_SetPath(0, path);
+        ASSERT(MC_Io_IsFormatted(0), "fresh scratch card created");
+        fd = MC_Io_Open("bu00:OLD", 0x10202u);
+        ASSERT(fd >= 0 && MC_Io_Write(fd, data, sizeof data) == (int)sizeof data && MC_Io_Close(fd) == fd,
+               "existing save created");
+        ASSERT(MC_Io_Image(0), "loaded image available");
+        memcpy(before, MC_Io_Image(0), sizeof before);
+        fd = MC_Io_Open("bu00:OLD", 3u); ASSERT(fd >= 0, "open old save");
+        MC_Io_write_error = EACCES;
+        if (op == 0u) result = MC_Io_Delete("bu00:OLD");
+        else if (op == 1u) result = MC_Io_Open("bu00:NEW", 0x10202u);
+        else if (op == 2u) result = MC_Io_Format("bu00:");
+        else result = MC_Io_Write(fd, replacement, sizeof replacement);
+        MC_Io_write_error = 0;
+        ASSERT(op == 1u || op == 3u ? result < 0 : result == 0, "failed persist is reported");
+        ASSERT(MC_Io_Lseek(fd, 0, 1) == 0, "failed operation preserves open handle and position");
+        ASSERT(MC_Io_Image(0) && !memcmp(before, MC_Io_Image(0), sizeof before), "cached image rolled back");
+        disk = fopen(path, "rb"); ASSERT(disk, "old disk image remains");
+        n = fread(after, 1, sizeof after, disk); result = fclose(disk);
+        ASSERT(n == sizeof after && result == 0 && !memcmp(before, after, sizeof before), "old disk image unchanged");
+        ASSERT(MC_Io_Close(fd) == fd, "close original handle");
+        fd = MC_Io_Open("bu00:OTHER", 0x10202u);
+        ASSERT(fd >= 0 && MC_Io_Close(fd) == fd, "later operation succeeds");
+        MC_Io_Reset(); MC_Io_SetPath(0, path);
+        ASSERT(MC_Io_FirstFile("bu00:OLD", &ent), "old save survives later persistence");
+        ASSERT(!MC_Io_FirstFile("bu00:NEW", &ent), "failed create does not reappear");
+        fd = MC_Io_Open("bu00:OLD", 1u); ASSERT(fd >= 0, "old save reopens");
+        memset(replacement, 0, sizeof replacement);
+        ASSERT(MC_Io_Read(fd, replacement, sizeof replacement) == (int)sizeof replacement &&
+               !memcmp(data, replacement, sizeof data), "old save bytes survive later persistence");
+        ASSERT(MC_Io_Close(fd) == fd, "close reloaded save");
+        MC_Io_Reset(); MC_Io_path = NULL; remove(path);
+        memset(replacement, 0x75, sizeof replacement);
+    }
     PASS();
 }
 
@@ -478,6 +600,117 @@ static void test_MC_persistence(void)
                "default path under the data dir");
         ASSERT(!PE_Memcard_Present(1), "slot 2 empty by default");
     }
+    Test_ResetMemcard();
+    PASS();
+}
+
+/* Malformed chains must not turn a file operation into a cross-file write. */
+static void test_MC_corrupt_chain_isolation(void)
+{
+    static uint8_t before[PE_MC_IMAGE_SIZE];
+    uint8_t data[128], back[128];
+    int fd;
+    TEST("MC_corrupt_chain_isolation");
+    memset(data, 0x5A, sizeof data);
+    for (unsigned scenario = 0; scenario < 6u; scenario++) {
+        ResetTestState(); PE_Memcard_SetPath(0, "");
+        unsigned blocks = scenario == 2u || scenario == 3u ? 2u : 1u;
+        fd = PE_Memcard_Open("bu00:A", (blocks << 16) | 0x202u);
+        ASSERT(fd >= 0 && PE_Memcard_Close(fd) == fd, "create A");
+        fd = PE_Memcard_Open("bu00:B", 0x10202u);
+        ASSERT(fd >= 0 && PE_Memcard_Write(fd, data, sizeof data) == (int)sizeof data &&
+               PE_Memcard_Close(fd) == fd, "create B");
+        if (scenario == 2u) {
+            fd = PE_Memcard_Open("bu00:C", 0x10202u);
+            ASSERT(fd >= 0 && PE_Memcard_Write(fd, data, sizeof data) == (int)sizeof data &&
+                   PE_Memcard_Close(fd) == fd, "create unaffected C");
+        }
+        uint8_t *img = (uint8_t *)PE_Memcard_Image(0);
+        ASSERT(img, "card image available");
+        uint8_t *a = img + 128u, *b = img + (blocks == 2u ? 384u : 256u);
+        if (scenario == 0u) { a[8] = 1; a[9] = 0; } /* one-block A links to B */
+        if (scenario == 1u) { a[4] = 0; a[5] = 0x40; a[8] = 1; a[9] = 0; } /* A writes toward B */
+        if (scenario == 2u) { b[4] = 0; b[5] = 0x40; b[8] = 1; b[9] = 0; b[127] = PE_Memcard_FrameChecksum(b); } /* shared tail */
+        if (scenario == 3u) { a[8] = 0; a[9] = 0; } /* cycle */
+        if (scenario == 4u) img[15u * 128u + 127u] ^= 1u; /* bad free-frame checksum */
+        if (scenario == 5u) { uint8_t *orphan = img + 15u * 128u; orphan[0] = 0x52; orphan[127] = PE_Memcard_FrameChecksum(orphan); }
+        if (scenario != 4u) a[127] = PE_Memcard_FrameChecksum(a);
+        memcpy(before, img, sizeof before);
+        ASSERT(PE_Memcard_Open("bu00:A", 2u) < 0, "write open rejects corrupt directory");
+        ASSERT(!PE_Memcard_Delete("bu00:A"), "delete rejects corrupt directory");
+        ASSERT(PE_Memcard_Open("bu00:NEW", 0x10202u) < 0, "create rejects corrupt directory");
+        ASSERT(!memcmp(before, PE_Memcard_Image(0), sizeof before), "rejected operations leave image unchanged");
+        if (scenario == 2u) ASSERT(PE_Memcard_Open("bu00:A", 1u) < 0, "ambiguous shared chain cannot be read as one file");
+        fd = PE_Memcard_Open(scenario == 2u ? "bu00:C" : "bu00:B", 1u);
+        ASSERT(fd >= 0 && PE_Memcard_Read(fd, back, sizeof back) == (int)sizeof back &&
+               !memcmp(data, back, sizeof data) && PE_Memcard_Close(fd) == fd,
+               "separately valid file remains readable");
+    }
+    Test_ResetMemcard(); PASS();
+}
+
+/* A name beyond the 20-byte card field cannot select a prefix file. */
+static void test_MC_name_length(void)
+{
+    static uint8_t before[PE_MC_IMAGE_SIZE];
+    PeMcDirEntry ent;
+    int fd;
+    TEST("MC_name_length");
+    ResetTestState(); PE_Memcard_SetPath(0, "");
+    fd = PE_Memcard_Open("bu00:ABCDEFGHIJKLMNOPQRST", 0x10202u);
+    ASSERT(fd >= 0 && PE_Memcard_Close(fd) == fd, "20-byte file created");
+    ASSERT(PE_Memcard_Image(0), "card image available");
+    memcpy(before, PE_Memcard_Image(0), sizeof before);
+    ASSERT(PE_Memcard_Open("bu00:ABCDEFGHIJKLMNOPQRST-other", 2u) < 0, "overlong write name rejected");
+    ASSERT(PE_Memcard_Open("bu00:12345678901234567890-other", 0x10202u) < 0, "overlong create name rejected");
+    ASSERT(!PE_Memcard_Delete("bu00:ABCDEFGHIJKLMNOPQRST-other"), "overlong delete name rejected");
+    ASSERT(!PE_Memcard_FirstFile("bu00:ABCDEFGHIJKLMNOPQRST-other", &ent), "overlong exact pattern rejected");
+    ASSERT(PE_Memcard_FirstFile("bu00:*long-ignored-pattern-exceeds-twenty", &ent), "wildcard remainder stays irrelevant");
+    ASSERT(!memcmp(before, PE_Memcard_Image(0), sizeof before), "rejected operations leave card unchanged");
+    fd = PE_Memcard_Open("bu00:ABCDEFGHIJKLMNOPQRST", 1u);
+    ASSERT(fd >= 0 && PE_Memcard_Close(fd) == fd, "20-byte file opens");
+    ASSERT(PE_Memcard_Delete("bu00:ABCDEFGHIJKLMNOPQRST"), "20-byte file deletes");
+    Test_ResetMemcard(); PASS();
+}
+
+/* A truncated card path must never select or format a different file. */
+static void test_MC_long_paths(void)
+{
+    char path[1200];
+    const char *original_override = getenv("PE_MEMCARD1");
+    const char *original_data = getenv("XDG_DATA_HOME");
+    char *saved_override = NULL, *saved_data = NULL;
+    TEST("MC_long_paths");
+    PE_Memcard_SetPath(0, "card-path-alias-test.mcd");
+    const char *alias = PE_Memcard_Path(0);
+    ASSERT(alias, "configured path is available");
+    PE_Memcard_SetPath(0, alias);
+    ASSERT(PE_Memcard_Path(0) && !strcmp(PE_Memcard_Path(0), "card-path-alias-test.mcd"),
+           "setting returned path keeps persistent path");
+    if (original_override) { saved_override = malloc(strlen(original_override) + 1u); ASSERT(saved_override, "save override environment"); strcpy(saved_override, original_override); }
+    if (original_data) { saved_data = malloc(strlen(original_data) + 1u); ASSERT(saved_data, "save data environment"); strcpy(saved_data, original_data); }
+    ResetTestState(); PE_Memcard_SetBoundaryMode(0);
+    memset(path, 'x', sizeof path - 1u); path[sizeof path - 1u] = 0;
+    PE_Memcard_SetPath(0, path);
+    ASSERT(!PE_Memcard_Present(0) && !PE_Memcard_Path(0), "overlong explicit path is rejected");
+    ASSERT(!PE_Memcard_Format("bu00:"), "rejected path cannot format a truncated file");
+    ASSERT(strstr(PE_Memcard_LastError(), "path too long") != NULL, "rejection reports its cause");
+    path[1023] = 0; PE_Memcard_SetPath(0, path);
+    ASSERT(PE_Memcard_Path(0) && strlen(PE_Memcard_Path(0)) == 1023u, "maximum fitting path is retained");
+    path[1023] = 'x';
+    MC_SETENV("PE_MEMCARD1", path); PE_Memcard_Reset();
+    ASSERT(!PE_Memcard_Present(0) && !PE_Memcard_Path(0), "overlong environment override is rejected");
+    ASSERT(!PE_Memcard_Format("bu00:"), "rejected override cannot format a truncated file");
+    MC_UNSETENV("PE_MEMCARD1");
+#ifndef _WIN32
+    /* Even an individually fitting data directory may overflow after the suffix. */
+    path[1010] = 0; MC_SETENV("XDG_DATA_HOME", path); PE_Memcard_Reset();
+    ASSERT(!PE_Memcard_Present(0) && !PE_Memcard_Path(0), "overlong derived path is rejected");
+#endif
+    if (saved_override) { MC_SETENV("PE_MEMCARD1", saved_override); free(saved_override); }
+    else MC_UNSETENV("PE_MEMCARD1");
+    if (saved_data) { MC_SETENV("XDG_DATA_HOME", saved_data); free(saved_data); }
+    else MC_UNSETENV("XDG_DATA_HOME");
     Test_ResetMemcard();
     PASS();
 }
@@ -756,8 +989,13 @@ static void test_MC_all(void)
     test_MC_sprintf();
     test_MC_file_roundtrip();
     test_MC_persistence();
+    test_MC_long_paths();
+    test_MC_name_length();
+    test_MC_corrupt_chain_isolation();
     test_MC_open_error_preserves_image();
     test_MC_create_error_stays_unloaded();
+    test_MC_read_io_errors();
+    test_MC_failed_operations_rollback();
     test_MC_bios_trampolines();
     test_MC_card_status_events();
     test_MC_operation_scan_and_save();

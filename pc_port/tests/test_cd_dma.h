@@ -1,4 +1,77 @@
 #include "retail_cd_dma_issue_cases.h"
+static void test_cd_sector_dma_status_pointer_reload(void)
+{
+    TEST("cd_sector_dma_status_pointer_reload");
+    ResetTestState();
+    PE_StoreU32(0x8009B27Cu, 0x80140000u);
+    PE_StoreU32(0x8009B288u, 0x80140004u);
+    PE_StoreU32(0x8009B2B0u, 0x80140008u);
+    PE_StoreU32(0x8009B28Cu, 0x8014000Cu);
+    PE_StoreU32(0x8009B2B4u, 0x80140010u);
+    PE_StoreU32(0x8009B2B8u, 0x8009B27Cu);
+    PE_StoreU32(0x8009B2BCu, 0x80140018u);
+    PE_StoreU32(0x8009B2C0u, 0x8014001Cu);
+    PE_StoreU8(0x80140040u, 0x40u);
+    (void)func_8007BF44(0x80140040u, 123u);
+    ASSERT(PE_LoadU32(0x8009B27Cu) == 0x80140040u &&
+           PE_LoadU32(0x8014001Cu) == 0x11000000u,
+           "sector DMA did not reload the changed status pointer");
+    PASS();
+}
+
+static void test_cd_dma_issue_dpcr_pointer_alias(void)
+{
+    TEST("cd_dma_issue_dpcr_pointer_alias");
+    ResetTestState();
+    PE_StoreU32(0x80130000u, 0x428a1234u);
+    PE_StoreU32(0x8009b348u, 0x8009b344u);
+    PE_StoreU32(0x8009b344u, 0x80130000u);
+    PE_StoreU32(0x8009b32cu, 0x80130008u);
+    PE_StoreU8(0x80130008u, 0x40u);
+    PE_CdReg_WriteU32(PE_CDREG_DMA3 + 8u, 0u);
+    func_8007CEAC(3u, 0x80150000u, 2u, 8u, 0x11000000u, 1u, 0u);
+    ASSERT(!PE_Port_ShouldStop() && PE_LoadU32(0x8009b344u) == 0x801b0000u &&
+           PE_LoadU32(0x80130000u) == 0x428a9234u && PE_LoadU32(0x801b0000u) == 0u,
+           "DMA issuer did not preserve the captured DPCR pointer");
+    PASS();
+}
+
+static void test_cd_dma_issue_preserves_pending_irq(void)
+{
+    TEST("cd_dma_issue_preserves_pending_irq");
+    ResetTestState();
+    PE_StoreU32(0x8009b348u, 0x1f8010f4u);
+    PE_StoreU32(0x8009b344u, 0x1f8010f0u);
+    PE_StoreU32(0x8009b32cu, 0x80130008u);
+    PE_StoreU8(0x80130008u, 0x40u);
+    PE_GPU_WriteDICR(0x00880000u);
+    ASSERT(PE_GPU_LatchDMACompletionFlag(3u), "cannot seed DMA3 interrupt");
+    PE_CdReg_WriteU32(PE_CDREG_DMA3 + 8u, 0u);
+    func_8007CEAC(3u, 0x80150000u, 0u, 8u, 0x11000000u, 0u, 0u);
+    ASSERT(!PE_Port_ShouldStop() && (PE_GPU_ReadDICR() & 0x08880000u) == 0x08800000u,
+           "DMA issuer must disable DMA3 IRQ without acknowledging its pending flag");
+    PASS();
+}
+
+static void test_cd_dma_issue_busy_stop(void)
+{
+    TEST("cd_dma_issue_busy_stop");
+    ResetTestState();
+    PE_CdReg_WriteU32(PE_CDREG_DMA3 + 8u, 0x01000000u);
+    func_8007CEAC(3u, 0x80150000u, 0u, 8u, 0x11000000u, 0u, 0u);
+    ASSERT(PE_Port_GetStopReason() == PE_PORT_STOP_UNRESOLVED_BOUNDARY &&
+           CountOrderLog("func_8007CEAC_busy") == 1,
+           "busy issuer must raise its named boundary");
+    ResetTestState();
+    PE_CdReg_WriteU32(PE_CDREG_DMA3 + 8u, 0x01000000u);
+    PE_Port_RequestStop(PE_PORT_STOP_HOST_QUIT);
+    func_8007CEAC(3u, 0x80150000u, 0u, 8u, 0x11000000u, 0u, 0u);
+    ASSERT(PE_Port_GetStopReason() == PE_PORT_STOP_HOST_QUIT &&
+           CountOrderLog("func_8007CEAC_busy") == 0,
+           "host quit must take precedence over the busy boundary");
+    PASS();
+}
+
 static void test_DAY2_cd_dma(void)
 {
     TEST_RETAIL_DISC1("DAY2_cd_dma"); TEST_RETAIL_FIXUPS(RETAILFIX_cd_device_tables);
@@ -36,7 +109,10 @@ static void test_DAY2_cd_dma(void)
         func_8007C564();
         ASSERT(!PE_Port_ShouldStop(),"physical stream stopped");
         ASSERT(PE_LoadU16(0x80150000u)==3u && PE_LoadU32(0x800BE998u)==1u && PE_LoadU32(0x800B89F4u)==1u,"physical stream publication");
-        for(unsigned i=0;i<4u;i++) ASSERT(PE_LoadU8(0x8015001Cu+i)==raw[12u+i],"physical location bytes");
+        for(unsigned i=0;i<4u;i++) {
+            ASSERT(PE_LoadU8(0x8015001Cu+i)==raw[12u+i],"physical location bytes");
+            ASSERT(PE_LoadU8(0x801FFE88u+i)==raw[12u+i],"physical FIFO scratch header differs");
+        }
         for(unsigned i=0;i<2016u;i++) ASSERT(PE_LoadU8(0x80150100u+i)==raw[56u+i],"physical stream payload");
         ASSERT((PE_GPU_ReadDICR()&0x08800000u)==0x08800000u && (PE_IRQ_ReadStatus()&8u),"DMA3 completion IRQ");
         ASSERT(!(PE_CdReg_ReadU32(PE_CDREG_DMA3+8u)&0x11000000u),"DMA3 stayed busy");

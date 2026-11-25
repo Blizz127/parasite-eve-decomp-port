@@ -1,0 +1,74 @@
+/* Synthetic IRQ-5 dispatch order using native acknowledgement and run control.
+ * No disc, devices, game data, or tray operation. */
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include "pe_guest_ram.h"
+#include "pe_cdreg.h"
+#include "pe_sdk.h"
+#include "game_port.h"
+#include "pe_guestcode.h"
+#include "pe_bootstrap.h"
+#define CHECK(x) do { if(!(x)) { fprintf(stderr,"case %u failed line %d\n",case_no,__LINE__); return 1; } } while(0)
+static unsigned calls,events[2],mode;
+static const pe_addr_t data_cb=0x80012340u,status_cb=0x80012344u;
+int PE_MMIO_InShadowBlock(pe_addr_t a,size_t n) { (void)a;(void)n;abort(); }
+void *PE_MMIO_Translate(pe_addr_t a,size_t n) { (void)a;(void)n;abort(); }
+uint32_t PE_MMIO_Load(pe_addr_t a,size_t n) { (void)a;(void)n;abort(); }
+void PE_MMIO_Store(pe_addr_t a,size_t n,uint32_t v) { (void)a;(void)n;(void)v;abort(); }
+/* Run-control reset is isolated from the held stream implementation. */
+void PE_StrFeed_Reset(void) { }
+uint32_t HostFB_VSync(int m) { if(m!=-1) abort();return 10; }
+uint32_t PE_GPU_VSyncQuery(void) { return 10; }
+unsigned short func_80073DE8(void) { return 1; }
+void PE_Cd_TimeoutRecover(void) { abort(); }
+void Bootstrap_ReturnVoid1(const char *a,const char *b,uint32_t c) { (void)a;(void)b;(void)c;abort(); }
+void Bootstrap_ReturnVoid4Indirect(const char *a,const char *b,uintptr_t t,uintptr_t c,uintptr_t d,uintptr_t e,uintptr_t f)
+{ (void)a;(void)b;(void)t;(void)c;(void)d;(void)e;(void)f;abort(); }
+int PE_GuestCall(const char *a,pe_addr_t b,unsigned c,uintptr_t d,uintptr_t e,uintptr_t f,uintptr_t g)
+{ (void)a;(void)b;(void)c;(void)d;(void)e;(void)f;(void)g;abort(); }
+int32_t PE_Printf_Guest(pe_addr_t a,uint32_t b,uint32_t c,uint32_t d,uint32_t e,uint32_t f,uint32_t g,uint32_t h)
+{ (void)a;(void)b;(void)c;(void)d;(void)e;(void)f;(void)g;(void)h;abort(); }
+/* Adapter records synthetic callback requests; it does not call guest code. */
+int PE_Cd_DispatchDataCallback(pe_addr_t a,uint32_t status,pe_addr_t p)
+{
+    if(status!=5 || calls>=2 || (a!=data_cb && a!=status_cb) ||
+       p!=(a==data_cb?0x800a3468u:0x800a3460u)) abort();
+    events[calls++]=a;
+    if(a==data_cb && mode==1) return 0;
+    if(a==data_cb && mode==2) PE_Port_RequestStop(PE_PORT_STOP_EXPLICIT);
+    return 1;
+}
+int main(void)
+{
+    PE_RamInit();
+    for(unsigned case_no=0;case_no<3;case_no++) {
+        mode=case_no;calls=0;events[0]=events[1]=0;
+        PE_RamReset();PE_CdReg_Reset();PE_Port_RunControlReset();
+        PE_StoreU32(0x8009b27cu,PE_CDREG_BASE);
+        PE_StoreU32(0x8009b280u,PE_CDREG_BASE+1u);
+        PE_StoreU32(0x8009b284u,PE_CDREG_BASE+2u);
+        PE_StoreU32(0x8009b288u,PE_CDREG_BASE+3u);
+        PE_StoreU32(0x80011b9cu,0x8007af5cu); /* synthetic table route */
+        PE_StoreU32(0x8009afb8u,data_cb);PE_StoreU32(0x8009afb4u,status_cb);
+        PE_CdReg_WriteU8(PE_CDREG_BASE,2); /* observe normal index restore */
+        const uint8_t packet[2]={0x10,0x4b};
+        CHECK(PE_CdReg_PushResponse(5,packet,sizeof packet));
+        PE_Fill(0x80140000u,8,0xa5);
+        int result=pe_plat_cd_status_poll_host(1,0x80140000u);
+        CHECK(calls==(mode?1u:2u) && events[0]==data_cb);
+        if(!mode) CHECK(events[1]==status_cb && result==5 && !PE_Port_ShouldStop());
+        else CHECK(result==0 && events[1]==0);
+        CHECK(PE_Port_StopEpoch()==(mode==2?1u:0u));
+        CHECK(PE_Port_GetStopReason()==(mode==2?PE_PORT_STOP_EXPLICIT:PE_PORT_STOP_NONE));
+        /* ACK is performed before callback dispatch, including early exits. */
+        CHECK(PE_LoadU8(0x800a3460u)==packet[0] && PE_LoadU8(0x800a3461u)==packet[1]);
+        CHECK(PE_LoadU8(0x800a3468u)==packet[0] && PE_LoadU8(0x800a3469u)==packet[1]);
+        CHECK((PE_CdReg_ReadU8(PE_CDREG_BASE)&3u)==(mode?1u:2u));
+        if(mode) for(unsigned i=0;i<8;i++) CHECK(PE_LoadU8(0x80140000u+i)==0xa5);
+        else CHECK(PE_LoadU8(0x80140000u)==packet[0] && PE_LoadU8(0x80140001u)==packet[1]);
+        PE_CdReg_WriteU8(PE_CDREG_BASE,1);
+        CHECK((PE_CdReg_ReadU8(PE_CDREG_BASE+3u)&7u)==0);
+    }
+    PE_RamDestroy();puts("3 synthetic CD IRQ dispatch-order and stop controls pass");return 0;
+}

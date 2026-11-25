@@ -19,6 +19,14 @@ uint16_t HostPadCombo_Step(HostPadCombo *c, const HostPadOrigin *in, int n, int 
     uint16_t merged = 0, presses = 0, out;
     int k, open = 0;
     memset(ev, 0, sizeof *ev);
+    /* Each delayed button has its own window; a later tap must not prolong
+     * an earlier tap on the other button. Unsigned elapsed time handles wrap. */
+    if ((c->tap & HOST_PAD_SELECT) &&
+        now_ms - c->select_tap_since >= HOST_PAD_COMBO_TAP_MS)
+        c->tap &= (uint16_t)~HOST_PAD_SELECT;
+    if ((c->tap & HOST_PAD_START) &&
+        now_ms - c->start_tap_since >= HOST_PAD_COMBO_TAP_MS)
+        c->tap &= (uint16_t)~HOST_PAD_START;
     memset(next, 0, sizeof next);
     if (n > HOST_PAD_COMBO_ORIGINS) n = HOST_PAD_COMBO_ORIGINS;
     if (n < 0) n = 0;
@@ -73,10 +81,21 @@ uint16_t HostPadCombo_Step(HostPadCombo *c, const HostPadOrigin *in, int n, int 
     for (k = 0; k < n; k++) {
         HostPadComboOrigin *o = &c->o[k];
         uint16_t ss = in[k].held & SS;
+        uint16_t previous_ss = o->prev & SS;
+        /* A direct switch between the two buttons contains a release and a
+         * new press even when no all-released poll was observed. */
+        if (o->mode == HPC_PENDING && ss && previous_ss && !(ss & previous_ss)) {
+            c->tap |= previous_ss;
+            if (previous_ss & HOST_PAD_SELECT) c->select_tap_since = now_ms;
+            if (previous_ss & HOST_PAD_START) c->start_tap_since = now_ms;
+            o->since = now_ms;
+        }
         if (!ss) {
             if (o->mode == HPC_PENDING) {            /* short lone press: deliver it late */
-                c->tap |= o->prev & SS;
-                c->tap_until = now_ms + HOST_PAD_COMBO_TAP_MS;
+                uint16_t released = o->prev & SS;
+                c->tap |= released;
+                if (released & HOST_PAD_SELECT) c->select_tap_since = now_ms;
+                if (released & HOST_PAD_START) c->start_tap_since = now_ms;
             }
             o->mode = HPC_IDLE;
         } else {
@@ -96,9 +115,6 @@ uint16_t HostPadCombo_Step(HostPadCombo *c, const HostPadOrigin *in, int n, int 
         c->drain = 1; c->drain_since = now_ms; c->tap = 0;
         return 0;
     }
-    if (c->tap) {
-        if (now_ms < c->tap_until) out |= c->tap;
-        else c->tap = 0;
-    }
+    out |= c->tap;
     return out;
 }

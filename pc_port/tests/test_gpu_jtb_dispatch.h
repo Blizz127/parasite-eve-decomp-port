@@ -13,8 +13,8 @@
  * guest address) and must stop rather than answer 0.
  *
  * Witness targets: the BIOS printf vector 0x80071A74 (native; logs its
- * format and first four words) and the generated func_80074CC8 (DrawSync
- * callback setter: at debug level 0 it stores a0 in D_80095758).  No test
+ * format and first four words) and func_80085D84 (the pe_plat SPU IRQ
+ * callback setter: it stores a changed a0 in D_8009B438).  No test
  * reads disc data: B54KR_SeedGpuStatic's display table only shapes
  * PutDispEnv's horizontal-range word, which no assertion checks.
  */
@@ -24,8 +24,8 @@
 #define GJT_UNREG      0x80012222u   /* no registry row covers it */
 #define GJT_BAD_HOOK   0x80DEAD08u   /* unregistered print hook */
 #define GJT_PRINTF     0x80071A74u
-#define GJT_CB_SETTER  0x80074CC8u
-#define GJT_CB_SLOT    0x80095758u
+#define GJT_CB_SETTER  0x80085D84u
+#define GJT_CB_SLOT    0x8009B438u
 
 extern const char *PE_Decomp_BoundaryName(unsigned index);
 
@@ -197,7 +197,7 @@ static void test_GPUJTB_drawprim_registry_dispatch(void)
     PE_GPU_Init();
     HostFB_Init();
     B54KR_SeedGpuStatic();
-    /* Slot 15 (DrawSync) -> func_80074CC8(0); slot 5 -> printf with the
+    /* Slot 15 (DrawSync) -> func_80085D84(0); slot 5 -> printf with the
      * packet's words as its format: retail passes (packet + 4, length). */
     PE_StoreU32(0x80095740u, GJT_CB_SETTER);
     PE_StoreU32(GJT_CB_SLOT, 0x1234u);
@@ -509,14 +509,108 @@ static void test_GPUJTB_load_store_image_dirty_jtb_stop(void)
     PASS();
 }
 
+/* A non-aligned clear rectangle must append all three command words after the
+ * environment commands without overwriting the ordering-table tag. */
+static void test_GPUJTB_drawenv_unaligned_clear_packet(void)
+{
+    const pe_addr_t env = 0x80110000u;
+    const pe_addr_t dr = env + 0x1Cu;
+    TEST("GPUJTB_drawenv_unaligned_clear_packet");
+    ResetTestState();
+    PE_GPU_Init();
+    B54KR_SeedGpuStatic();
+    memset(PE_Translate(env, 0x5Cu), 0, 0x5Cu);
+    (void)func_80074924(env, 1, 2, 63, 5);
+    PE_StoreU16(env + 8u, 2u);
+    PE_StoreU16(env + 10u, 3u);
+    PE_StoreU8(env + 24u, 1u);
+    PE_StoreU8(env + 25u, 0x12u);
+    PE_StoreU8(env + 26u, 0x34u);
+    PE_StoreU8(env + 27u, 0x56u);
+    PE_StoreU16(0x80095750u, 320u);
+    PE_StoreU16(0x80095752u, 240u);
+    PE_StoreU32(dr, 0xAABBCCDDu);
+    GJT_PlantFormat(GJT_FMT, "DrawEnv jalr %08x %x %x\n");
+    PE_StoreU32(0x8009570Cu, GJT_PRINTF);
+    PE_StoreU32(0x8009571Cu, GJT_FMT);
+    (void)func_80075424(env);
+    ASSERT(!PE_Port_ShouldStop(), "PutDrawEnv unexpectedly stopped");
+    ASSERT(PE_LoadU32(dr) == 0x09FFFFFFu, "ordering-table tag differs");
+    ASSERT(PE_LoadU32(dr + 28u) == 0x60563412u, "clear command is misplaced");
+    ASSERT(PE_LoadU32(dr + 32u) == 0xFFFFFFFFu, "clear coordinates are misplaced");
+    ASSERT(PE_LoadU32(dr + 36u) == 0x0005003Fu, "clear dimensions differ");
+    GJT_Finish();
+    PASS();
+}
+
+static void test_GPUJTB_resetgraph_light_dispatch(void)
+{
+    int ret;
+    pe_addr_t fmt;
+    uint32_t args[4];
+    TEST("GPUJTB_resetgraph_light_dispatch");
+    ResetTestState(); PE_GPU_Init();
+    PE_StoreU32(0x80095744u, 0x80095704u);
+    PE_StoreU32(0x80095738u, 0x80077144u);
+    PE_StoreU32(0x80095860u, 0x1F8010A8u);
+    PE_StoreU32(0x80095870u, 0x1F8010F0u);
+    PE_StoreU32(0x80095854u, 0x1F801814u);
+    PE_StoreU32(0x80095874u, 4u); PE_StoreU32(0x80095878u, 2u);
+    PE_StoreU8(0x8009574Cu, 0xAAu);
+    (void)func_80073E10(0x1234u); PE_GPU_WriteDPCR(0x33333333u);
+    ret = func_80074A44(1);
+    ASSERT(ret == 0 && !PE_Port_ShouldStop() &&
+           PE_LoadU32(0x80095874u) == 0u && PE_LoadU32(0x80095878u) == 0u &&
+           PE_GPU_ReadDPCR() == 0x33333B33u && PE_IRQ_GetMask() == 0x1234u &&
+           PE_LoadU8(0x8009574Cu) == 0xAAu,
+           "canonical light reset missed queue, DMA or mask state");
+
+    ResetTestState(); PE_GPU_Init();
+    PE_StoreU32(0x80095744u, 0x80095704u);
+    PE_StoreU32(0x80095738u, GJT_CB_SETTER); PE_StoreU32(GJT_CB_SLOT, 0x1234u);
+    PE_StoreU32(0x80095874u, 4u); PE_StoreU32(0x80095878u, 2u);
+    ret = func_80074A44(1);
+    ASSERT(ret == 0x1234 && !PE_Port_ShouldStop() && PE_LoadU32(GJT_CB_SLOT) == 1u &&
+           PE_LoadU32(0x80095874u) == 4u && PE_LoadU32(0x80095878u) == 2u,
+           "registered light target did not receive 1 and forward its return");
+
+    ResetTestState(); PE_GPU_Init();
+    PE_StoreU32(0x80095744u, 0x80095704u); PE_StoreU32(0x80095738u, GJT_UNREG);
+    PE_StoreU32(0x80095874u, 4u); PE_StoreU32(0x80095878u, 2u);
+    (void)func_80074A44(1);
+    ASSERT(PE_Port_GetStopReason() == PE_PORT_STOP_UNRESOLVED_BOUNDARY &&
+           g_bootstrap_arg4_call_count == 1 && g_bootstrap_arg4_calls[0].target == GJT_UNREG &&
+           g_bootstrap_arg4_calls[0].arg0 == 1u && PE_LoadU32(0x80095874u) == 4u &&
+           PE_LoadU32(0x80095878u) == 2u, "unknown target did not stop safely");
+
+    ResetTestState(); PE_GPU_Init();
+    PE_StoreU32(0x80095744u, 0u); PE_StoreU32(0x80095874u, 4u);
+    (void)func_80074A44(1);
+    ASSERT(PE_Port_GetStopReason() == PE_PORT_STOP_UNRESOLVED_BOUNDARY &&
+           PE_LoadU32(0x80095874u) == 4u, "invalid table did not stop safely");
+
+    ResetTestState(); PE_GPU_Init();
+    PE_StoreU32(0x80095744u, 0x80095704u); PE_StoreU32(0x80095738u, GJT_CB_SETTER);
+    PE_StoreU32(GJT_CB_SLOT, 0x1234u); PE_StoreU8(0x8009574Eu, 2u);
+    PE_StoreU32(0x80095748u, GJT_PRINTF); GJT_PlantFormat(0x80011800u, "ResetGraph %d");
+    PE_Bios_PrintfLogReset();
+    ret = func_80074A44(1);
+    ASSERT(ret == 0x1234 && !PE_Port_ShouldStop() && PE_LoadU32(GJT_CB_SLOT) == 1u &&
+           PE_Bios_PrintfLog(&fmt, args) == 1u && fmt == 0x80011800u && args[0] == 1u,
+           "debug callback did not precede the light target");
+    GJT_Finish(); PASS();
+}
+
 static void test_GPUJTB_all(void)
 {
+    test_GPUJTB_resetgraph_light_dispatch();
     test_GPUJTB_moveimage_registry_dispatch();
     test_GPUJTB_drawotag_registry_dispatch();
     test_GPUJTB_clearotagr_registry_dispatch();
     test_GPUJTB_drawprim_registry_dispatch();
     test_GPUJTB_putdispenv_registry_dispatch();
     test_GPUJTB_drawenv_registry_dispatch();
+    test_GPUJTB_drawenv_unaligned_clear_packet();
     test_GPUJTB_drawenv_unknown_worker_in_dispatcher();
     test_GPUJTB_load_store_image_dirty_jtb_stop();
 }

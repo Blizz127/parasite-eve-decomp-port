@@ -3,6 +3,7 @@
 #include "game_port.h"
 #include "pe_bios_string.h"
 #include "pe_bootstrap.h"
+#include "pe_decomp_boundary.h"   /* PE_Decomp_BoundaryFrom */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -53,9 +54,6 @@ static void record_call(pe_addr_t fn, const uintptr_t a[4])
     }
 }
 
-int PE_Decomp_BoundaryFrom(const char *caller, const char *symbol, unsigned vma,
-                           unsigned arity, uintptr_t a0, uintptr_t a1,
-                           uintptr_t a2, uintptr_t a3);
 void PE_Decomp_NoteStopDetail(const char *text);   /* pe_guest_decomp.c */
 
 /* BIOS TTY vectors missing from the generated EXE registry.  The retail
@@ -341,7 +339,7 @@ int PE_GuestCallN(const char *site, pe_addr_t fn, unsigned arity, const uintptr_
     if (arity > PE_GUESTCALL_MAX_ARGS) {
         fprintf(stderr, "[GUESTCALL] %s: %u arguments to 0x%08X exceed the %u the "
                 "port carries\n", site, arity, (unsigned)fn, PE_GUESTCALL_MAX_ARGS);
-        return PE_Decomp_BoundaryFrom(site, site, fn, n, a[0], a[1], a[2], a[3]);
+        return PE_Decomp_BoundaryFrom(site, site, fn, arity, a[0], a[1], a[2], a[3]);
     }
     return guest_call(site, fn, arity, a);
 }
@@ -383,9 +381,15 @@ int PE_GuestHook_Call(const char *slot, const char *caller, pe_addr_t fn,
                       unsigned arity, uintptr_t a0, uintptr_t a1,
                       uintptr_t a2, uintptr_t a3, int *ret)
 {
-    const PeGuestCodeEntry *e = fn ? PE_GuestCode_Resolve(fn) : NULL;
+    const PeGuestCodeEntry *e;
     int r;
 
+    if (arity > 4u) {
+        PE_GuestHook_Refuse(slot, caller, fn, arity, a0, a1, a2, a3,
+                            "the hook site supplies only four register arguments");
+        return 0;
+    }
+    e = fn ? PE_GuestCode_Resolve(fn) : NULL;
     if (!e || !e->thunk) {
         PE_GuestHook_Refuse(slot, caller, fn, arity, a0, a1, a2, a3,
                             e ? "its C takes stack arguments a hook site does not pass"

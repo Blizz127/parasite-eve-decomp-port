@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from contextlib import redirect_stdout, redirect_stderr
 from pathlib import Path
 
@@ -170,6 +171,101 @@ class GuardTest(unittest.TestCase):
         self.assertIn("0x80070000", out)
         self.assertIn("fake_tbl", out)
         self.assertNotIn("0x80070100", out)
+
+    def test_binary_without_symbols_is_not_clean(self):
+        # GNU nm returns success with empty stdout for the Zig Windows PE
+        # executable; its symbols live in a separate PDB. This is missing
+        # audit evidence, not a proof that no classified functions are linked.
+        binary = self.d / "stripped.exe"
+        binary.write_bytes(b"synthetic binary without symbol data")
+        for stdout in ("", " \n"):
+            with self.subTest(stdout=stdout), \
+                 mock.patch.object(g.shutil, "which", return_value="nm"), \
+                 mock.patch.object(g.subprocess, "run", return_value=subprocess.CompletedProcess(
+                     ["nm"], 0, stdout, "nm: stripped.exe: no symbols\n")):
+                with self.assertRaisesRegex(SystemExit, "no defined symbols"):
+                    self.guard("--no-sources", "--binary", str(binary))
+
+    def test_failed_symbol_dump_with_partial_output_is_rejected(self):
+        binary = self.d / "partial.exe"
+        binary.write_bytes(b"synthetic binary with an incomplete symbol dump")
+        with mock.patch.object(g.shutil, "which", return_value="nm"), \
+             mock.patch.object(g.subprocess, "run", return_value=subprocess.CompletedProcess(
+                 ["nm"], 1, "00001000 T func_80070100\n", "nm: symbol dump failed\n")):
+            with self.assertRaisesRegex(SystemExit, "nm failed"):
+                self.guard("--no-sources", "--binary", str(binary))
+
+    def test_readable_binary_without_classified_functions_is_clean(self):
+        binary = self.d / "game-only.exe"
+        binary.write_bytes(b"synthetic game-only binary without table data")
+        with mock.patch.object(g.shutil, "which", return_value="nm"), \
+             mock.patch.object(g.subprocess, "run", return_value=subprocess.CompletedProcess(
+                 ["nm"], 0, "00001000 T func_80070100\n", "")):
+            rc, out = self.guard("--no-sources", "--binary", str(binary))
+            self.assertEqual(rc, 0, out)
+
+    def test_pdb_pair_checks_symbols_and_binary_tables(self):
+        binary = self.d / "port.exe"
+        binary.write_bytes(b"synthetic binary prefix" + b"".join(v.to_bytes(2, "little") for v in self.table))
+        pdb = self.d / "port.pdb"
+        with mock.patch.object(g, "pdb_symbols", return_value={0x80070000, 0x80070100}) as read, \
+             mock.patch.object(g, "nm_symbols") as nm:
+            rc, out = self.guard("--strict", "--no-sources", "--binary-pdb", str(binary), str(pdb))
+        read.assert_called_once_with(binary, pdb)
+        nm.assert_not_called()
+        self.assertEqual(rc, 1, out)
+        self.assertIn("bin:port.exe", out)
+        self.assertIn("0x80070000", out)
+        self.assertIn("fake_tbl", out)
+        self.assertNotIn("0x80070100", out)
+
+    def test_pdb_pair_can_supply_inventory_for_explicit_binary(self):
+        binary = self.d / "port.exe"
+        binary.write_bytes(b"synthetic game-only binary")
+        pdb = self.d / "port.pdb"
+        with mock.patch.object(g, "pdb_symbols", return_value={0x80070100}) as read, \
+             mock.patch.object(g, "nm_symbols") as nm:
+            rc, out = self.guard("--strict", "--no-sources", "--binary", str(binary),
+                                 "--binary-pdb", str(binary), str(pdb))
+        read.assert_called_once_with(binary, pdb)
+        nm.assert_not_called()
+        self.assertEqual(rc, 0, out)
+
+    def test_pdb_mapping_duplicates_are_rejected(self):
+        binary = self.d / "port.exe"
+        pdb = self.d / "port.pdb"
+        for second in (pdb, self.d / "other.pdb"):
+            with self.subTest(second=second), mock.patch.object(g, "pdb_symbols") as read:
+                with self.assertRaises(SystemExit) as failure:
+                    self.guard("--no-sources", "--binary-pdb", str(binary), str(pdb),
+                               "--binary-pdb", str(binary.parent / "." / binary.name), str(second))
+                self.assertEqual(failure.exception.code, 2)
+                read.assert_not_called()
+
+    def test_pdb_failure_does_not_fall_back_to_nm(self):
+        binary = self.d / "port.exe"
+        with mock.patch.object(g, "pdb_symbols", side_effect=SystemExit("PDB identity mismatch")), \
+             mock.patch.object(g, "nm_symbols") as nm:
+            with self.assertRaisesRegex(SystemExit, "identity mismatch"):
+                self.guard("--no-sources", "--binary-pdb", str(binary), str(self.d / "wrong.pdb"))
+        nm.assert_not_called()
+
+    def test_pdb_preserves_filename_and_allowlist_shrink_checks(self):
+        binary = self.d / "port.exe"
+        binary.write_bytes(b"synthetic binary")
+        args = ("--no-sources", "--binary-pdb", str(binary), str(self.d / "port.pdb"))
+        self.allow.write_text("func\t0x80070000\tbin:port\n")
+        with mock.patch.object(g, "pdb_symbols", return_value={0x80070000}):
+            rc, out = self.guard(*args)
+            self.assertEqual(rc, 1, out)
+            self.assertIn("NEW   func\t0x80070000\tbin:port.exe", out)
+            self.assertNotIn("STALE", out)  # bin:port was not checked
+            self.allow.write_text("func\t0x80070000\tbin:port.exe\n")
+            self.assertEqual(self.guard(*args)[0], 0)
+        with mock.patch.object(g, "pdb_symbols", return_value={0x80070100}):
+            rc, out = self.guard(*args)
+            self.assertEqual(rc, 1, out)
+            self.assertIn("STALE func\t0x80070000\tbin:port.exe", out)
 
 
 if __name__ == "__main__":

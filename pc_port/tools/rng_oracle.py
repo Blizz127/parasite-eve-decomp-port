@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
 """Independent retail-memory oracle for func_80070D10 / func_80070D6C / func_80070DD0.
 
-Phase 6E-B1/B2.  Models the exact MIPS semantics of the game's lagged-
-Fibonacci RNG against the *real retail executable bytes* (PS-X EXE), which
-must be supplied at runtime — never embedded or committed.
+Phase 6E-B1/B2. Models the selected game RNG instructions against the *real
+retail executable bytes* (PS-X EXE), which must be supplied at runtime — never
+embedded or committed. Signed arithmetic overflow raises OverflowError before
+the model enters the RNG helper; the PS1 exception handler is not modeled.
 
 Usage:
   rng_oracle.py /path/to/disc1.candidate.exe      # PS-X EXE (SHA-1 checked)
   rng_oracle.py --dump-calls N                    # per-call table for N calls
 
-The script is the reference; the C port (func_80070D6C_port.c) must match it
-exactly when guest RAM holds the same exe bytes.
+The native RNG advance is intended to match when guest RAM holds the same exe
+bytes. The ranged host wrapper currently wraps subtraction overflow instead of
+reporting the original trap; see native-random-overflow-20261105/REPORT.txt.
 """
 
 import hashlib
@@ -69,7 +71,7 @@ class ExeImage:
 
 
 class RngOracle:
-    """Exact MIPS-semantics model of func_80070D10 / 70D6C / 70DD0."""
+    """Selected instruction model of func_80070D10 / 70D6C / 70DD0."""
 
     def __init__(self, image):
         self.img = image
@@ -122,16 +124,22 @@ class RngOracle:
         return v0, t1, t2, t3, t4
 
     def func_80070DD0(self, a0, a1):
-        """Handwritten ranged random: a0 + ((rand16 * (a1-a0)) >> 16)."""
+        """Ranged random; report signed arithmetic traps without handling them."""
+        a0, a1 = s32(a0), s32(a1)
+        diff = a1 - a0                  # trapping sub in the jal delay slot
+        if not -(1 << 31) <= diff < (1 << 31):
+            raise OverflowError("70DD0 signed subtraction overflow")
         v0, *_ = self.func_80070D6C()
-        diff = s32(u32(a1) - u32(a0))    # sub in delay slot
         r = v0 & 0xFFFF                  # andi
         product = r * diff               # mult: signed 32x32 -> 64
         product &= 0xFFFFFFFFFFFFFFFF
         if product >= 0x8000000000000000:
             product -= 0x10000000000000000
         scaled = product >> 16           # (lo>>16)|(hi<<16), arithmetic
-        return u32(u32(a0) + u32(scaled))
+        result = a0 + scaled             # trapping add in the return delay slot
+        if not -(1 << 31) <= result < (1 << 31):
+            raise OverflowError("70DD0 signed addition overflow")
+        return u32(result)
 
 
 def main():

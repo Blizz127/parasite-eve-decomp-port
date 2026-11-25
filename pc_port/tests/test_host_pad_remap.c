@@ -2,7 +2,7 @@
  * (valid, invalid and duplicate lines), identity with no file over all 65536
  * pad words, a confirm/cancel swap, the built-in key table against a verbatim
  * copy of the old X11 if-chain, key overrides, keys that can never be bound
- * (Esc, F1-F8), the Win32 virtual-key table against the old switch, and the
+ * (Esc, F1-F8, F11-F12), the Win32 virtual-key table against the old switch, and the
  * composition with the real dev-menu combo.  Pure: no window, no hardware. */
 #define _GNU_SOURCE
 #include "host_pad_remap.h"
@@ -553,7 +553,7 @@ static void test_key_override(void)
             {"Home", 0xFF50}, {"Left", 0xFF51}, {"Up", 0xFF52}, {"Right", 0xFF53}, {"Down", 0xFF54},
             {"Prior", 0xFF55}, {"Next", 0xFF56}, {"Page_Down", 0xFF56}, {"End", 0xFF57}, {"Insert", 0xFF63},
             {"KP_Enter", 0xFF8D}, {"KP_Up", 0xFF97}, {"KP_End", 0xFF9C}, {"KP_0", 0xFFB0}, {"KP_9", 0xFFB9},
-            {"KP_Add", 0xFFAB}, {"F9", 0xFFC6}, {"F12", 0xFFC9}, {"Shift_R", 0xFFE2}, {"Control_L", 0xFFE3},
+            {"KP_Add", 0xFFAB}, {"F9", 0xFFC6}, {"F10", 0xFFC7}, {"Shift_R", 0xFFE2}, {"Control_L", 0xFFE3},
             {"Alt_R", 0xFFEA}, {"space", 0x20}, {"comma", 0x2C}, {"period", 0x2E}, {"slash", 0x2F},
             {"minus", 0x2D}, {"equal", 0x3D}, {"grave", 0x60}, {"bracketleft", 0x5B}, {"backslash", 0x5C},
             {"bracketright", 0x5D}, {"apostrophe", 0x27}, {"semicolon", 0x3B},
@@ -574,9 +574,9 @@ static void test_key_override(void)
 static void test_reserved_keys(void)
 {
     static const char *const reserved_names[] = {"Escape", "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8",
-                                                 "f3", "ESCAPE"};
+                                                 "f3", "ESCAPE", "F11", "f11", "F12", "f12"};
     static const char *const reserved_hex[] = {"0xFF1B", "0xff1b", "0xFFBE", "0xFFBF", "0xFFC0", "0xFFC1",
-                                               "0xFFC2", "0xFFC3", "0xFFC4", "0xFFC5"};
+                                               "0xFFC2", "0xFFC3", "0xFFC4", "0xFFC5", "0xFFC8", "0xffc9"};
     static const char *const buttons[] = {"cross", "circle", "square", "triangle", "l1", "r1", "l2", "r2",
                                           "select", "start", "up", "down", "left", "right"};
     HostPadRemap r;
@@ -615,9 +615,9 @@ static void test_reserved_keys(void)
     CHECK(HostPadRemap_Key(&r, 0xFFC3) == 0 && HostPadRemap_Key(&r, 0xFF1B) == 0);
 
     /* the neighbours stay bindable */
-    CHECK(parse(&r, "key.start=F9\nkey.select=F12\n", &l) == 0);
+    CHECK(parse(&r, "key.start=F9\nkey.select=F10\n", &l) == 0);
     log_free(&l);
-    CHECK(HostPadRemap_Key(&r, 0xFFC6) == HOST_PAD_START && HostPadRemap_Key(&r, 0xFFC9) == HOST_PAD_SELECT);
+    CHECK(HostPadRemap_Key(&r, 0xFFC6) == HOST_PAD_START && HostPadRemap_Key(&r, 0xFFC7) == HOST_PAD_SELECT);
 
     /* a hostile file (every button on Esc/F-keys) leaves the defaults and every
      * reserved key unbound */
@@ -854,6 +854,114 @@ static void test_fuzz_invariants(void)
     }
 }
 
+/* Host hotkeys are consumed before the pad table. Reject the whole line before
+ * removing any current bindings, exactly like the other reserved keys. */
+static int g_host_hotkey_cases, g_host_hotkey_failures;
+static int same_remap_effective(const HostPadRemap *a, const HostPadRemap *b)
+{
+    return a->nkey == b->nkey && a->pad_active == b->pad_active &&
+           a->pad_set == b->pad_set && a->key_set == b->key_set &&
+           a->loaded == b->loaded &&
+           memcmp(a->pad_dest, b->pad_dest, sizeof a->pad_dest) == 0 &&
+           memcmp(a->key_sym, b->key_sym, sizeof a->key_sym[0] * (size_t)a->nkey) == 0 &&
+           memcmp(a->key_bit, b->key_bit, sizeof a->key_bit[0] * (size_t)a->nkey) == 0;
+}
+static void host_hotkey_check(int ok, const char *label, const HostPadRemap *r)
+{
+    g_host_hotkey_cases++;
+    if (ok) return;
+    g_fail = 1; g_host_hotkey_failures++;
+    fprintf(stderr, "FAIL host-hotkey %s: loaded=%d warnings=%d Return=%04X z=%04X c=%04X\n",
+            label, r->loaded, r->warnings, HostPadRemap_Key(r, 0xFF0D),
+            HostPadRemap_Key(r, 'z'), HostPadRemap_Key(r, 'c'));
+}
+static void test_reserved_host_hotkeys(void)
+{
+    static const struct { const char *list, *token; } rejected[] = {
+        {"F11", "F11"}, {"f11", "f11"}, {"F12", "F12"}, {"f12", "f12"},
+        {"0xFFC8", "0xFFC8"}, {"0Xffc8", "0Xffc8"},
+        {"0xFFC9", "0xFFC9"}, {"0XfFc9", "0XfFc9"},
+        {"c,F11", "F11"}, {"F11,c", "F11"},
+        {"c,F12", "F12"}, {"F12,c", "F12"},
+        {"F11,F12", "F11"}, {"0xFFC8,c,f12", "0xFFC8"},
+    };
+    HostPadRemap r, expected;
+    Log l;
+    size_t i;
+    g_host_hotkey_cases = g_host_hotkey_failures = 0;
+    for (i = 0; i < sizeof rejected / sizeof rejected[0]; i++) {
+        char text[160], quoted[64];
+        int lines;
+        snprintf(text, sizeof text, "  KeY.CrOsS = %s # reserved host control\r\n", rejected[i].list);
+        snprintf(quoted, sizeof quoted, "'%s'", rejected[i].token);
+        lines = parse(&r, text, &l);
+        host_hotkey_check(lines == 1 && r.warnings == 1 && same_as_defaults(&r) &&
+                          invariants_ok(&r) && strstr(l.buf, "test:1: ") &&
+                          strstr(l.buf, "reserved") && strstr(l.buf, quoted) &&
+                          strstr(l.buf, "ignored"), rejected[i].list, &r);
+        log_free(&l);
+    }
+
+    /* Rejected repeated lines neither remove an earlier valid mapping nor steal
+     * another button's keys. Later valid lines still apply, without a spurious
+     * duplicate warning for the rejected line. */
+    for (i = 0; i < 2; i++) {
+        char text[160], label[64];
+        int lines;
+        snprintf(text, sizeof text,
+                 "key.cross=a\nkey.circle=c\nkey.cross=c,F%u\nkey.square=F9\n", (unsigned)i + 11u);
+        HostPadRemap_Parse(&expected, "key.cross=a\nkey.circle=c\nkey.square=F9\n",
+                          strlen("key.cross=a\nkey.circle=c\nkey.square=F9\n"), "expected", NULL);
+        lines = parse(&r, text, &l);
+        snprintf(label, sizeof label, "F%u preserves earlier mapping", (unsigned)i + 11u);
+        host_hotkey_check(lines == 1 && r.warnings == 1 && same_remap_effective(&r, &expected) &&
+                          invariants_ok(&r) && strstr(l.buf, "test:3: ") &&
+                          strstr(l.buf, "reserved") && !strstr(l.buf, "duplicate"), label, &r);
+        log_free(&l);
+    }
+
+    /* Lookups reject the host hotkeys even if a caller bypasses the parser. */
+    for (i = 0; i < 2; i++) {
+        unsigned long ks = 0xFFC8ul + i;
+        char label[64];
+        HostPadRemap_Defaults(&r);
+        r.key_sym[r.nkey] = (uint32_t)ks;
+        r.key_bit[r.nkey++] = HOST_PAD_CROSS;
+        snprintf(label, sizeof label, "F%u forged-table lookup", (unsigned)i + 11u);
+        host_hotkey_check(HostPadRemap_KeyReserved(ks) && HostPadRemap_Key(&r, ks) == 0,
+                          label, &r);
+    }
+
+    /* Only F11/F12 are added. F9/F10 keep name/hex/case behavior, repeated names
+     * in one list bind once, and printable uppercase keysyms still fold. */
+    {
+        int lines = parse(&r, "key.cross=f9,F10,0xFFC6,0Xffc7,z,Z\nkey.triangle=0xFFCA\n", &l);
+        host_hotkey_check(lines == 0 && r.warnings == 0 && r.loaded == 2 && invariants_ok(&r) &&
+                          !HostPadRemap_KeyReserved(0xFFC6) && !HostPadRemap_KeyReserved(0xFFC7) &&
+                          !HostPadRemap_KeyReserved(0xFFCA) &&
+                          HostPadRemap_Key(&r, 0xFFC6) == HOST_PAD_CROSS &&
+                          HostPadRemap_Key(&r, 0xFFC7) == HOST_PAD_CROSS &&
+                          HostPadRemap_Key(&r, 'z') == HOST_PAD_CROSS &&
+                          HostPadRemap_Key(&r, 'Z') == HOST_PAD_CROSS &&
+                          HostPadRemap_Key(&r, 0xFFCA) == HOST_PAD_TRIANGLE &&
+                          HostPadRemap_Key(&r, 0xFF0D) == 0, "F9/F10 and other valid keys stay bindable", &r);
+        log_free(&l);
+    }
+    {
+        int lines = parse(&r, "key.start=F9\nkey.start=f10\nkey.select=0xffc6\n", &l);
+        host_hotkey_check(lines == 1 && r.warnings == 1 && r.loaded == 2 && invariants_ok(&r) &&
+                          strstr(l.buf, "test:2: duplicate key.start") &&
+                          HostPadRemap_Key(&r, 0xFFC6) == HOST_PAD_SELECT &&
+                          HostPadRemap_Key(&r, 0xFFC7) == HOST_PAD_START,
+                          "valid duplicate line still replaces and warns", &r);
+        log_free(&l);
+    }
+    HostPadRemap_Parse(&r, "key.cross=c,F11\n", strlen("key.cross=c,F11\n"), "silent", NULL);
+    host_hotkey_check(r.warnings == 1 && same_as_defaults(&r), "NULL log still rejects atomically", &r);
+    printf("host-hotkey-remap: %d cases, %d passed, %d failed\n", g_host_hotkey_cases,
+           g_host_hotkey_cases - g_host_hotkey_failures, g_host_hotkey_failures);
+}
+
 int main(void)
 {
     test_identity_no_file();          /* first: the process-wide config before any init */
@@ -864,6 +972,7 @@ int main(void)
     test_key_defaults();
     test_key_override();
     test_reserved_keys();
+    test_reserved_host_hotkeys();
     test_win32_vk();
     test_config_path();
     test_load_file();

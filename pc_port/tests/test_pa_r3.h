@@ -216,16 +216,11 @@ static void test_PA_r3_8005C688(void)
     PASS();
 }
 
-/* src/func_8007A360.c / func_80081D74.c / func_80083F44.c */
+/* src/func_80081D74.c / func_80083F44.c */
 static void test_PA_r3_small(void)
 {
     TEST("PA_r3_small");
     ResetTestState();
-
-    PE_StoreU32(0x8009AFB8u, 1u); PE_StoreU32(0x8009AFC4u, 1u);
-    ASSERT(func_8007A360(2) == 1, "7A360 a0 == 2 -> 1");
-    ASSERT(PE_LoadU32(0x8009AFB8u) == 0u && PE_LoadU32(0x8009AFC4u) == 0u,
-           "7A360 ran func_8007BBB0");
 
     PE_StoreU32(0x8009B70Cu, 1u);
     PE_StoreU32(0x8009B6F4u, 0x77u);

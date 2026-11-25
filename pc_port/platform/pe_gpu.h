@@ -214,12 +214,12 @@ int PE_GPU_ReadGP0(uint32_t *value);
  * registers/event ownership. The high-level snapshot helper remains atomic. */
 int PE_GPU_WriteGP1(uint32_t value);
 
-/* Word count (command word included) of a GP0 drawing primitive that this
- * substrate can execute from the idle state, or 0 when the command is not
- * supported.  Environment/NOP words report 1; A0h/80h transfers are not
- * primitives and report 0.  Pure query: no state changes.  Command-stream
- * walkers use it so admission and execution can never disagree. C0 readback
- * also returns zero here; it runs through the image-transfer workers. */
+/* Structural word count (command word included) for a supported GP0 command,
+ * or 0 when this query does not cover it. Environment/NOP words report 1;
+ * 80h..9Fh VRAM copies report 4, but execution also depends on GPU state and
+ * copy-worker constraints. A0h uploads and C0h readbacks return 0 here; the
+ * stream-length query below handles complete A0h uploads. This pure query does
+ * not change state or by itself guarantee that a command can execute. */
 uint32_t PE_GPU_GP0_PacketWords(uint32_t command);
 
 /* GP0(80h) VRAM-to-VRAM copy payload.  Coordinates and dimensions use the

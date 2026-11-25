@@ -71,7 +71,6 @@ pe_addr_t func_800C2B28(int arg0);
 void func_80085728(pe_addr_t base);
 pe_addr_t func_80071944(pe_addr_t arg0);
 pe_addr_t func_800719C4(pe_addr_t arg0);
-void func_8007A468(uint32_t a0, pe_addr_t a1);
 int func_8007A8CC(int a0, unsigned int a1);
 int func_8007A8AC(unsigned int a0, unsigned int a1);
 void func_80091080(pe_addr_t a0, unsigned int a1);
@@ -102,8 +101,6 @@ pe_addr_t func_80071994(pe_addr_t a0);
 void func_8008B1D0(pe_addr_t arg0);
 void func_8008227C(unsigned char a0);
 void func_800878C0(int voice, unsigned int low, unsigned int mode);
-pe_addr_t func_800755BC(pe_addr_t a0);
-pe_addr_t func_80075AE8(pe_addr_t a0);
 unsigned int func_8007A400(unsigned int a0);
 unsigned int func_8007A434(unsigned int a0);
 void func_8007C444(int a0, unsigned int a1);
@@ -153,7 +150,6 @@ void func_8008C3E4(pe_addr_t a0);
 void func_8008C55C(void);
 void func_8008C5D8(void);
 void func_8008C654(void);
-pe_addr_t func_800742B8(void);
 pe_addr_t func_8006E590(pe_addr_t a0, int a1);
 void func_800C8BC0(int a0, pe_addr_t a1, pe_addr_t a2);
 void func_800C9974(int a0, pe_addr_t a1, pe_addr_t a2);
@@ -170,7 +166,6 @@ void func_800CDF4C(int a0, pe_addr_t a1, pe_addr_t a2);
 int func_800C66C8(pe_addr_t a0, pe_addr_t a1, pe_addr_t a2);
 int func_800C6764(pe_addr_t a0, pe_addr_t a1, pe_addr_t a2);
 int func_800C6800(pe_addr_t a0, pe_addr_t a1, pe_addr_t a2);
-pe_addr_t func_80074218(void);
 void func_800C4E50(pe_addr_t r);
 
 /* ── batch 8 (batch8_hi_port.c) ──────────────────────────────────── */
@@ -268,8 +263,6 @@ int func_800C5EB0(pe_addr_t a0, int a1, pe_addr_t a2);
 /* ── batch 19 (batch19_hi_port.c) ────────────────────────────────── */
 int func_800CBCA4(pe_addr_t a0);
 int func_80065C38(int a0, int a1);
-unsigned short func_8007485C(int a0, int a1, int a2);
-unsigned short func_800748C0(int a0, int a1, int a2);
 
 /* ── batch 20 (batch20_hi_port.c) ────────────────────────────────── */
 int func_800D6E3C(int a0, pe_addr_t a1);
@@ -361,7 +354,6 @@ void func_8008389C(pe_addr_t a0);
 /* ── remaining leaves (rest_hi_port.c) ───────────────────────────────── */
 int func_80085D84(int a0);
 void func_8008F178(pe_addr_t a0, int a1);
-unsigned short func_80074774(int a0, int a1, int a2, int a3, int a4, int a5, int a6);
 void func_800CED3C(int a0);
 
 #endif /* PE_HAND_HI_PROTOS_H */

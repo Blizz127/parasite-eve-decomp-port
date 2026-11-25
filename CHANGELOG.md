@@ -1,5 +1,60 @@
 # Changelog
 
+## 2026-11-25 — source sync, no new build
+
+Source only. No new binary. Synced from the development tree at `541ce991f`
+(previous source sync: `4863cb9c2`, 2026-10-30), same rule as before: unchanged
+public files are replaced, curated files get the change as a patch, and files
+that define Psy-Q SDK functions, include backend headers, or carry
+retail-derived test data stay unpublished. 1307 development commits are
+folded in: 379 files added, 106 replaced, 4 patched.
+
+**Native PC port (source): replacing Psy-Q SDK code**
+
+- Psy-Q functions linked into the game binary: 264 -> 31 (23 runtime + 8 BIOS),
+  counted by `tools/analysis/psyq_port_guard.py --binary` on a fresh build of
+  `541ce991f`. The guard's allowlist shrank from 1024 rows to 173.
+- About a hundred new host providers under `pc_port/platform/pe_plat_*.c`
+  replace libcd, libds, libcard, libpad, libgte, libgpu, libspu, libmath and
+  libc routines. Each was written from black-box input/output vectors of the
+  original code (`pc_port/tools/pe_*_vectors.py`, checked by the matching
+  `*_check.c` programs) and from the psx-spx hardware documentation, with no
+  SDK source. The provenance statement is in each file's header.
+- The CD stream handler, status pump, command issue/ack/DMA paths, the GPU
+  queue pump and its clear/upload/readback workers, DMA and VBlank interrupt
+  delivery and the interrupt dispatcher now run as native host code.
+- Hand-port bodies that those providers replaced were removed (71 hand-port
+  files: +770/-3834 lines).
+- Hardening: guest RAM and loader bounds, disc/cue validation, memory-card
+  path and rollback checks, host formatter fixes, movie feeder publication
+  order, controller tap/hotkey handling, and stops at callback boundaries
+  instead of silent continuation.
+
+**Not published in this sync (held)**
+
+- `pc_port/CMakeLists.txt`, `pc_port/platform/host_window.c`,
+  `pc_port/platform/plat_cheats.c` and `pc_port/tests/test_native.c`: the
+  development change does not apply cleanly to the curated public copies. The
+  X11 focus/cheat-key latch fixes of 2026-11-10 therefore are not in this
+  tree. As before, the PC port does not build from this repository alone.
+- Hand ports of Psy-Q-classified functions that were never published stay
+  unpublished (81 files), as do the quarantined source-derived providers.
+
+**Verification on the development tree at `541ce991f`**
+
+- Native test suite: 1919 run, 1913 passed, 0 failed, 6 skipped (the six quarantined adapter tests), with PE_DISC1_BIN set; 1919 run, 1641 passed, 0 failed, 278 skipped without a disc.
+- Strict Psy-Q guard on the published tree: PASS, 0 findings.
+- Retail-data guard (strict) on all 489 published files: no retail byte runs.
+- Private-content and secrets scan: clean after redacting two absolute build
+  paths from tool comments.
+
+**Public binaries** stay held: the runtime still links 31 Psy-Q-classified
+functions, and the standing rule is that nothing links Psy-Q code before a
+public binary ships. The newest public binary is still
+[`native-only-e26d98fd`](https://github.com/Blizz127/parasite-eve-decomp-port/releases/tag/native-only-e26d98fd)
+(2026-10-10); the hardware-tested Day 1 build is
+[`day1-r5`](https://github.com/Blizz127/parasite-eve-decomp-port/releases/tag/day1-r5).
+
 ## 2026-10-30 — source sync, no new build
 
 Source only. No binary, release, tag or asset. Synced from the development

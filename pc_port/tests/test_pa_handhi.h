@@ -644,29 +644,12 @@ static void test_PA_handhi_card_rest(void)
     PASS();
 }
 
-/* ── texture uploads (func_80074774 / func_800CED3C) ──────────────── */
+/* ── texture upload (func_800CED3C) ──────────────────────────────────────────── */
 static void test_PA_handhi_texture(void)
 {
     uint16_t px;
-    unsigned i;
     TEST_RETAIL_DISC1("PA_handhi_texture"); TEST_RETAIL_FIXUPS(RETAILFIX_dispenv);
     ResetTestState();HostFB_Init();PE_GPU_Init();B54KR_SeedGpuStatic();
-
-    /* src/func_80074774.c mode 1: RECT {a3, a4, a5 / 2, a6}; returns
-     * func_80077A64(a1, a2, a3, a4) (src/func_80077A64.c). */
-    for (i = 0; i < 8u; i++)
-        PE_StoreU16(PAH_BUF + i * 2u, (uint16_t)(0x1000u + i));
-    {
-        unsigned short tp = func_80074774((int)PAH_BUF, 1, 2, 0x140, 0x100, 8, 2);
-        unsigned expect = ((1u & 3u) << 7) | ((2u & 3u) << 5) | ((0x100u & 0x100u) >> 4) |
-                          ((0x140u & 0x3FFu) >> 6) | ((0x100u & 0x200u) << 2);
-        ASSERT(tp == expect, "80074774: texpage id from func_80077A64");
-    }
-    ASSERT(func_80074DC0(0) == 0, "80074774: upload drained");
-    for (i = 0; i < 8u; i++) {
-        ASSERT(PE_GPU_ReadVRAM(0x140u + (i & 3u), 0x100u + (i >> 2), &px) && px == 0x1000u + i,
-               "80074774: 4x2 rectangle (width a5 / 2)");
-    }
 
     /* src/func_800CED3C.c: 64x256 at (0x380, 0x100) from D_800B0E18 (a0 == 0)
      * else D_800B0E1C; D_800F34E4 = a0. */

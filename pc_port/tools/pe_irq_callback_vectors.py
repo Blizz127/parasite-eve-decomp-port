@@ -7,7 +7,8 @@ hook; the shared tool is not edited).  Hardware registers alias into low RAM
 in that interpreter; the hook maps 0x1000-0x1FFF back to 1F801000h-1F801FFFh
 and applies the psx-spx I_STAT rule (a write acknowledges: I_STAT &= value).
 BIOS services the code reaches are trapped and logged, with psx-spx results:
-A(13h) setjmp, A(72h) CdRemove, B(19h) HookEntryInt, B(5Bh) ChangeClearPad,
+A(13h) setjmp, A(72h) CdRemove, B(18h) ResetEntryInt, B(19h) HookEntryInt,
+B(5Bh) ChangeClearPad,
 C(0Ah) ChangeClearRCnt, and the SYSCALL(01h)/(02h) veneers at
 0x80072714/0x80072724.  Anything else stops the case loudly.
 
@@ -31,14 +32,38 @@ import sys
 import pe_battle_hud_oracle as _hud
 from pe_battle_hud_oracle import ROOT
 
-RESET, INTR = 0x80073C94, 0x80073CC4
+RESET, INTR, DMACB, DMASET = 0x80073C94, 0x80073CC4, 0x80073CF4, 0x800746A0
+STOP, RESTART = 0x80073D88, 0x80073DB8
+VSYNCH, DMAH, STARTV, STARTD = 0x8007440C, 0x80074520, 0x800743B4, 0x800744D4
+VSYNCCBS = 0x80073D58   # original VSyncCallbacks, used only to set up slots
+DISP = 0x80073F00       # CPU interrupt dispatcher (exits through B(17h))
 ENTER, EXIT = 0x80072714, 0x80072724
 RET = 0x00000F00
+# Guest callbacks under test point into this stub range; reaching one logs
+# ['cb', address, a0, a1] and returns 0 to the caller (interrupt simulation:
+# handlers are driven by calling them with I_STAT pending bits poked).
+CB_LO, CB_HI = 0x80130000, 0x80131000
+# Stubs at these addresses OR a value into DICR when called (a completion
+# handler that starts another transfer which completes at once).
+CB_EFFECTS = {0x80130800: 0x10000000, 0x80130840: 0x04000000}
+# Stub that clears channel 4's enable bit (as a callback unregistering itself).
+CB_CLEARS = {0x80130880: 0x00100000}
+# Stub that raises another CPU interrupt source while it runs (I_STAT bit 2).
+CB_ISTAT = {0x801308C0: 0x0004, 0x80130900: 0x0001}
 JMPBUF = (0x9461C, 0x9461C + 0x30)
 LIB_BLOCK = (0x945E4, 0x945E4 + 0x41A * 4)
 
 EVENTS = []
 RAM_WRITES = {}
+
+
+def dicr_write(old, v):
+    """psx-spx DICR: bits 0-23 read/write, flags 24-30 write-1-to-reset,
+    bit 31 = bit15 OR (bit23 AND any(enable16-22 AND flag24-30))."""
+    flags = old & 0x7F000000 & ~v
+    low = v & 0x00FFFFFF
+    on = (low >> 15) & 1 or ((low >> 23) & 1 and ((low >> 16) & (flags >> 24) & 0x7F) != 0)
+    return low | flags | (0x80000000 if on else 0)
 
 
 def _store(fmt, buf, a, v):
@@ -47,6 +72,8 @@ def _store(fmt, buf, a, v):
         if a == 0x1070:                        # I_STAT: write acknowledges
             old = struct.unpack_from('<H', buf, a)[0]
             struct.pack_into('<H', buf, a, old & v & 0xFFFF)
+        elif a == 0x10F4:                      # DICR (psx-spx): see dicr_write
+            struct.pack_into('<I', buf, a, dicr_write(struct.unpack_from('<I', buf, a)[0], v))
         else:
             struct.pack_into(fmt, buf, a, v)
         EVENTS.append(['mmio', 0x1F800000 + a, n, v & 0xFFFFFFFF])
@@ -71,7 +98,7 @@ class Stops:
         self.hit = None
 
     def __contains__(self, pc):
-        if pc in (0xA0, 0xB0, 0xC0, RET, ENTER, EXIT):
+        if pc in (0xA0, 0xB0, 0xC0, RET, ENTER, EXIT) or CB_LO <= pc < CB_HI:
             self.hit = pc
             return True
         return False
@@ -90,6 +117,10 @@ class Bios:
         if tab == 'A' and fn == 0x72:          # CdRemove()
             return 0
         if tab == 'B' and fn == 0x19:          # HookEntryInt(addr)
+            return 0
+        if tab == 'B' and fn == 0x18:          # ResetEntryInt(): default exit struct
+            return 0x00000D00
+        if tab == 'A' and fn == 0x3F:          # printf(fmt, ...): diagnostic text
             return 0
         if tab == 'B' and fn == 0x5B:          # ChangeClearPad(int)
             return 0
@@ -110,6 +141,21 @@ def call(ram, bios, entry, args):
         if st.hit == RET:
             EVENTS.append(['ret', r[2] & 0xFFFFFFFF])
             return
+        if st.hit is not None and CB_LO <= st.hit < CB_HI:
+            EVENTS.append(['cb', st.hit, r[4] & 0xFFFFFFFF, r[5] & 0xFFFFFFFF])
+            if st.hit in CB_EFFECTS:           # callback latches more DICR flags
+                d = struct.unpack_from('<I', ram, 0x10F4)[0]
+                struct.pack_into('<I', ram, 0x10F4, d | CB_EFFECTS[st.hit])
+            if st.hit in CB_ISTAT:             # callback raises a CPU source
+                d = struct.unpack_from('<H', ram, 0x1070)[0]
+                struct.pack_into('<H', ram, 0x1070, d | CB_ISTAT[st.hit])
+            if st.hit in CB_CLEARS:            # callback clears DICR control bits
+                d = struct.unpack_from('<I', ram, 0x10F4)[0]
+                struct.pack_into('<I', ram, 0x10F4, d & ~CB_CLEARS[st.hit])
+            r[2] = 0
+            regs = {i: v for i, v in enumerate(r)}
+            pc = r[31]
+            continue
         if st.hit in (ENTER, EXIT):
             enter = st.hit == ENTER
             EVENTS.append(['bios', 'SYS(%02Xh)' % (1 if enter else 2), []])
@@ -117,15 +163,23 @@ def call(ram, bios, entry, args):
             bios.irq_on = 0 if enter else 1
             r[2] = old if enter else 0
         else:
+            if st.hit is None:
+                # e.g. DMACallback before ResetCallback calls an uninstalled
+                # jump-table slot (address 0); not a defined behaviour.
+                raise AssertionError('jumped to address 0')
             tab = {0xA0: 'A', 0xB0: 'B', 0xC0: 'C'}[st.hit]
-            EVENTS.append(['bios', '%s(%02Xh)' % (tab, r[9]), [x & 0xFFFFFFFF for x in r[4:6]]])
+            if tab == 'B' and r[9] == 0x17:   # ReturnFromException: the dispatcher's exit
+                EVENTS.append(['bios', 'B(17h)', []])
+                EVENTS.append(['ret', 0])
+                return
+            EVENTS.append(['bios', '%s(%02Xh)' % (tab, r[9]), [x & 0xFFFFFFFF for x in r[4:(8 if (tab, r[9]) == ('A', 0x3F) else 6)]]])
             r[2] = bios.service(tab, r[9], r, ram) & 0xFFFFFFFF
         regs = {i: v for i, v in enumerate(r)}
         pc = r[31]
     raise AssertionError('too many service calls')
 
 
-def fixture(exe, imask, istat, dirty):
+def fixture(exe, imask, istat, dirty, dicr=0):
     t_addr, t_size = struct.unpack_from('<II', exe, 0x18)
     ram = bytearray(0x200000)
     ram[t_addr & 0x1FFFFF:(t_addr & 0x1FFFFF) + t_size] = exe[0x800:0x800 + t_size]
@@ -135,19 +189,34 @@ def fixture(exe, imask, istat, dirty):
         struct.pack_into('<H', ram, LIB_BLOCK[0], 0)   # guard clear: reset must run
     struct.pack_into('<H', ram, 0x1074, imask)
     struct.pack_into('<H', ram, 0x1070, istat)
+    struct.pack_into('<I', ram, 0x10F4, dicr)
+    for ch in range(7):                        # DMA MADR registers: distinct values
+        struct.pack_into('<I', ram, 0x1080 + ch * 0x10, 0x00010000 * (ch + 1) + 0x123)
     return ram
 
 
 def run_case(exe, case):
     EVENTS.clear()
     RAM_WRITES.clear()
-    ram = fixture(exe, case['imask'], case['istat'], case['dirty'])
+    ram = fixture(exe, case['imask'], case['istat'], case['dirty'], case.get('dicr', 0))
     initial = bytes(ram)
     bios = Bios()
     try:
         for entry, args in case['calls']:
             if entry == 'POKE_IMASK':          # I_MASK changed by other code between calls
                 struct.pack_into('<H', ram, 0x1074, args[0])
+                continue
+            if entry == 'POKE_DICR':           # DICR changed by other code (raw state)
+                struct.pack_into('<I', ram, 0x10F4, args[0])
+                continue
+            if entry == 'POKE_DPCR':           # DPCR changed by other code
+                struct.pack_into('<I', ram, 0x10F0, args[0])
+                continue
+            if entry == 'POKE_ISTAT':          # pending interrupt sources (raw)
+                struct.pack_into('<H', ram, 0x1070, args[0])
+                continue
+            if entry == 'POKE_W':              # guest RAM word set by other code
+                struct.pack_into('<I', ram, args[0] & 0x1FFFFF, args[1])
                 continue
             call(ram, bios, entry, args)
         case['fault'] = None
@@ -179,19 +248,132 @@ def cases():
         # Registration before any ResetCallback (guard clear), then reset.
         for source in (0, 2, 3, 5):
             yield dict(base, calls=[[INTR, [source, H1]], [INTR, [source, 0]], [RESET, []]])
+    # DMACallback(channel, handler): channels 0..7, DICR starting states.
+    for imask, istat, dirty, dicr in ((0, 0, 0, 0), (0x0009, 0x0008, 1, 0x7F000000),
+                                      (0xFFFF, 0x07FF, 0, 0x00FF8000)):
+        base = dict(imask=imask, istat=istat, dirty=dirty, dicr=dicr)
+        for ch, seq in itertools.product(range(8), seqs):
+            yield dict(base, calls=[[RESET, []]] + [[DMACB, [ch, h]] for h in seq])
+        for poke, ch, h in ((0x7F7F0000, 2, H1), (0x00800000, 4, 0), (0x81FF8000, 6, H1),
+                            (0x04040000, 2, 0)):
+            yield dict(base, calls=[[RESET, []], [DMACB, [2, H2]], ['POKE_DICR', [poke]],
+                                    [DMACB, [ch, h]]])
+        yield dict(base, calls=[[RESET, []], [DMACB, [1, H1]], [DMACB, [3, H2]], [INTR, [3, 0]],
+                                [DMACB, [1, 0]], [INTR, [3, 0x80074520]], [DMACB, [5, H1]]])
+        # DMACallback before any ResetCallback jumps to address 0 in the
+        # original (no vectors); the setter it reaches (0x800746A0) has no
+        # reset gate, so it is captured directly.
+        for ch in (1, 4, 7):
+            yield dict(base, calls=[[DMASET, [ch, H1]], [DMASET, [ch, H2]], [DMASET, [ch, 0]],
+                                    [RESET, []], [DMACB, [ch, H1]]])
+        # StopCallback / RestartCallback around registrations and register changes.
+        yield dict(base, calls=[[RESET, []], [STOP, []]])
+        yield dict(base, calls=[[RESET, []], [STOP, []], [STOP, []], [RESTART, []], [RESTART, []]])
+        yield dict(base, calls=[[RESTART, []], [RESET, []], [RESTART, []]])
+        for dpcr in (0xFFFFFFFF, 0xC4444444):  # which DPCR bits Stop clears
+            yield dict(base, calls=[[RESET, []], ['POKE_DPCR', [dpcr]], [STOP, []], [RESTART, []]])
+        for poke_m, poke_d in ((0x0040, 0x08888888), (0x07FF, 0x00000000)):
+            yield dict(base, calls=[[RESET, []], [INTR, [1, H1]], [DMACB, [2, H1]],
+                                    ['POKE_IMASK', [poke_m]], ['POKE_DPCR', [poke_d]], [STOP, []],
+                                    [INTR, [5, H1]], [DMACB, [4, H2]], ['POKE_DPCR', [0x12345678]],
+                                    [RESTART, []], [INTR, [5, H1]]])
+        # Interrupt handlers and start helpers (handlers driven directly;
+        # callbacks are stubs in [CB_LO, CB_HI)).
+        S = [0x80130000 + 0x40 * i for i in range(8)]
+        for slots in ((0,), (0, 7), (1, 3, 5), tuple(range(8)), ()):
+            pre = [[VSYNCCBS, [i, S[i]]] for i in slots]
+            yield dict(base, calls=[[RESET, []]] + pre + [[VSYNCH, []], [VSYNCH, []]])
+        yield dict(base, calls=[[RESET, []], ['POKE_W', [0x800956AC, 0xFFFFFFFF]],
+                                [VSYNCCBS, [2, S[2]]], [VSYNCH, []]])
+        yield dict(base, calls=[[VSYNCH, []]])
+        for chans, dicr in (((2,), 0x84840000), ((2, 4), 0x94940000), ((2, 4), 0x14940000),
+                            ((0, 6), 0xC1C10000), ((1,), 0x82800000), ((3,), 0x00888000),
+                            (tuple(range(7)), 0xFFFF8000), ((5,), 0xA0A00000), ((), 0xFFFF0000)):
+            pre = [[DMACB, [c, S[c]]] for c in chans]
+            yield dict(base, calls=[[RESET, []]] + pre + [['POKE_DICR', [dicr]], [DMAH, []]])
+        # DICR edge states: low bits 0-14, master off with flags, force without master.
+        for chans, dicr in (((2,), 0x04040001), ((2,), 0x04047FFF), ((2, 4), 0x14140000),
+                            ((1,), 0x02008000), ((), 0x00007FFF), ((3,), 0x08080040)):
+            pre = [[DMACB, [c, S[c]]] for c in chans]
+            yield dict(base, calls=[[RESET, []]] + pre + [['POKE_DICR', [dicr]], [DMAH, []]])
+        yield dict(base, calls=[['POKE_DICR', [0x84840000]], [DMAH, []], [RESET, []]])
+        # Callbacks that latch further flags (ch2 -> ch4, ch4 -> ch2 once more).
+        yield dict(base, calls=[[RESET, []], [DMACB, [2, 0x80130800]], [DMACB, [4, S[4]]],
+                                ['POKE_DICR', [0x84940000]], [DMAH, []]])
+        yield dict(base, calls=[[RESET, []], [DMACB, [2, S[2]]], [DMACB, [4, 0x80130840]],
+                                ['POKE_DICR', [0x90940000]], [DMAH, []]])
+        # A callback changes DICR's low bits: acknowledge from a fresh read vs the snapshot.
+        yield dict(base, calls=[[RESET, []], [DMACB, [2, 0x80130880]], [DMACB, [4, S[4]]],
+                                ['POKE_DICR', [0x94940000]], [DMAH, []]])
+        # Several pending, a callback latches a HIGHER channel: per-channel re-read vs snapshot.
+        yield dict(base, calls=[[RESET, []], [DMACB, [2, 0x80130800]], [DMACB, [4, S[4]]],
+                                [DMACB, [6, S[6]]], ['POKE_DICR', [0xC4D40000]], [DMAH, []]])
+        # Several pending, a callback latches a LOWER channel: snapshot walk vs restart.
+        yield dict(base, calls=[[RESET, []], [DMACB, [2, S[2]]], [DMACB, [4, 0x80130840]],
+                                [DMACB, [6, S[6]]], ['POKE_DICR', [0xD0D40000]], [DMAH, []]])
+        # CPU interrupt dispatcher: registered/unregistered/masked sources,
+        # handlers raising sources, watchdog thresholds, before reset.
+        for srcs, pend in (((0, 1, 3), 0x000B), ((2,), 0x0004), ((0, 4, 9, 10), 0x0611),
+                           ((5,), 0x0000), ((1, 2), 0x0007), (tuple(range(11)), 0x07FF)):
+            pre = [[INTR, [x, S[x % 8] + 0x400]] for x in srcs]
+            yield dict(base, calls=[[RESET, []]] + pre + [['POKE_ISTAT', [pend]], [DISP, []]])
+        for wd in (0, 0x800, 0x801, 0xFFFFFFFF):
+            yield dict(base, calls=[[RESET, []], [INTR, [1, S[1] + 0x400]], ['POKE_IMASK', [0x0042]],
+                                    ['POKE_W', [0x8009567C, wd]], ['POKE_ISTAT', [0x0042]], [DISP, []]])
+        yield dict(base, calls=[[RESET, []], [INTR, [1, 0x801308C0]], [INTR, [2, S[2] + 0x400]],
+                                [INTR, [5, S[5] + 0x400]], ['POKE_ISTAT', [0x0022]], [DISP, []]])
+        yield dict(base, calls=[[RESET, []], [INTR, [0, S[0] + 0x400]], [INTR, [4, 0x80130900]],
+                                [INTR, [6, S[6] + 0x400]], ['POKE_ISTAT', [0x0050]], [DISP, []]])
+        yield dict(base, calls=[[RESET, []], [INTR, [2, S[2] + 0x400]], ['POKE_IMASK', [0x0000]],
+                                ['POKE_ISTAT', [0x0004]], [DISP, []]])
+        yield dict(base, calls=[['POKE_IMASK', [0x0001]], ['POKE_ISTAT', [0x0001]], [DISP, []]])
+        # Registered-mask bit set but the handler slot zeroed by other code.
+        yield dict(base, calls=[[RESET, []], [INTR, [1, S[1] + 0x400]], [INTR, [2, S[2] + 0x400]],
+                                ['POKE_W', [0x800945EC, 0]], ['POKE_ISTAT', [0x0006]], [DISP, []]])
+        yield dict(base, calls=[[RESET, []], ['POKE_W', [0x800945E8, 0]], ['POKE_ISTAT', [0x0009]],
+                                [DISP, []]])
+        # Counter on a clean dispatch; before-reset argument; diagnostic arguments.
+        yield dict(base, calls=[[RESET, []], [INTR, [2, S[2] + 0x400]], ['POKE_W', [0x8009567C, 5]],
+                                ['POKE_ISTAT', [0x0004]], [DISP, []]])
+        yield dict(base, calls=[['POKE_IMASK', [0x0005]], ['POKE_ISTAT', [0x0003]], [DISP, []]])
+        yield dict(base, calls=[[RESET, []], [INTR, [1, S[1] + 0x400]], ['POKE_IMASK', [0x0062]],
+                                ['POKE_W', [0x8009567C, 0x801]], ['POKE_ISTAT', [0x0146]], [DISP, []]])
+        for start in (STARTV, STARTD):
+            yield dict(base, calls=[[RESET, []], [VSYNCCBS, [1, S[1]]], [DMACB, [2, S[2]]],
+                                    [start, []], [start, []]])
+            yield dict(base, calls=[[start, []], [RESET, []]])
+            # A different handler on the source the helper owns (0 / 3) first.
+            src = 0 if start == STARTV else 3
+            yield dict(base, calls=[[RESET, []], [INTR, [src, S[5]]], [start, []]])
+            yield dict(base, calls=[[RESET, []], [INTR, [src, 0]], [start, []]])
+        # Channels past the table: the original has no bound.
+        for ch in (8, 9, 10, 31):
+            yield dict(base, calls=[[RESET, []], [DMACB, [ch, H1]], [DMACB, [ch, 0]]])
 
 
-COLLAPSED = {'A(13h)', 'B(19h)', 'A(72h)'}
-HOST_NAME = {'B(5Bh)': 'CLEARPAD', 'C(0Ah)': 'CLEARRCNT', 'SYS(01h)': 'ENTER', 'SYS(02h)': 'EXIT'}
+COLLAPSED = {'A(13h)', 'B(17h)', 'B(18h)', 'B(19h)', 'A(72h)'}
+HOST_NAME = {'B(5Bh)': 'CLEARPAD', 'C(0Ah)': 'CLEARRCNT', 'SYS(01h)': 'ENTER', 'SYS(02h)': 'EXIT',
+             'A(3Fh)': 'PRINTF'}
 
 
 def text_case(k, c):
-    out = ['CASE %d %04X %04X %d' % (k, c['imask'], c['istat'], c['dirty'])]
+    out = ['CASE %d %04X %04X %d %08X' % (k, c['imask'], c['istat'], c['dirty'], c.get('dicr', 0))]
     for e, a in c['calls']:
         if e == 'POKE_IMASK':
             out.append('POKE %04X' % a[0])
+        elif e == 'POKE_DICR':
+            out.append('POKED %08X' % a[0])
+        elif e == 'POKE_DPCR':
+            out.append('POKEP %08X' % a[0])
+        elif e == 'POKE_ISTAT':
+            out.append('POKEI %04X' % a[0])
+        elif e == 'POKE_W':
+            out.append('POKEW %08X %08X' % (a[0], a[1]))
         else:
-            out.append('CALL %s %s' % ('RESET' if e == RESET else 'INTR',
+            out.append('CALL %s %s' % ({RESET: 'RESET', INTR: 'INTR', DMACB: 'DMACB',
+                                        DMASET: 'DMASET', STOP: 'STOP', RESTART: 'RESTART',
+                                        VSYNCH: 'VSYNCH', DMAH: 'DMAH', STARTV: 'STARTV',
+                                        STARTD: 'STARTD', VSYNCCBS: 'VSYNCCBS', DISP: 'DISP'}[e],
                                        ' '.join('%08X' % x for x in (a + [0, 0])[:2])))
     for ev in c['events']:
         if ev[0] == 'mmio':
@@ -200,8 +382,10 @@ def text_case(k, c):
             out.append('RET %08X' % ev[1])
         elif ev[0] == 'ram':
             out.append('STORE %08X %d %08X' % tuple(ev[1:]))
+        elif ev[0] == 'cb':
+            out.append('CB %08X' % ev[1])
         elif ev[1] not in COLLAPSED:
-            out.append('BIOS %s %s' % (HOST_NAME[ev[1]], ' '.join('%08X' % x for x in (ev[2] + [0, 0])[:2])))
+            out.append('BIOS %s %s' % (HOST_NAME[ev[1]], ' '.join('%08X' % x for x in (ev[2] + [0, 0])[:(4 if ev[1] == 'A(3Fh)' else 2)])))
     out.extend('RAM %08X %08X %08X' % tuple(w) for w in c['ram'])
     out.append('END')
     return '\n'.join(out) + '\n'

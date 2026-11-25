@@ -1,0 +1,57 @@
+/* Synthetic CD status-poll VSync stop observation; no disc or game data. */
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include "pe_guest_ram.h"
+#include "pe_sdk.h"
+#include "game_port.h"
+#define CHECK(x) do { if(!(x)) { fprintf(stderr,"case %u failed line %d\n",case_no,__LINE__); return 1; } } while(0)
+static unsigned mode,vsyncs,queries,ready_calls;
+int PE_MMIO_InShadowBlock(pe_addr_t a,size_t n) { (void)a;(void)n;abort(); }
+void *PE_MMIO_Translate(pe_addr_t a,size_t n) { (void)a;(void)n;abort(); }
+uint32_t PE_MMIO_Load(pe_addr_t a,size_t n) { (void)a;(void)n;abort(); }
+void PE_MMIO_Store(pe_addr_t a,size_t n,uint32_t v) { (void)a;(void)n;(void)v;abort(); }
+void PE_StrFeed_Reset(void) { }
+uint32_t HostFB_VSync(int m) {
+    if(m!=-1) abort();
+    vsyncs++;
+    if((mode==1 && vsyncs==1) || (mode==2 && vsyncs==2))
+        PE_Port_RequestStop(PE_PORT_STOP_EXPLICIT);
+    return 10;
+}
+uint32_t PE_GPU_VSyncQuery(void) { queries++;return 10; }
+unsigned short func_80073DE8(void) { ready_calls++;return 0; }
+void PE_Cd_TimeoutRecover(void) { abort(); }
+int pe_plat_cd_acknowledge_host(void) { abort(); }
+uint8_t PE_CdLoadU8(pe_addr_t a) { (void)a;abort(); }
+void PE_CdStoreU8(pe_addr_t a,uint8_t v) { (void)a;(void)v;abort(); }
+int PE_Cd_DispatchDataCallback(pe_addr_t a,uint32_t status,pe_addr_t p)
+{ (void)a;(void)status;(void)p;abort(); }
+int main(void) {
+    PE_RamInit();
+    for(unsigned case_no=0;case_no<4;case_no++) {
+        mode=case_no;vsyncs=queries=ready_calls=0;
+        PE_RamReset();PE_Port_RunControlReset();
+        PE_StoreU32(0x800a3478u,0x11111111u);
+        PE_StoreU32(0x800a347cu,0x22222222u);
+        PE_StoreU32(0x800a3480u,0x33333333u);
+        if(mode==3) PE_Port_RequestStop(PE_PORT_STOP_EXPLICIT);
+        int result=pe_plat_cd_status_poll_host(1,0);
+        CHECK(result==0);
+        CHECK(PE_Port_ShouldStop()==(mode!=0));
+        CHECK(PE_Port_StopEpoch()==(mode!=0?1u:0u));
+        CHECK(PE_Port_GetStopReason()==(mode?PE_PORT_STOP_EXPLICIT:PE_PORT_STOP_NONE));
+        if(mode==3) {
+            CHECK(vsyncs==0 && queries==0 && ready_calls==0);
+            CHECK(PE_LoadU32(0x800a3478u)==0x11111111u && PE_LoadU32(0x800a347cu)==0x22222222u &&
+                  PE_LoadU32(0x800a3480u)==0x33333333u);
+        } else {
+            /* Observe current behavior, not a proposed post-stop policy. */
+            CHECK(vsyncs==(mode==1?1u:2u) && queries==(mode==1?1u:2u));
+            CHECK(ready_calls==(mode==1?0u:1u));
+            CHECK(PE_LoadU32(0x800a3478u)==970u && PE_LoadU32(0x800a347cu)==(mode==1?0u:1u) &&
+                  PE_LoadU32(0x800a3480u)==0x80011ba0u);
+        }
+    }
+    PE_RamDestroy();puts("4 synthetic CD poll VSync stop observations pass");return 0;
+}

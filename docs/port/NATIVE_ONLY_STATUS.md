@@ -1,5 +1,13 @@
 # Native-only build: status
 
+**Source status, 2026-11-25.** The published source (development tree
+`541ce991f`) links 31 Psy-Q SDK functions in the game binary (23 runtime,
+8 BIOS), down from 264 at the 2026-10-30 sync; the replacements are host
+providers written from black-box vectors of the original code and the
+psx-spx documentation. No new binary is published with that sync: public
+binaries stay held until the count is 0. The notes below describe the newest
+published binaries.
+
 Current release: [`native-only-ab6de50b`](https://github.com/Blizz127/parasite-eve-decomp-port/releases/tag/native-only-ab6de50b)
 (2026-10-08, Linux x86-64). It was tested on a real disc image on the build
 machine (Day 1 plays through to the opening of Day 2), but it is **untested

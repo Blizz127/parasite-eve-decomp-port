@@ -57,6 +57,7 @@ typedef struct {
     int16_t  axis[64];       /* last value per js axis index */
     int      trigger_seen[64]; /* trigger axis moved/initialised */
     uint8_t  hotkeys;        /* held HOST_PAD_HOTKEY_* bits */
+    uint8_t  button_pressed[256]; /* per js_event.number, before merging mappings */
 } HostPadDevice;
 
 /* Fill the fallback (xpad) index layout. */

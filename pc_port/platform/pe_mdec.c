@@ -610,6 +610,7 @@ int PE_MDEC_Service(void)
 }
 int PE_MDEC_SubmitOutput(pe_addr_t destination,uint32_t words)
 {
+    if (PE_Port_ShouldStop()) return 0;
     uint32_t blocks=words>>5u;
     if(!blocks || blocks>0xFFFFu)
         return MdecBoundary("MDEC_output_block_count",words);
@@ -617,10 +618,21 @@ int PE_MDEC_SubmitOutput(pe_addr_t destination,uint32_t words)
     pe_addr_t aligned=destination&~3u;
     if(!PE_RangeIsRam(PE_RamCanonical(aligned,bytes),bytes))
         return MdecBoundary("MDEC_output_table_range",destination);
-    if(g_mdec.dma1_chcr&0x01000000u) {
+    /* The original output wait polls DMA1 busy. A raw request can need
+     * several service opportunities, even when each is making progress.
+     * Keep a stalled device as an explicit boundary: this is not yet the
+     * original cycle-accurate timeout and recovery path. */
+    for(uint32_t polls=0;g_mdec.dma1_chcr&0x01000000u;polls++) {
+        uint32_t old_input=g_dma0_port_bytes,old_output=g_output_bytes;
+        uint32_t old_dma0=g_mdec.dma0_chcr,old_dma1=g_mdec.dma1_chcr;
+        int old_active=g_mdec.dma0_active;
+        if(polls==0x00100001u) return MdecBoundary("MDEC_output_wait",g_mdec.dma1_chcr);
         (void)PE_MDEC_Service();
         if(PE_Port_ShouldStop()) return 0;
-        if(g_mdec.dma1_chcr&0x01000000u) return MdecBoundary("MDEC_output_wait",g_mdec.dma1_chcr);
+        if((g_mdec.dma1_chcr&0x01000000u) && old_input==g_dma0_port_bytes &&
+           old_output==g_output_bytes && old_dma0==g_mdec.dma0_chcr &&
+           old_dma1==g_mdec.dma1_chcr && old_active==g_mdec.dma0_active)
+            return MdecBoundary("MDEC_output_wait",g_mdec.dma1_chcr);
     }
     PE_GPU_WriteDPCR(PE_GPU_ReadDPCR()|0x88u);
     g_dma1_port=0;
@@ -768,6 +780,7 @@ void PE_MDEC_ClearDmaChannels(void)
 
 int PE_MDEC_SubmitInputTable(pe_addr_t command_block, uint32_t size_words)
 {
+    if (PE_Port_ShouldStop()) return -1;
     uint32_t blocks = size_words >> 5;
     uint32_t words = blocks << 5;
     uint32_t bytes = words << 2;

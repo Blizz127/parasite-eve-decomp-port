@@ -4,10 +4,14 @@
 This test-only MIPS runner reads instructions from the original executable.
 It executes 33A40, 34104, 334AC, 438E0 and 77AC4, including AddPrim's
 unaligned accesses, rather than reconstructing HUD formulas in Python.
+The instruction model relies on assertions and must not run with Python -O.
 """
 from pathlib import Path
 import hashlib
 import struct
+
+if not __debug__:
+    raise RuntimeError("pe_battle_hud_oracle requires Python assertions; do not use -O")
 
 ROOT = Path(__file__).resolve().parents[2]
 CASES = [
@@ -66,7 +70,7 @@ def execute(ram, entry, args=(), *, stop_at=(), initial_regs=None, initial_cop_c
             cop_control[31]=flags|(0x80000000 if flags&0x7F87E000 else 0)
             flags_valid=True
             return
-        assert command in (0x118043F,0x480012,0x49E012,0x486012,0x180001,0x280030,
+        assert command in (0x118043F,0x480012,0x49E012,0x41E012,0x486012,0x180001,0x280030,
                            0x1400006,0x158002D,0x168002E,0x170000C,0x178000C,0x190003D,0x198003D,0x1A0003E,0x1A8003E), hex(command)
         def half(v): return (v&32767)-(v&32768)
         def wrap44(v): return ((v+(1<<43))&((1<<44)-1))-(1<<43)
@@ -149,13 +153,14 @@ def execute(ram, entry, args=(), *, stop_at=(), initial_regs=None, initial_cop_c
             return
         halves=struct.unpack('<10h',struct.pack('<5I',*cop_control[:5]))
         for vertex_index in range(3 if command==0x280030 else 1):
-            if command==0x49E012: vector=[half(v) for v in cop_data[9:12]]
+            if command in (0x49E012,0x41E012): vector=[half(v) for v in cop_data[9:12]]
             else: vector=struct.unpack('<4h',struct.pack('<2I',*cop_data[vertex_index*2:vertex_index*2+2]))[:3]
             mac=[]
             for row in range(3):
-                total=0 if command in (0x49E012,0x486012) else signed(cop_control[5+row])*4096
+                total=0 if command in (0x49E012,0x41E012,0x486012) else signed(cop_control[5+row])*4096
                 for j in range(3):total=accumulator(total+halves[row*3+j]*vector[j],row)
-                mac.append(signed(total//4096))
+                # psx-spx MVMVA: sf (bit 19) selects >>12 or no shift (0x41E012: sf=0)
+                mac.append(signed(total>>12 if command&(1<<19) else total))
                 cop_data[25+row]=mac[row]&0xFFFFFFFF
                 cop_data[9+row]=max(-32768,min(32767,mac[row]))&0xFFFFFFFF
                 if not -32768<=mac[row]<=32767:flags|=1<<(24-row)
@@ -339,6 +344,7 @@ def execute(ram, entry, args=(), *, stop_at=(), initial_regs=None, initial_cop_c
         jump = step(pc)
         if jump is None: pc += 4
         else:
+            if visited_pcs is not None: visited_pcs.add(pc+4)
             assert step(pc+4) is None, 'branch in delay slot'
             pc = jump
     raise AssertionError('instruction budget')

@@ -94,18 +94,24 @@ void HostPad_DeviceEvent(HostPadDevice *dev, uint8_t type, uint8_t number, int16
 {
     type &= (uint8_t)~JS_EVENT_INIT;
     if (type == JS_EVENT_BUTTON) {
-        uint16_t code = dev->btn_code[number];
-        uint8_t hk = code == EV_BTN_THUMBR ? HOST_PAD_HOTKEY_FF_HOLD :
-                     code == EV_BTN_THUMBL ? HOST_PAD_HOTKEY_FF_TOGGLE : 0u;
-        uint16_t bit = button_bit(code);
-        if (hk) {
-            if (value) dev->hotkeys |= hk;
-            else       dev->hotkeys &= (uint8_t)~hk;
-            return;
+        /* Distinct joystick indices may map to the same evdev code. Merge
+         * held indices after each update so releasing one cannot clear the
+         * button or hotkey still held by another. js_event.number is u8. */
+        uint16_t buttons = 0;
+        uint8_t hotkeys = 0;
+        /* Preserve when the existing button mapping snapshots PE_PAD_SWAP_XY,
+         * including events for hotkeys or unmapped indices. */
+        (void)button_bit(dev->btn_code[number]);
+        dev->button_pressed[number] = value != 0;
+        for (unsigned i = 0; i < sizeof(dev->button_pressed); i++) {
+            if (!dev->button_pressed[i]) continue;
+            uint16_t code = dev->btn_code[i];
+            if (code == EV_BTN_THUMBR) hotkeys |= HOST_PAD_HOTKEY_FF_HOLD;
+            else if (code == EV_BTN_THUMBL) hotkeys |= HOST_PAD_HOTKEY_FF_TOGGLE;
+            else buttons = (uint16_t)(buttons | button_bit(code));
         }
-        if (!bit) return;
-        if (value) dev->buttons |= bit;
-        else       dev->buttons &= (uint16_t)~bit;
+        dev->buttons = buttons;
+        dev->hotkeys = hotkeys;
     } else if (type == JS_EVENT_AXIS && number < 64) {
         dev->axis[number] = value;
         dev->trigger_seen[number] = 1;

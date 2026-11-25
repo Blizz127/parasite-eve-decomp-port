@@ -29,7 +29,10 @@
  * file is created freshly formatted; an image file that exists but is not a
  * formatted 128 KiB card is presented to the game as an unformatted card
  * and is only rewritten when the game formats it.  Every mutation is
- * written through to the file (temp file + rename).
+ * written through to the file (temp file + rename). On POSIX, the complete
+ * temp file is flushed and fsync'd before replacement. The parent directory
+ * is not synced: this is not a full power-loss durability guarantee or a
+ * transaction spanning multiple game operations, and requires a single writer.
  */
 #ifndef PE_MEMCARD_H
 #define PE_MEMCARD_H

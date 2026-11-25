@@ -41,6 +41,7 @@
 #include "host_pad.h"
 #include "host_pad_win32.h"
 #include "host_pad_remap.h"
+#include "host_key_merge.h"
 #include "host_dev_menu.h"
 #include "host_audio.h"
 #include "pe_audio_driver.h"
@@ -79,7 +80,8 @@ static BITMAPINFO g_bmi;
 static int      g_close_requested = 0;
 
 int g_host_window_open = 0;
-static uint16_t g_sony_held = 0;
+static uint16_t g_sony_held = 0;   /* keyboard pad word: HostKeyInput_Held(&g_keys) */
+static HostKeyInput g_keys;        /* per-VK/extended-flag contributions (host_key_merge.h) */
 static HostFramePacer g_pacer;
 static HANDLE g_frame_timer;
 static LARGE_INTEGER g_clock_frequency;
@@ -128,7 +130,7 @@ static uint64_t monotonic_ns(void)
 static struct {
     int on, max, lines;
     uint64_t t0;
-    uint32_t vbl0, scan0, fmv0; int pres0;
+    uint32_t vbl0, scan0, fmv0; uint64_t pres0;
     uint32_t paced, blits, skipped;
     uint64_t blit_ns, blit_max;
     uint32_t n; uint64_t busy[FTRACE_SAMPLES];
@@ -151,9 +153,8 @@ static int ftrace_cmp(const void *a, const void *b)
 static void ftrace_sample(uint64_t now)
 {
     PeStrFeedStats fs;
-    int pres = 0;
+    uint64_t pres = HostFB_GetPresentCount();
     uint32_t vbl = PE_GPU_VSyncQuery(), scan = HostFB_ScanOutCount();
-    HostFB_GetState(NULL, NULL, &pres, NULL);
     PE_StrFeed_GetStats(&fs);
     if (g_ft.t0 && now - g_ft.t0 >= UINT64_C(1000000000) && g_ft.lines < g_ft.max) {
         double p50 = 0, p95 = 0, mx = 0;
@@ -163,9 +164,9 @@ static void ftrace_sample(uint64_t now)
             p95 = g_ft.busy[(g_ft.n * 95u) / 100u] / 1e6;
             mx = g_ft.busy[g_ft.n - 1] / 1e6;
         }
-        fprintf(stderr, "[FTRACE] %.3fs pres=%d vbl=%u paced=%u busy_ms p50=%.2f p95=%.2f max=%.2f "
+        fprintf(stderr, "[FTRACE] %.3fs pres=%llu vbl=%u paced=%u busy_ms p50=%.2f p95=%.2f max=%.2f "
                 "blits=%u skip=%u blit_ms=%.1f blit_max=%.2f scan=%u fmv=%u stream=%d aq=%d win=%dx%d\n",
-                (now - g_ft.t0) / 1e9, pres - g_ft.pres0, vbl - g_ft.vbl0, g_ft.paced, p50, p95, mx,
+                (now - g_ft.t0) / 1e9, (unsigned long long)(pres - g_ft.pres0), vbl - g_ft.vbl0, g_ft.paced, p50, p95, mx,
                 g_ft.blits, g_ft.skipped, g_ft.blit_ns / 1e6, g_ft.blit_max / 1e6,
                 scan - g_ft.scan0,
                 fs.frames_published >= g_ft.fmv0 ? fs.frames_published - g_ft.fmv0 : fs.frames_published,
@@ -200,6 +201,16 @@ static uint16_t vk_to_pad_bit(UINT vk)
 {
     return HostPadRemap_Key(HostPadRemap_Global(),
                             HostPadRemap_KeysymFromWin32Vk((unsigned)vk));
+}
+
+/* Numpad Enter and main Enter both use VK_RETURN. Bit 24 distinguishes
+ * extended keys on both key-down and key-up; it occupies the upper half of
+ * the 512-slot merger without changing the virtual-key-based pad mapping.
+ * Repeat, Alt context and transition flags are not part of the identity. */
+static uint32_t win32_key_id(WPARAM vk, LPARAM lparam)
+{
+    if (vk > 0xFFu) return HOST_KEY_MERGE_KEYS;
+    return (uint32_t)vk | ((lparam & ((LPARAM)1 << 24)) ? 0x100u : 0u);
 }
 
 static void paint_window(HDC hdc)
@@ -353,19 +364,25 @@ static LRESULT CALLBACK PE_WndProc(HWND hwnd, UINT msg,
             return 0;
         }
         if (wparam == VK_ESCAPE) { g_close_requested = 1; return 0; }
-        g_sony_held |= vk_to_pad_bit((UINT)wparam);
+        /* Several keys may share a button: it stays held while any of them is
+         * down (host_key_merge.h), including main Enter and numpad Enter. */
+        g_sony_held = HostKeyInput_Mapped(&g_keys, win32_key_id(wparam, lparam), vk_to_pad_bit((UINT)wparam), 1);
         return 0;
     case WM_KEYUP:
     case WM_SYSKEYUP:
+        /* Clear this key's pad contribution before the hotkey or cheat-menu
+         * handling below can consume the release. */
+        g_sony_held = HostKeyInput_Release(&g_keys, win32_key_id(wparam, lparam));
         if (win32_hotkey_up(wparam)) return 0;   /* F11 / F12 release (Enter falls through) */
         if (win32_cheat_key(wparam, 0, 0)) return 0;
         if (wparam==VK_F6) {
             if (!(pe_plat_cheats_menu_open() || HostDevMenu_CapturesInput())) g_speed_key_held=0;
             return 0;
         }
-        g_sony_held &= (uint16_t)~vk_to_pad_bit((UINT)wparam);
+        g_sony_held = HostKeyInput_Mapped(&g_keys, win32_key_id(wparam, lparam), vk_to_pad_bit((UINT)wparam), 0);
         return 0;
     case WM_KILLFOCUS:
+        HostKeyInput_Reset(&g_keys);
         g_sony_held = 0;
         g_speed_key_held = 0;
         g_cheat_held = 0;
@@ -462,6 +479,7 @@ int HostWindow_Open(const char *display, int width, int height,
     UpdateWindow(g_hwnd);
 
     g_close_requested = 0;
+    HostKeyInput_Reset(&g_keys);
     g_sony_held = 0;
     g_cheat_held = 0;
     g_fast_forward = 0; g_speed_key_held = 0; g_ff_active = 0; g_pad_hotkeys = 0;
@@ -738,6 +756,7 @@ void HostWindow_Close(void)
     PE_AudioDriver_SetVBlankPacer(NULL);
     if (g_frame_timer) {CloseHandle(g_frame_timer);g_frame_timer=NULL;}
     free(g_last_rgb); g_last_rgb = NULL; g_last_size = 0;
+    HostKeyInput_Reset(&g_keys);
     g_sony_held = 0;
     g_cheat_held = 0;
     HostPadRemap_Reset();

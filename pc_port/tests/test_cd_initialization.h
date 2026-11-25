@@ -28,7 +28,7 @@ static void test_cd_init_pending_irq_stop(void)
     PE_StoreU16(0x800945E4u, 1u);
     PE_StoreU16(0x80094614u, 9u);
     PE_StoreU8(0x8009B294u, 0xA5u);
-    PE_CdReg_WriteU8(0x1F801803u, 1u);
+    ASSERT(PE_CdReg_PushResponse(1u,NULL,0u), "pending IRQ ingress");
     PE_Port_SetQuitPoll(cd_init_quit_on_pending_irq);
     int result = func_8007BBFC();
     PE_Port_SetQuitPoll(NULL);
@@ -59,7 +59,8 @@ static void test_DAY2_cd_initialization(void)
         PE_CdReg_WriteU32(0x1F801020u,PE_LoadU32(0x80130004u));
         PE_StoreU32(0x8009B200u,1u);PE_StoreU32(0x8009B224u,1u);
         int result=func_8007BBFC();
-        for(unsigned i=0;i<4;i++) PE_StoreU8(0x80130000u+i,PE_CdReg_ReadU8(0x1F801800u+i));
+        /* Oracle fixture records register writes, not device read semantics. */
+        PE_StoreU32(0x80130000u,PE_CdReg_ReadU32(PE_CDREG_BASE));
         PE_StoreU32(0x80130004u,PE_CdReg_ReadU32(0x1F801020u));PE_StoreU16(0x80130020u,PE_IRQ_GetMask());
         ASSERT((uint32_t)result==CDINIT_cases[k].result,"CD rejected Init result differs from original");
         ASSERT(hit_camera_hash(CDINIT_ranges,6)==CDINIT_cases[k].hash,"CD startup rejected-command state differs from original");

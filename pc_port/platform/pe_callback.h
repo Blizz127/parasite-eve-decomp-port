@@ -68,6 +68,7 @@ void      PE_Callback_ResetTable(void);
 void      PE_Callback_Dispatch(void);
 /* Return zero when a callback cannot return; later slots remain untouched. */
 int       PE_Callback_DispatchChecked(void);
+int       pe_plat_invoke_guest_callback(uint32_t guest);   /* clean-room handlers' callback service */
 
 /* ── Diagnostics ────────────────────────────────────────────────────── */
 

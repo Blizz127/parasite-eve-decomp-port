@@ -27,4 +27,17 @@ uint32_t pe_plat_vsync_callbacks(uint32_t slot, uint32_t handler);
 #define func_80073E10 pe_plat_irq_set_mask
 #define func_80073D24 pe_plat_vsync_callback
 #define func_80073D58 pe_plat_vsync_callbacks
+#define func_80074478 pe_plat_vsync_callbacks   /* VSyncCallbacks' jump-table target; same on every vector */
+/* Canonical guest prototypes (read by the port generators; they expand to
+ * the pe_plat declarations above). */
+uint32_t func_800719E4(uint32_t mode);
+void func_800726C4(void);
+void func_80073C74(uint32_t flag);
+uint32_t func_80073C84(uint32_t counter, uint32_t flag);
+int func_80072714(void);
+void func_80072724(void);
+uint16_t func_80073E10(uint16_t new_mask);
+uint32_t func_80073D24(uint32_t handler);
+uint32_t func_80073D58(uint32_t slot, uint32_t handler);
+uint32_t func_80074478(uint32_t slot, uint32_t handler);
 #endif

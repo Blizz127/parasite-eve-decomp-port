@@ -27,25 +27,56 @@ int pe_enh_display_filter(void) { return req_crt; }
 static int req_pause, polls, focusin_after, close_after, ff_calls, ff_last, stop_calls;
 static int ff_resume_pacer_started = -1;
 static uint64_t ff_resume_pacer_deadline = 1, ff_resume_vblank_ns, pause_began_ns;
-static XEvent queued[4];
+static XEvent queued[8];
 static int queued_n, queued_i;
+/* Section 6 schedules damage while unfocused and checks its repair BEFORE
+ * allowing FocusIn. No timing/scheduling assumptions: Drain only waits for the
+ * isolated presenter job at a named poll; it does not present on its behalf. */
+static int repaint_watch, expose_after = -1, resize_after = -1, drain_after = -1;
+static int repaint_width, repaint_height;
+static void check_paused_repaint(void);
 int pe_enh_pause_on_focus_loss(void) { return req_pause; }
+static void queue_event(const XEvent *event)
+{
+    if (queued_i) {
+        memmove(queued, queued + queued_i, (size_t)(queued_n - queued_i) * sizeof queued[0]);
+        queued_n -= queued_i;
+        queued_i = 0;
+    }
+    assert(queued_n < (int)(sizeof queued / sizeof queued[0]));
+    queued[queued_n++] = *event;
+}
 static void queue_focus(int type, int mode, int detail)
 {
     XEvent e;
     memset(&e, 0, sizeof e);
     e.xfocus.type = type; e.xfocus.mode = mode; e.xfocus.detail = detail;
-    queued[queued_n++] = e;
+    queue_event(&e);
 }
 void HostPad_Poll(void)
 {
     polls++;
-    if (polls == focusin_after) queue_focus(FocusIn, 0, 3);
+    if (repaint_watch && polls == drain_after) HostUpscale_Drain();
+    if (repaint_watch && polls == expose_after) {
+        XEvent e;
+        memset(&e, 0, sizeof e); e.type = Expose;
+        queue_event(&e);
+    }
+    if (repaint_watch && polls == resize_after) {
+        XEvent e;
+        memset(&e, 0, sizeof e); e.xconfigure.type = ConfigureNotify;
+        e.xconfigure.width = repaint_width; e.xconfigure.height = repaint_height;
+        queue_event(&e);
+    }
+    if (polls == focusin_after) {
+        if (repaint_watch) check_paused_repaint();
+        queue_focus(FocusIn, 0, 3);
+    }
     if (polls == close_after) {
         XEvent e;
         memset(&e, 0, sizeof e);
         e.xclient.type = ClientMessage; e.xclient.data[0] = (long)g_wm_delete;
-        queued[queued_n++] = e;
+        queue_event(&e);
     }
 }
 void HostDevMenu_Poll(void) {}
@@ -67,6 +98,7 @@ int HostAudio_QueueFrames(void) { return 0; }
 void PE_Port_RequestStop(PEPortStopReason reason) { (void)reason; stop_calls++; }
 uint32_t PE_GPU_VSyncQuery(void) { return 0; }
 uint32_t HostFB_ScanOutCount(void) { return 0; }
+uint64_t HostFB_GetPresentCount(void) { return 0; }
 void HostFB_GetState(int *a, int *b, int *c, int *d) { if (a) *a = 0; if (b) *b = 0; if (c) *c = 0; if (d) *d = 0; }
 void PE_StrFeed_GetStats(PeStrFeedStats *out) { memset(out, 0, sizeof *out); }
 int PE_StrFeed_Active(void) { return 0; }
@@ -141,6 +173,85 @@ static void expected_window(uint8_t *exp, int ww, int wh, const uint8_t *rgb, in
         free(box);
     }
     HostFilter_ApplyCrt(exp, ww, wh, &p.rect, FH, crt);
+}
+
+/* Captured expectations are prepared before starting the async worker. */
+static uint8_t repaint_rgb[FW * FH * 3];
+static uint8_t *repaint_expected;
+static int repaint_xr, repaint_put_before, repaint_comp_before, repaint_checked;
+static uint64_t repaint_old_vblank;
+
+static void check_paused_repaint(void)
+{
+    assert(g_focus.focused == 0);                        /* before FocusIn */
+    assert(ff_calls == 1 && ff_last == 1);               /* still muted */
+    assert(g_pacer.started == 1 && g_pacer.deadline_ns == 123456789u);
+    assert(g_last_vblank_ns == repaint_old_vblank);      /* resume not yet run */
+    assert(g_win_w == repaint_width && g_win_h == repaint_height);
+    assert(g_last_size == sizeof repaint_rgb && g_last_w == FW && g_last_h == FH);
+    assert(g_last_rgb && memcmp(g_last_rgb, repaint_rgb, sizeof repaint_rgb) == 0);
+    if (repaint_xr) {
+        HostFilterPlan p;
+        assert(comp_n > repaint_comp_before);           /* server presentation before focus */
+        HostFilter_Plan(&p, HOST_FIT_KEEP, repaint_width, repaint_height, FW, FH, FW, FH);
+        assert(comp_x == p.rect.x0 && comp_y == p.rect.y0 && comp_w == p.rect.w && comp_h == p.rect.h);
+        for (unsigned i = 0; i < FW * FH; i++) {
+            assert(g_xr_buf[i * 4u] == repaint_rgb[i * 3u + 2u]);
+            assert(g_xr_buf[i * 4u + 1u] == repaint_rgb[i * 3u + 1u]);
+            assert(g_xr_buf[i * 4u + 2u] == repaint_rgb[i * 3u]);
+        }
+    } else {
+        assert(put_win > repaint_put_before);           /* client presentation before focus */
+        assert(memcmp(captured, repaint_expected,
+                      (size_t)repaint_width * (size_t)repaint_height * 4u) == 0);
+    }
+    repaint_checked++;
+}
+
+static void paused_repaint_case(const uint8_t *rgb, int scaler, int xr,
+                                int resize, int ready_only, int use_vblank)
+{
+    const int ww = 90, wh = 70;
+    repaint_width = resize ? 103 : ww;
+    repaint_height = resize ? 81 : wh;
+    repaint_xr = xr;
+    size_t bytes = (size_t)repaint_width * (size_t)repaint_height * 4u;
+    setup(ww, wh, scaler, HOST_FIT_KEEP, HOST_CRT_OFF, xr);
+    /* The fake sink needs room for the pending resize before that event runs. */
+    free(captured); captured = calloc(1, bytes); assert(captured);
+    repaint_expected = calloc(1, bytes); assert(repaint_expected);
+    expected_window(repaint_expected, repaint_width, repaint_height, rgb,
+                    scaler, HOST_FIT_KEEP, HOST_CRT_OFF);
+    memcpy(repaint_rgb, rgb, sizeof repaint_rgb);
+    HostWindow_Blit(rgb, FW, FH);
+    if (scaler != HOST_UPSCALE_NEAREST) {
+        HostUpscale_Drain();
+        if (!ready_only) HostWindow_Blit(rgb, FW, FH);
+    }
+    assert(!g_blit_dirty && g_last_rgb);
+    repaint_put_before = put_win; repaint_comp_before = comp_n;
+    if (ready_only) assert(put_win == 0);                /* queued, completed, never presented */
+    repaint_checked = 0;
+    HostFocus_Reset(&g_focus); g_focus.focused = 0;
+    req_pause = 1; polls = 0; ff_calls = stop_calls = 0; ff_last = -1;
+    g_close_requested = 0; g_fast_forward = g_ff_active = 0;
+    queued_n = queued_i = 0; close_after = -1; focusin_after = 5;
+    expose_after = !resize && !ready_only ? 2 : -1;
+    resize_after = resize ? 2 : -1;
+    drain_after = scaler == HOST_UPSCALE_NEAREST ? -1 : 3;
+    g_pacer.started = 1; g_pacer.deadline_ns = 123456789u;
+    g_last_vblank_ns = repaint_old_vblank = 7654321u;
+    ff_resume_pacer_started = -1;
+    repaint_watch = 1;
+    if (use_vblank) pace_vblank();
+    else assert(HostWindow_Pace() == 0);
+    repaint_watch = 0;
+    assert(repaint_checked == 1 && g_focus.focused == 1 && stop_calls == 0);
+    assert(ff_calls == 2 && ff_last == 0 && ff_resume_pacer_started == 0);
+    assert(ff_resume_pacer_deadline == 0 && ff_resume_vblank_ns > repaint_old_vblank);
+    assert(g_last_size == sizeof repaint_rgb && memcmp(g_last_rgb, repaint_rgb, sizeof repaint_rgb) == 0);
+    free(repaint_expected); repaint_expected = NULL;
+    req_pause = 0; expose_after = resize_after = drain_after = focusin_after = -1;
 }
 
 int main(void)
@@ -337,6 +448,17 @@ int main(void)
         assert(HostWindow_Pace() == 1 && g_close_requested == 1);
         g_close_requested = 0; req_pause = 0; focusin_after = close_after = -1;
         HostFocus_Reset(&g_focus);
+    }
+
+    /* 6. Damage and completed async images are delivered WHILE paused. */
+    {
+        for (unsigned i = 0; i < 7; i++) {
+            fprintf(stderr, "paused-repaint case %u\n", i);
+            paused_repaint_case(rgb,
+                i >= 4 ? HOST_UPSCALE_SHARP_BILINEAR : HOST_UPSCALE_NEAREST,
+                i == 2 || i == 3, i == 1 || i == 3 || i == 5,
+                i == 6, i & 1u);
+        }
     }
 
     HostUpscale_Shutdown();

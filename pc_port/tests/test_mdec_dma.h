@@ -66,3 +66,29 @@ static void test_DAY2_mdec_dma(void)
     }
     PASS();
 }
+
+static void test_DAY2_mdec_output_wait_progress(void)
+{
+    TEST_RETAIL_DISC1("DAY2_mdec_output_wait_progress");
+    for(unsigned stalled=0;stalled<2u;stalled++) {
+        ResetTestState();MdecPixelTables();PE_GPU_WriteDPCR(0x88u);
+        PE_StoreU32(0x80144000u,0x28000001u);
+        PE_StoreU16(0x80144004u,0x2020u);PE_StoreU16(0x80144006u,0xFE00u);
+        ASSERT(PE_MDEC_BeginDecode(0x80144000u),"prepare output wait data");
+        for(unsigned i=0;i<64u;i++) PE_StoreU8(0x80150000u+i,0xCCu);
+        PE_MDEC_WriteDMA1(0u,0x150000u);PE_MDEC_WriteDMA1(4u,0x00020008u);
+        PE_MDEC_WriteDMA1(8u,0x01000200u);
+        if(stalled) PE_GPU_WriteDPCR(0x08u);
+        int submitted=PE_MDEC_SubmitOutput(0x80160000u,32u);
+        if(stalled) {
+            ASSERT(!submitted && PE_Port_ShouldStop() && PE_MDEC_ReadDMA1(4u)==0x00020008u &&
+                PE_LoadU8(0x80150000u)==0xCCu,"stalled output did not retain boundary and data");
+        } else {
+            ASSERT(submitted && !PE_Port_ShouldStop() && PE_MDEC_ReadDMA1(0u)==0x160000u &&
+                PE_MDEC_ReadDMA1(4u)==0x00010020u && PE_MDEC_ReadDMA1(8u)==0x01000200u &&
+                PE_LoadU8(0x80150000u)==160u && PE_LoadU8(0x8015003Fu)==128u,
+                "progressing output wait did not finish old DMA before submitting new DMA");
+        }
+    }
+    PASS();
+}

@@ -285,10 +285,10 @@ static void test_PA_hi2_reverb(void)
            "8CF70 mode / start address");
     ASSERT(PE_LoadU32(0x8009B39Cu + 0xCu) == 0x7Fu &&
            PE_LoadU32(0x8009B39Cu + 0x10u) == 0x7Fu, "8CF70 preset 7 delay/feedback");
-    ASSERT(PE_LoadU32(PE_HAND_HI2_STACK + 0x10u) == 0u &&
-           PE_LoadU8(PE_HAND_HI2_STACK + 0x10u + 67u) == 68u, "8CF70 entry copied, mask 0");
-    /* entry.mask == 0 -> func_8008D140 writes all 32 attribute halfwords
-     * (+4.. of entry) to +0x1C0.. */
+    /* The entry is copied into a guest frame with its mask word cleared
+     * (the native's frame address is not fixed, unlike the old hand port's
+     * PE_HAND_HI2_STACK slot).  entry.mask == 0 -> func_8008D140 writes all
+     * 32 attribute halfwords (+4.. of entry) to +0x1C0.. */
     ASSERT(PE_LoadU16(regs + 0x1C0u) == (uint16_t)(5u | (6u << 8)), "8CF70 func_8008D140(&entry)");
     ASSERT(PE_LoadU16(regs + 0x184u) == 0u && PE_LoadU16(regs + 0x186u) == 0u,
            "8CF70 depth registers zeroed");

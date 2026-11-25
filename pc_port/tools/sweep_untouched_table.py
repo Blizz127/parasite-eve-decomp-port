@@ -14,6 +14,8 @@ Coverage evidence (developer warp, entry only). For every manifest row:
   - rc        = the flock/timeout/env exit code (124/137 = timeout);
   - a row with no "[HOST] stop_reason=" line, a timeout, or a lock that never
     came up is an ANOMALY, not CLEAN.
+CLEAN describes these tracked checks only; it does not prove native coverage
+or the absence of unlogged fallbacks and adaptations.
 Markers (raw line counts; one line may count under two markers, e.g. a
 "[DAY1_SHIM] ... not ported" line):
   boundary        "CPU_BOUNDARY" (the boundary message, all forms)
@@ -288,6 +290,7 @@ def main(argv: list[str]) -> int:
             f"{r['status']}{' (' + '; '.join(r['why']) + ')' if r['status'] != 'CLEAN' else ''} |")
     summary = [
         f"rows: {len(out_rows)}; status: " + ", ".join(f"{k}={v}" for k, v in sorted(status_counts.items())),
+        "CLEAN means tracked checks passed, not proof of native coverage or absence of unlogged adaptations.",
         "marker totals (raw lines over all rows): " + ", ".join(f"{k}={totals[k]}" for k in BAD),
         f"entered: {sum(1 for r in out_rows if r['entered'])} of {len(out_rows)}",
         "HOST_ADAPTED stub names (not counted as markers): " + (", ".join(f"{k} x{v}" for k, v in sorted(host_names.items())) or "none"),

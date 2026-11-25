@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Per-room executed-native table from port run logs (harness evidence only).
+"""Per-room marker table from port run logs (harness evidence only).
 
 usage: laterdays_room_table.py [--min-story HEX] [--md OUT] [--json OUT] LABEL=LOG [LABEL=LOG ...]
 
@@ -10,7 +10,7 @@ same token are one room visit (story steps inside the room). Every marker line
 is assigned to the visit it falls in:
 
   boundary    CPU_BOUNDARY            a guest call with no host code (REFUSED = stopped)
-  stop        [STOP]                  a native-only stop
+  stop        [STOP]                  a host stop
   shim        [DAY1_SHIM]             a substitution or skip instead of retail code
   stub        STUB: (not HOST_ADAPTED) a bootstrap stub (Bootstrap_ReturnVoid and kin)
   adapted     STUB:HOST_ADAPTED       a named host adaptation, listed but not counted as
@@ -27,11 +27,10 @@ Also per visit: battles (BATTLE_EDGE d1a0&802 going 0 -> nonzero) and harness
 aid lines (BATTLE_SHIM, M34_SHIM_*, [D3HP], [DNHP], [ROUTE_SHIM], [CHEATS], [ENH...):
 route-pilot and battle-aid traces, which are harness input, not game code.
 
-This binary has no MIPS interpreter and no CPU emulation (boundary policy
-stop), so a visit with 0 boundary/stop/shim/stub/notported/unresolved/fatal
-lines ran only host code on the paths that visit exercised. That is a claim
-about the paths exercised, not about the whole room. Rows before the run's
-dev warp ([WARP] env transfer) are the boot / New Game prefix.
+These markers describe what the recorded visit reported. Their absence does
+not by itself prove the absence of unlogged fallbacks, stubs or adaptations,
+or establish whole-room native coverage. Rows before the run's dev warp
+([WARP] env transfer) are the boot / New Game prefix.
 
 Visits with story below --min-story (default 0x80, the Day-1 end) are listed
 only in the totals. Room names come from the token's packed name (5 bits per
@@ -191,7 +190,7 @@ def main() -> int:
         label, path = spec.split("=", 1)
         runs.append(parse(label, path))
     out = []
-    out.append("| run | # | room | token | day | story (in->steps) | frame in | frames | battles | aid lines | markers | executed |")
+    out.append("| run | # | room | token | day | story (in->steps) | frame in | frames | battles | aid lines | markers | marker status |")
     out.append("|---|--:|---|---|---|---|--:|--:|--:|--:|---|---|")
     tot = {"visits": 0, "clean": 0, "rooms": set(), "clean_rooms": set(), "bad_rooms": set()}
     stops = []
@@ -208,7 +207,7 @@ def main() -> int:
             if v["clean"]:
                 tot["clean"] += 1
                 tot["clean_rooms"].add(v["room"])
-                ex = "native (paths exercised)"
+                ex = "no tracked fault markers"
             else:
                 tot["bad_rooms"].add(v["room"])
                 ex = "NOT clean: " + "; ".join(
@@ -221,8 +220,8 @@ def main() -> int:
             out.append(f"| {r['label']} | {i} | {v['room']} | {v['token']:08X} | {v['day']} | {fmt_story(v)} | "
                        f"{v['frame_in']} | {v['frames']}{last} | {v['battles']} | {v['aid_lines']} | {marks} | {ex} |")
     out.append("")
-    out.append(f"visits (story >= 0x{min_story:X}, after the warp): {tot['visits']}; clean {tot['clean']}; "
-               f"distinct rooms {len(tot['rooms'])}; rooms with any marker: {len(tot['bad_rooms'])} "
+    out.append(f"visits (story >= 0x{min_story:X}, after the warp): {tot['visits']}; no tracked fault markers {tot['clean']}; "
+               f"distinct rooms {len(tot['rooms'])}; rooms with tracked fault markers: {len(tot['bad_rooms'])} "
                f"({', '.join(sorted(tot['bad_rooms'])) or 'none'})")
     for r in runs:
         lv = r["visits"][-1] if r["visits"] else None
@@ -252,17 +251,18 @@ def main() -> int:
                 g["bad"] += sum(v["counts"][k] for k in BAD)
                 if r["label"] not in g["runs"]:
                     g["runs"].append(r["label"])
-        agg = ["| room | token | day | story range | visits | frames | battles | markers | runs | executed |",
+        agg = ["| room | token | day | story range | visits | frames | battles | markers | runs | marker status |",
                "|---|---|---|---|--:|--:|--:|--:|---|---|"]
         for name, g in sorted(rooms.items(), key=lambda kv: (kv[1]["first"][0], kv[1]["first"][1], kv[1]["first"][2])):
             d0, d1 = day_of(g["smin"]), day_of(g["smax"])
             agg.append(f"| {name} | {g['token']:08X} | {d0 if d0 == d1 else d0 + '-' + d1} | {g['smin']:X}..{g['smax']:X} | "
                        f"{g['visits']} | {g['frames']} | {g['battles']} | {g['bad']} | {', '.join(g['runs'])} | "
-                       f"{'native (paths exercised)' if g['bad'] == 0 else 'NOT clean'} |")
+                       f"{'no tracked fault markers' if g['bad'] == 0 else 'NOT clean'} |")
         agg.append("")
-        agg.append(f"distinct rooms {len(rooms)}; clean {sum(1 for g in rooms.values() if g['bad'] == 0)}; "
+        agg.append(f"distinct rooms {len(rooms)}; no tracked fault markers {sum(1 for g in rooms.values() if g['bad'] == 0)}; "
                    f"visits {sum(g['visits'] for g in rooms.values())}; battles {sum(g['battles'] for g in rooms.values())}")
         out = agg + [""] + out[-(len(runs) + (len(stops) + 2 if stops else 0)):]
+    out.append("No tracked fault markers is not proof of native coverage or absence of unlogged adaptations.")
     text = "\n".join(out)
     print(text)
     if a.md:

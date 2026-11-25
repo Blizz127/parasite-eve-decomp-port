@@ -18,9 +18,9 @@
  * replaces the earlier one (and warns).  A key drives one button: a key.<x>
  * line takes its keys from whatever button (default or earlier line) had them.
  *
- * Esc and F1-F8 (quit, the cheat console, fast-forward) are never bindable,
- * and the dev-menu combo reads the controller's unremapped bits, so no config
- * can lock the player out of the menus.
+ * Esc, F1-F8 and F11-F12 (quit, the cheat console, fast-forward, fullscreen,
+ * screenshots) are never bindable. The dev-menu combo reads the controller's
+ * unremapped bits, so no config can lock the player out of the menus.
  */
 #ifndef HOST_PAD_REMAP_H
 #define HOST_PAD_REMAP_H
@@ -88,7 +88,7 @@ uint16_t HostPadRemap_PadWord(const HostPadRemap *r, uint16_t keys_held,
 /* Keyboard: the HOST_PAD_* bit a keysym (XLookupKeysym index 0) drives, 0 if
  * none.  Reserved keys always return 0. */
 uint16_t HostPadRemap_Key(const HostPadRemap *r, unsigned long keysym);
-/* Esc and F1-F8: consumed upstream, never bindable. */
+/* Esc, F1-F8 and F11-F12: consumed upstream, never bindable. */
 int  HostPadRemap_KeyReserved(unsigned long keysym);
 
 /* Windows virtual-key code -> X11 keysym (explicit table, 0 = unmapped), so

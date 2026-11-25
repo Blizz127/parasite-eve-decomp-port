@@ -29,7 +29,7 @@ int __wrap_func_8006E6D4(int a,int b,pe_addr_t c,int d)
     PE_StoreU32(0x800B0CD8u,PE_LoadU32(0x800B0CD8u)|0x1004000u);
     return result;
 }
-int __wrap_func_800811E4(pe_addr_t local)
+int __wrap_pe_plat_cd_read_poll_host(pe_addr_t local)
 {
     (void)local;call(0x800811E4,0,0,0,0,0,0);
     static const int simple[]={2,1,0},retry[]={2,1,-1,2,1,0};

@@ -1,0 +1,79 @@
+/* Synthetic comparison of native poll and test-only post-VSync guards. */
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "pe_guest_ram.h"
+#include "pe_sdk.h"
+int pe_plat_cd_status_poll_guarded_test(uint32_t mode,uint32_t dst);
+static unsigned scenario,vsyncs,queries,acks,callbacks,recoveries;
+static int stopped;static char trace[64];static unsigned trace_len;
+static void event(char c) { if(trace_len+1>=sizeof trace) abort();trace[trace_len++]=c;trace[trace_len]=0; }
+int PE_MMIO_InShadowBlock(pe_addr_t a,size_t n) { (void)a;(void)n;abort(); }
+void *PE_MMIO_Translate(pe_addr_t a,size_t n) { (void)a;(void)n;abort(); }
+uint32_t PE_MMIO_Load(pe_addr_t a,size_t n) { (void)a;(void)n;abort(); }
+void PE_MMIO_Store(pe_addr_t a,size_t n,uint32_t v) { (void)a;(void)n;(void)v;abort(); }
+int PE_Port_ShouldStop(void) { return stopped; }
+uint32_t HostFB_VSync(int mode) {
+    if(mode!=-1) abort();
+    event('V');vsyncs++;
+    if((scenario==1 && vsyncs==1) || ((scenario==2 || scenario==3) && vsyncs==2)) stopped=1;
+    return 10;
+}
+uint32_t PE_GPU_VSyncQuery(void) { event('Q');queries++;return (scenario==3 || scenario==5) && queries==2?1000u:10u; }
+unsigned short func_80073DE8(void) { event('R');return scenario==2 || scenario==4; }
+void PE_Cd_TimeoutRecover(void) { event('T');recoveries++; }
+int pe_plat_cd_acknowledge_host(void) { event('A');return acks++==0?6:0; }
+uint8_t PE_CdLoadU8(pe_addr_t a) { if(a!=0x1f801800u) abort();event('L');return 1; }
+void PE_CdStoreU8(pe_addr_t a,uint8_t v) { if(a!=0x1f801800u || v!=1) abort();event('S'); }
+int PE_Cd_DispatchDataCallback(pe_addr_t a,uint32_t status,pe_addr_t p) {
+    if(a==0x80010004u && status==3 && p==0x800a3468u) event('X');
+    else if(a==0x80010008u && status==5 && p==0x800a3460u) event('Y');
+    else abort();
+    callbacks++;return 1;
+}
+typedef struct { int result,stop;uint32_t deadline,count,pointer;uint8_t state,dst[8];
+                 unsigned vsyncs,queries,acks,callbacks,recoveries;char trace[64]; } Observation;
+static Observation run(unsigned which,int guarded) {
+    Observation o={0};scenario=which;vsyncs=queries=acks=callbacks=recoveries=trace_len=0;trace[0]=0;stopped=which==0;
+    PE_RamReset();PE_StoreU32(0x800a3478u,0x11111111u);PE_StoreU32(0x800a347cu,0x22222222u);
+    PE_StoreU32(0x800a3480u,0x33333333u);PE_StoreU32(0x8009b27cu,0x1f801800u);
+    PE_StoreU32(0x8009afb8u,0x80010004u);PE_StoreU32(0x8009afb4u,0x80010008u);
+    PE_StoreU8(0x8009b295u,3);PE_StoreU8(0x8009b294u,which==6?0:5);
+    for(unsigned i=0;i<8;i++) { PE_StoreU8(0x800a3460u+i,(uint8_t)(i+1));PE_StoreU8(0x80100000u+i,0xa5); }
+    o.result=guarded?pe_plat_cd_status_poll_guarded_test(1,0x80100000u):pe_plat_cd_status_poll_host(1,0x80100000u);
+    o.stop=stopped;o.deadline=PE_LoadU32(0x800a3478u);o.count=PE_LoadU32(0x800a347cu);o.pointer=PE_LoadU32(0x800a3480u);
+    o.state=PE_LoadU8(0x8009b294u);for(unsigned i=0;i<8;i++)o.dst[i]=PE_LoadU8(0x80100000u+i);
+    o.vsyncs=vsyncs;o.queries=queries;o.acks=acks;o.callbacks=callbacks;o.recoveries=recoveries;strcpy(o.trace,trace);return o;
+}
+static int same(const Observation *a,const Observation *b) {
+    return a->result==b->result && a->stop==b->stop && a->deadline==b->deadline &&
+        a->count==b->count && a->pointer==b->pointer && a->state==b->state &&
+        !memcmp(a->dst,b->dst,sizeof a->dst) && a->vsyncs==b->vsyncs &&
+        a->queries==b->queries && a->acks==b->acks && a->callbacks==b->callbacks &&
+        a->recoveries==b->recoveries && !strcmp(a->trace,b->trace);
+}
+#define CHECK(x) do { if(!(x)) { fprintf(stderr,"case %u failed line %d\n",which,__LINE__);return 1; } } while(0)
+int main(void) {
+    PE_RamInit();
+    for(unsigned which=0;which<7;which++) {
+        Observation a=run(which,0),b=run(which,1);
+        if(which==0 || which>=4) CHECK(same(&a,&b));
+        if(which==0) CHECK(a.result==0 && a.stop && !a.trace[0] && a.deadline==0x11111111u && a.count==0x22222222u && a.pointer==0x33333333u);
+        if(which==1) CHECK(a.result==0 && b.result==0 && !strcmp(a.trace,"VQ") && !strcmp(b.trace,"V") && a.deadline==970 && b.deadline==0x11111111u && a.count==0 && b.count==0x22222222u && a.pointer==0x80011ba0u && b.pointer==0x33333333u);
+        if(which==2) CHECK(a.result==0 && b.result==0 && !strcmp(a.trace,"VQVQRLA") && !strcmp(b.trace,"VQV") && a.acks==1 && a.callbacks==0 && b.acks==0 && a.count==1 && b.count==0);
+        if(which==3) CHECK(a.result==-1 && b.result==0 && !strcmp(a.trace,"VQVQT") && !strcmp(b.trace,"VQV") && a.recoveries==1 && b.recoveries==0 && a.count==0 && b.count==0);
+        if(which==4) CHECK(a.result==5 && !strcmp(a.trace,"VQVQRLAXYAS") && a.callbacks==2 && a.acks==2 && a.state==2 && a.dst[0]==1 && a.dst[7]==8);
+        if(which==5) CHECK(a.result==-1 && !strcmp(a.trace,"VQVQT") && a.recoveries==1);
+        if(which==6) CHECK(a.result==0 && !strcmp(a.trace,"VQVQR") && a.state==0 && a.dst[0]==0xa5 && a.dst[7]==0xa5);
+        if(which>=1 && which<=3) CHECK(a.stop && b.stop && a.state==5 && b.state==5);
+        for(unsigned i=0;i<8;i++) {
+            uint8_t expected=which==4?(uint8_t)(i+1):0xa5;
+            CHECK(a.dst[i]==expected && b.dst[i]==expected);
+        }
+        printf("case=%u current={ret:%d stop:%d trace:%s deadline:%08x count:%08x ptr:%08x state:%u dst:%02x..%02x} guarded={ret:%d stop:%d trace:%s deadline:%08x count:%08x ptr:%08x state:%u dst:%02x..%02x}\n",
+               which,a.result,a.stop,a.trace,a.deadline,a.count,a.pointer,a.state,a.dst[0],a.dst[7],
+               b.result,b.stop,b.trace,b.deadline,b.count,b.pointer,b.state,b.dst[0],b.dst[7]);
+    }
+    PE_RamDestroy();puts("7 synthetic paired CD-poll stop and no-stop controls pass");return 0;
+}

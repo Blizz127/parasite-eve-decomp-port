@@ -35,6 +35,9 @@
 #include "pe_plat/gpu_status.h"
 #include "pe_plat/gpu_area.h"
 #include "pe_plat/irq_callback.h"
+#include "pe_plat/mdec_callback.h"
+#include "pe_plat/pad.h"
+#include "pe_plat/audio.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -48,8 +51,12 @@ void func_80085DC4(int callback);
 uint32_t func_80085E54(pe_addr_t source, uint32_t size);
 int func_80085F14(int mode);
 int func_8007A488(int mode, pe_addr_t pe_result);
+void pe_plat_cd_stream_handler_host(void);
+#define func_8007C564 pe_plat_cd_stream_handler_host
 void func_8007C564(void);
 void func_8007C13C(void);
+void pe_plat_cd_dma_issue_host(uint32_t channel,pe_addr_t address,uint32_t blocks,uint32_t words,uint32_t control,uint32_t interrupt,uint32_t unused);
+#define func_8007CEAC pe_plat_cd_dma_issue_host
 void func_8007CEAC(uint32_t channel,pe_addr_t address,uint32_t blocks,uint32_t words,
                     uint32_t control,uint32_t interrupt,uint32_t unused);
 void func_8007F960(uint32_t status, pe_addr_t response);
@@ -58,6 +65,8 @@ int func_8007BAC0(void);
 void func_800812F4(unsigned int value);
 void func_8007FE24(void);
 void func_800800F4(void);
+int pe_plat_cd_initialize_device_host(void);
+#define func_8007BBFC pe_plat_cd_initialize_device_host
 int func_8007BBFC(void);
 void func_8007FA2C(void);
 void func_8007E5C4(void);
@@ -154,7 +163,7 @@ void PE_GTE_Command(uint32_t cmd);
 int  func_800726F4(uint32_t handle);                 /* B(0Bh) TestEvent */
 int  func_8007DD44(uint32_t chan);                   /* A(ABh) _card_info */
 int  func_8007DD54(uint32_t chan);                   /* A(ACh) _card_load */
-void func_8007DD74(pe_addr_t chan);                  /* _new_card + sector-3Fh write (generated TU) */
+int  func_8007DD74(pe_addr_t chan);                  /* _card_clear: _new_card + sector-3Fh write (pe_plat_card_clear.c) */
 void func_8007DDC4(pe_addr_t chan);                  /* B(50h) allow_new_card */
 int  func_8007DDB4(pe_addr_t chan, int sector, int src); /* B(4Eh) */
 int  func_80072734(pe_addr_t name, uint32_t mode);   /* B(32h) open */
@@ -170,7 +179,6 @@ int  func_800727A4(pe_addr_t name);                  /* B(45h) delete */
 /* ── libetc (pc_port/platform/pe_libetc.c) ──────────────────────────── */
 void func_80073C74(uint32_t flag); /* BIOS ChangeClearPAD */
 uint32_t func_80073C84(uint32_t counter,uint32_t flag); /* ChangeClearRCnt,0..3 */
-pe_addr_t func_800740D0(uint32_t source, pe_addr_t handler);
 void func_800726C4(void);            /* BIOS A0(44h) FlushCache host adapter */
 int  PE_Irq_LockDepth(void);         /* diagnostic: current critical depth */
 
@@ -211,6 +219,11 @@ int  PE_Event_Test(int handle);
 int  PE_Event_Disable(int handle);
 int  PE_Event_Close(int handle);
 int  PE_Event_UnDeliver(uint32_t cls, uint32_t spec);
+/* BIOS B(07h) DeliverEvent host model (pe_libetc.c). */
+void PE_Event_Deliver(uint32_t cls, uint32_t spec);
+/* Card events: run the EvMdINTR handler, or mark the event for TestEvent
+ * (pe_bios_card.c). */
+void PE_BiosCard_Deliver(uint32_t cls, uint32_t spec);
 int  PE_Event_SpuDmaEnabled(void);
 int  PE_Event_DeliverSpuDma(void);
 int  PE_Event_ConsumeSpuDma(int handle);
@@ -227,7 +240,11 @@ pe_addr_t func_80074924(pe_addr_t env, int x, int y, int w, int h); /* SetDefDra
 pe_addr_t func_800749D8(pe_addr_t pe_env, int x, int y, int w, int h); /* SetDefDispEnv */
 int       func_80074A44(int mode);   /* ResetGraph */
 unsigned char func_80074BB8(unsigned char a0);  /* SetGraphDebug */
+uint32_t pe_plat_gpu_put_draw_env_host(uint32_t env);
+#define func_80075424 pe_plat_gpu_put_draw_env_host
 pe_addr_t func_80075424(pe_addr_t env); /* PutDrawEnv */
+void pe_plat_gpu_draw_otag_env_host(uint32_t ot,uint32_t env);
+#define func_800754E4 pe_plat_gpu_draw_otag_env_host
 void      func_800754E4(pe_addr_t ot, pe_addr_t env); /* DrawOTagEnv software */
 
 /* ── libsnd (pc_port/platform/pe_libsnd.c) ──────────────────────────── */
@@ -253,7 +270,7 @@ int  func_8007FBF0(int idx);         /* CdStatus lane getter D_8009B574[idx] */
 int  func_8007F72C(void);            /* CdReady */
 int func_8007F778(void);            /* CdReady queue-depth getter D_800A3608 */
 void func_800870F0(unsigned int a0);
-void func_8010BD4C(pe_addr_t dst, uint32_t count);
+#include "pe_plat/mdec_expand.h"
 int  func_8010C89C(uint32_t a0, pe_addr_t a1, pe_addr_t a2,
                    uint32_t a3); /* VLC frame decoder; a3 dead */
 typedef struct PeC89CTelemetry {
@@ -276,6 +293,8 @@ int func_8007FC64(pe_addr_t pe_result);
 int func_8007F418(uint32_t sequence,pe_addr_t response);
 int func_80080DC4(int command,pe_addr_t param,pe_addr_t response);
 /* CdGetSector: one DMA3 sector-buffer transfer (game/boot/cd_stream_port.c). */
+int pe_plat_cd_sector_dma_host(uint32_t dst,uint32_t count);
+#define func_8007BF44 pe_plat_cd_sector_dma_host
 int func_8007BF44(unsigned int a0,unsigned int a1);
 int  func_80080D5C(int command, pe_addr_t param, pe_addr_t result);
 /* 1 when a CD provider serves XA-ADPCM streaming through the libcd queue
@@ -316,6 +335,8 @@ int func_8007C2A0(int a0);
  * a PS1 function pointer is a 32-bit guest code address (pe_guestcode.h). */
 pe_addr_t func_8007A4BC(pe_addr_t callback);
 void func_8007A8EC(unsigned int value);
+void pe_plat_cd_shutdown_stream_host(void);
+#define func_8007A2A4 pe_plat_cd_shutdown_stream_host
 void func_8007A2A4(void);
 void func_8007C394(uint32_t sector); /* stream-record index update */
 int  func_8007F0C8(uint32_t mode, pe_addr_t loc, int count, uint32_t a3,
@@ -324,8 +345,20 @@ int  func_8007E8F4(void);            /* completion-queue predicate */
 int  func_8007FB44(uint32_t cmd, uint32_t data); /* completion-dispatch */
 unsigned short func_80073DE8(void);  /* D_800945E6 halfword getter */
 void func_8007B9EC(void);            /* CD latch block */
+int  func_80081D74(int a0, int a1);   /* DsStartReadySystem (pe_plat_cd_gen2.c, clean-room) */
+int  func_8007FCBC(int a0, int a1);   /* libcd 0x8007FCBC (hand port, misc_hi_port.c) */
+/* libcard slot-table callback dispatch (absent_cd_port.c cd_icall): native
+ * code for known targets, else the guest-code registry / loud boundary. */
+uint32_t PE_Card_ICall(const char *slot, pe_addr_t fn, unsigned arity,
+                       uint32_t a0, uint32_t a1, uint32_t a2);
+int pe_plat_cd_acknowledge_host(void);
+#define func_8007AAB4 pe_plat_cd_acknowledge_host
 int  func_8007AAB4(void);            /* CD acknowledge-poll worker (stop) */
+int pe_plat_cd_status_poll_host(uint32_t mode,uint32_t dst);
+#define func_8007B010 pe_plat_cd_status_poll_host
 int  func_8007B010(uint32_t cmdi, pe_addr_t buf); /* CD status-poll prefix */
+int pe_plat_cd_command_issue_host(uint32_t cmd,uint32_t input,uint32_t dst,uint32_t mode);
+#define func_8007B558 pe_plat_cd_command_issue_host
 int  func_8007B558(uint32_t cmd, uint32_t data, pe_addr_t dst,
                    uint32_t mode);   /* CD command-issue controller */
 int  func_8007FCFC(uint32_t cmd, uint32_t data); /* CD issue wrapper */

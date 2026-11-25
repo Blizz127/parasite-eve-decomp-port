@@ -112,12 +112,8 @@ const char *PE_Decomp_BoundaryName(unsigned index);
 int PE_Decomp_Boundary(const char *symbol, unsigned vma, unsigned arity,
                        uintptr_t a0, uintptr_t a1, uintptr_t a2, uintptr_t a3);
 /* Same, naming the native caller (the generated boundary macros pass
- * __func__).  Under the native-only STOP policy (PE_Decomp_SetBoundaryStop(1),
- * the port binary's default) the first boundary prints
- * "CPU_BOUNDARY/REFUSED pc=<vma> ra=<caller> ..." and stops the run. */
-int PE_Decomp_BoundaryFrom(const char *caller, const char *symbol, unsigned vma,
-                           unsigned arity, uintptr_t a0, uintptr_t a1,
-                           uintptr_t a2, uintptr_t a3);
+ * __func__): PE_Decomp_BoundaryFrom, declared in pe_decomp_boundary.h. */
+#include "pe_decomp_boundary.h"
 void PE_Decomp_SetBoundaryStop(int stop);
 /* A generated TU's runtime division hit a zero divisor (the pe_low_divs/divu/mods/modu helpers).
  * Retail's divide check executes `break 7` there, so under the STOP policy

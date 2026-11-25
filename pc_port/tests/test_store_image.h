@@ -58,6 +58,46 @@ static void test_NAM10_retail_store_image(void)
     PASS();
 }
 
+static void test_NAM10_invalid_destination_guard(void)
+{
+    static const pe_addr_t bad[] = {0u, 0x80180002u, 0x801fffc4u, 0xffffffc0u};
+    TEST("NAM10_invalid_destination_guard");
+    for (unsigned i = 0; i < sizeof(bad) / sizeof(bad[0]); ++i) {
+        PeGpuState before, after;
+        ResetTestState(); B53E_SetupRetailGpu();
+        B53E_StoreRect(8, 9, 31, 1);
+        PE_Fill(0x801fffc0u, 64u, 0xa5u);
+        PE_GPU_GetState(&before);
+        ASSERT(func_800768A0(B53E_RECT, bad[i]) == -1 && !PE_Port_ShouldStop(),
+               "unsafe readback destination was accepted");
+        PE_GPU_GetState(&after);
+        ASSERT(memcmp(&before, &after, sizeof(before)) == 0,
+               "unsafe destination changed GPU state");
+        for (unsigned j = 0; j < 64u; ++j)
+            ASSERT(PE_LoadU8(0x801fffc0u + j) == 0xa5u,
+                   "unsafe destination partially wrote guest memory");
+    }
+    PASS();
+}
+
+static void test_NAM10_destination_rect_alias(void)
+{
+    TEST("NAM10_destination_rect_alias");
+    ResetTestState(); B53E_SetupRetailGpu();
+    ASSERT(PE_GPU_WriteGP0(0xa0000000u) && PE_GPU_WriteGP0(0x00020001u) &&
+           PE_GPU_WriteGP0(0x00010002u) && PE_GPU_WriteGP0(0x22221111u),
+           "cannot seed readback pixels");
+    B53E_StoreRect(1, 2, 33, 1);
+    ASSERT(func_800768A0(B53E_RECT, B53E_RECT) == 0 && !PE_Port_ShouldStop(),
+           "readback to overlapping RECT failed");
+    ASSERT(PE_LoadU32(B53E_RECT) == 0x22221111u &&
+           PE_LoadU32(B53E_RECT + 4u) == 0x00010021u &&
+           PE_GPU_ReadDMA2MADR() == ((B53E_RECT + 4u) & 0x00ffffffu) &&
+           PE_GPU_ReadDMA2BCR() == 0x00010010u && PE_GPU_DMA2Pending(),
+           "readback did not retain its RECT before writing the CPU prefix");
+    PASS();
+}
+
 static void test_NAM10_queued_store_image(void)
 {
     RECT rect={9,480,32,2};uint32_t i;

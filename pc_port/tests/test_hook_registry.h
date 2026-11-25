@@ -109,8 +109,10 @@ static void test_HOOKREG_cpu_registry_continues(void)
                PE_IRQ_SERVICE_RETURNED &&
            !PE_Port_ShouldStop() && !g_bootstrap_arg4_call_count,
            "registered CPU callback stopped or took a boundary");
-    ASSERT(PE_LoadU32(HOOKREG_SLOT) == 0x0009u,
-           "the pass's first handler did not receive the I_STAT read in $a0");
+    /* Retail handlers take no arguments; the clean-room dispatcher passes
+     * none (the original leaves the pass's I_STAT read in $a0 as residue). */
+    ASSERT(PE_LoadU32(HOOKREG_SLOT) == 0u,
+           "the handler received a non-zero $a0");
     PE_IRQ_GetDeliveryTrace(&trace);
     ASSERT(trace.cpu_ack_count == 2u && trace.cpu_ack_sources[0] == 0u &&
            trace.cpu_ack_sources[1] == 3u && trace.dma_dispatch_entries == 1u,
@@ -136,7 +138,7 @@ static void test_HOOKREG_cpu_unregistered_stops(void)
            "unknown CPU callback did not stop");
     ASSERT(g_bootstrap_arg4_call_count == 1 &&
            g_bootstrap_arg4_calls[0].target == HOOKREG_NONE &&
-           g_bootstrap_arg4_calls[0].arg0 == 0x0008u &&
+           g_bootstrap_arg4_calls[0].arg0 == 0u &&   /* no-argument call */
            CountOrderLog("func_80073F00_cpu_indirect_call") == 1,
            "boundary does not name the slot, the target and retail $a0");
     ASSERT(PE_LoadU16(B53I_IRQ_DISPATCH_ACTIVE) == 1u,
@@ -225,6 +227,25 @@ static void HOOKREG_SeedChain(pe_addr_t callback)
     PE_StoreU32(0x800B0CC8u, callback);
     PE_StoreU32(0x800B89F4u, 1u);
     PE_StoreU32(HOOKREG_SLOT, HOOKREG_SENTINEL);
+}
+
+static int HOOKREG_QuitAfterChainWitness(void)
+{
+    return PE_LoadU32(HOOKREG_SLOT)==HOOKREG_WITNESS;
+}
+
+static void test_HOOKREG_b0cc8_chain_quit_preserves_flag(void)
+{
+    TEST("HOOKREG_b0cc8_chain_quit_preserves_flag");
+    HOOKREG_SeedChain(HOOKREG_WITNESS);
+    PE_Port_SetQuitPoll(HOOKREG_QuitAfterChainWitness);
+    func_8007C214();
+    PE_Port_SetQuitPoll(NULL);
+    ASSERT(PE_Port_GetStopReason()==PE_PORT_STOP_HOST_QUIT &&
+           PE_LoadU32(HOOKREG_SLOT)==HOOKREG_WITNESS &&
+           PE_LoadU16(0x801F0000u)==2u && PE_LoadU32(0x800B89F4u)==1u,
+           "chain quit did not stop before completion flag clear");
+    PASS();
 }
 
 static void test_HOOKREG_b0cc8_chain_then_clear(void)

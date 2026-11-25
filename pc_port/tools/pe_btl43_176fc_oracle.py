@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""PE-BTL43 independent oracle: 0x1A / 176FC 70D6C/70DD0 write."""
+"""PE-BTL43 static instruction/table check for the 0x1A RNG handler.
+
+The checked write and return occur on normal completion. This tool does not
+execute the handler or model the signed-overflow exception path.
+"""
 from __future__ import annotations
 
 import hashlib
@@ -53,7 +57,8 @@ def main() -> int:
     require(load_u32(data, 0x80017748) == 0xAC620000, "sw *arg0")
     require(load_u32(data, 0x8001774C) == 0x24020001, "v0=1")
 
-    print("PASS: 0x1A 176FC *arg0 = 70D6C or 70DD0(*arg1,*arg2); v0=1")
+    print("PASS: opcode table and selected call/store/return instructions; "
+          "write and return describe normal completion (exception path not run)")
     return 0
 
 

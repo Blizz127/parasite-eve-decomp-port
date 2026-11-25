@@ -1,12 +1,12 @@
 /*
  * Audio driver clock — see pe_audio_driver.h.
  *
- * Native only (owner, 2026-10-07): every 240 Hz RCNT2 tick runs the native
+ * Native audio path (owner, 2026-10-07): an armed 240 Hz RCNT2 tick runs the native
  * C func_8008DB7C (game/decomp_hand/akao_tick_port.c, line-for-line from the
- * matched src/func_8008DB7C.c and its matched callees).  No MIPS machine code
- * is executed.  The old in-runtime R3000A interpreter moved to the test-only
- * oracle tests/pe_akao_interp_oracle.c.  A callee the native tick cannot reach
- * natively is a decomp boundary (CPU_BOUNDARY/REFUSED), never interpreted.
+ * matched src/func_8008DB7C.c and its matched callees). The old in-runtime
+ * R3000A interpreter moved to the test-only oracle tests/pe_akao_interp_oracle.c.
+ * A guest call the tick cannot resolve is a decomp boundary. Whole-engine
+ * coverage and other runtime limitations are tracked separately.
  */
 #include "pe_audio_driver.h"
 #include "game_port.h"
@@ -21,6 +21,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 /* The native AKAO driver tick (game/decomp_hand/akao_tick_port.c). */
 void func_8008DB7C(void);
@@ -157,12 +160,25 @@ static PeVBlankPacer g_vblank_pacer;
 
 void PE_AudioDriver_SetVBlankPacer(PeVBlankPacer pacer) { g_vblank_pacer = pacer; }
 
+static double pace_time_seconds(void)
+{
+#ifdef _WIN32
+    LARGE_INTEGER counter, frequency;
+    if (!QueryPerformanceFrequency(&frequency) || frequency.QuadPart <= 0 ||
+        !QueryPerformanceCounter(&counter)) return 0.0;
+    return (double)counter.QuadPart / (double)frequency.QuadPart;
+#else
+    struct timespec ts;
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) return 0.0;
+    return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
+#endif
+}
+
 static void pace_log(void)
 {
     static FILE *f;
     static int init;
-    static uint64_t n, last_kon, last_cd;
-    static int last_presented;
+    static uint64_t n, last_kon, last_cd, last_presented;
     if (!init) {
         const char *p = getenv("PE_AUDIO_PACE_LOG");
         init = 1;
@@ -174,16 +190,13 @@ static void pace_log(void)
     if (!f || ++n % 60u) return;
     {
         PeSpuStats sp;
-        int presented = 0;
+        uint64_t presented = HostFB_GetPresentCount();
         PE_Spu_GetStats(&sp);
-        HostFB_GetState(NULL, NULL, &presented, NULL);
-        struct timespec ts;
-        clock_gettime(CLOCK_MONOTONIC, &ts);
-        fprintf(f, "%llu %d %llu %llu %.3f %llu seq0=%06X seq1=%06X\n", (unsigned long long)n,
-                presented - last_presented,
+        fprintf(f, "%llu %llu %llu %llu %.3f %llu seq0=%06X seq1=%06X\n", (unsigned long long)n,
+                (unsigned long long)(presented - last_presented),
                 (unsigned long long)(sp.kon_events - last_kon),
                 (unsigned long long)D.st.ticks,
-                (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9,
+                pace_time_seconds(),
                 (unsigned long long)(sp.cd_frames_mixed - last_cd),
                 seq_mask(0), seq_mask(1));
         last_cd = sp.cd_frames_mixed;

@@ -465,6 +465,11 @@ uint8_t PE_CdReg_ReadU8(pe_addr_t address)
         }
         return g_data[g_data_pos++];
     }
+    /* IRQ flags/mask belong to the controller, including when detached.
+     * Audio/control writes may update the raw diagnostic shadow, but never
+     * manufacture a response. PushResponse is the response ingress. */
+    if(address==PE_CDREG_BASE+3u)
+        return 0xE0u|((g_cdreg[0]&1u)?g_response_tag:g_response_mask);
     if(g_response_mode) {
         if(address==PE_CDREG_BASE)
             return (g_cdreg[0]&3u)|(g_device.enabled && g_data_pos<g_data_size?0x40u:0u)|(g_response_pos<g_response_size?0x20u:0u)|
@@ -477,8 +482,6 @@ uint8_t PE_CdReg_ReadU8(pe_addr_t address)
             if(g_response_pos<g_response_size) g_response_pos++;
             return result;
         }
-        if(address==PE_CDREG_BASE+3u)
-            return 0xE0u|((g_cdreg[0]&1u)?g_response_tag:g_response_mask);
     }
     return *cdreg_byte(address);
 }
@@ -518,7 +521,9 @@ void PE_CdReg_WriteU8(pe_addr_t address, uint8_t value)
         if(value&0x20u)
             for(unsigned i=0;i<4;i++) g_audio_active[i]=g_audio_pending[i];
     }
-    if(g_response_mode && address==PE_CDREG_BASE+3u && (g_cdreg[0]&3u)==1u) {
+    if(address==PE_CDREG_BASE+3u && (g_cdreg[0]&3u)==1u) {
+        /* Preserve detached raw write snapshots, not IRQ state. */
+        if(!g_response_mode) *cdreg_byte(address)=value;
         g_response_tag&=(uint8_t)~(value&7u);
         if(g_device.enabled) {
             if(value&0x40u) g_parameter_count=0;
@@ -526,7 +531,8 @@ void PE_CdReg_WriteU8(pe_addr_t address, uint8_t value)
         }
         return;
     }
-    if(g_response_mode && address==PE_CDREG_BASE+2u && (g_cdreg[0]&3u)==1u) {
+    if(address==PE_CDREG_BASE+2u && (g_cdreg[0]&3u)==1u) {
+        if(!g_response_mode) *cdreg_byte(address)=value;
         g_response_mask=value&31u;
         return;
     }

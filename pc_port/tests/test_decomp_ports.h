@@ -56,7 +56,7 @@ extern int func_80085918(unsigned int a0);         /* mask &= ~table[i]  */
 extern void func_80085F44(int a0);                 /* guarded setter     */
 extern void func_8007DD14(unsigned int value);     /* 73CF4(4, value)    */
 extern void func_80085DC4(int value);              /* 73CC4(9, value)    */
-extern void func_8007DE78(void);                   /* two boundaries     */
+extern void func_8007DE40(void);                   /* one boundary       */
 extern void func_8004E94C(void);                   /* boundary with arg  */
 
 /* Retail .data: eight 32-bit DMA callback identities (see pe_libetc.c). */
@@ -338,9 +338,10 @@ static void test_DECOMP_boundary_argument_vector(void)
     Bootstrap_ResetArg4CallLog();
     /* (func_800506E8 used to be the second example; it forwards its live
      * $a0 to func_80058AA8 and is now a hand adapter with that argument.) */
-    func_8007DE78();
-    ASSERT(PE_Decomp_BoundaryCount() == 2,
-           "a zero-arg leaf must register its two distinct callees");
+    func_8007DE40();
+    ASSERT(PE_Decomp_BoundaryCount() == 1 &&
+           strcmp(PE_Decomp_BoundaryName(0), "func_8007E324") == 0,
+           "a zero-arg leaf must register its one unimplemented callee");
     ASSERT(g_bootstrap_arg4_call_count == 0,
            "zero-argument boundaries must not fabricate an argument vector");
     PASS();

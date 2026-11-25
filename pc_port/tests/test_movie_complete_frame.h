@@ -11,7 +11,8 @@ static void test_DAY2_movie_complete_frame(void)
             ASSERT(PE_Disc_ReadRawSector(disc,1940u+sector,raw),"libpress sector read");
             memcpy(PE_Translate(0x8010BCF8u+sector*2048u,2048u),raw+24,2048u);
         }
-        func_8010BD4C(0x80130000u,0);
+        ASSERT(func_8010BD4C(0x80130000u,0)==1u && !PE_Port_ShouldStop(),
+               "movie table builder did not return original success");
         ASSERT(B54K_MdecFnv1a64(0x80130000u,69632u)==MOVCOMPLETE_table_hash,"complete VLC table differs from original");
         unsigned chunks=0;
         for(unsigned lba=MOVCOMPLETE_cases[k].first;lba<=MOVCOMPLETE_cases[k].last;lba++) {
@@ -78,4 +79,34 @@ static void test_DAY2_movie_complete_frame(void)
         free(expected);
     }
     PE_Disc_Close(disc);PASS();
+}
+
+/* Invalid ranges and malformed streams must stop without writing beyond the
+ * caller's table; normal original-image decoding is covered above. */
+static void test_DAY2_movie_table_bounds(void)
+{
+    TEST("DAY2_movie_table_bounds");
+    const pe_addr_t src=0x8010CBFCu, out=0x80130000u;
+    ResetTestState();
+    PE_StoreU8(0x801FFFF0u,0x5Au);
+    ASSERT(func_8010BD4C(0x801FFFF0u,0)==0u && PE_Port_ShouldStop() &&
+           PE_LoadU8(0x801FFFF0u)==0x5Au,"invalid output range was modified");
+    ResetTestState();
+    PE_StoreU8(src,0xF1u);PE_StoreU8(src+1u,0u);PE_StoreU8(src+2u,0u);
+    ASSERT(func_8010BD4C(0x80000000u,0)==0u && PE_Port_ShouldStop(),
+           "invalid back-reference was not stopped");
+    ResetTestState();
+    PE_Fill(src,0x12100u,0xF0u);
+    ASSERT(func_8010BD4C(out,0)==0u && PE_Port_ShouldStop(),
+           "unterminated stream was not stopped");
+    ResetTestState();
+    for (unsigned i=0, at=0;i<291u;i++) {
+        PE_StoreU8(src+at++,0xEFu);
+        PE_Fill(src+at,240u,0u);at+=240u;
+    }
+    PE_StoreU8(out+0x11000u,0x5Au);
+    ASSERT(func_8010BD4C(out,0)==0u && PE_Port_ShouldStop() &&
+           PE_LoadU8(out+0x11000u)==0x5Au,"table overflow crossed its bound");
+    ResetTestState();
+    PASS();
 }

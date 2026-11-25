@@ -44,6 +44,7 @@
 #include "host_qol.h"
 #include "host_pad.h"
 #include "host_pad_remap.h"
+#include "host_key_merge.h"
 #include "host_pad_sdl.h"
 #include "host_dev_menu.h"
 #include "host_audio.h"
@@ -265,7 +266,8 @@ static int g_last_w, g_last_h;         /* F12: the presented frame's size */
 static int g_blit_dirty;
 
 int g_host_window_open = 0;
-static uint16_t g_sony_held;
+static uint16_t g_sony_held;   /* keyboard pad word: HostKeyInput_Held(&g_keys) */
+static HostKeyInput g_keys;    /* per-scancode contributions (host_key_merge.h) */
 static uint16_t g_cheat_held;
 static HostFramePacer g_pacer;
 /* Fast-forward: F6 or controller L3 toggles g_fast_forward; controller R3
@@ -286,7 +288,7 @@ static int monotonic_ns(uint64_t *out);
 static struct {
     int on, max, lines;
     uint64_t t0;
-    uint32_t vbl0, scan0, fmv0; int pres0;
+    uint32_t vbl0, scan0, fmv0; uint64_t pres0;
     uint32_t paced, blits, skipped;
     uint64_t blit_ns, blit_max;
     uint32_t n; uint64_t busy[FTRACE_SAMPLES];
@@ -309,9 +311,8 @@ static int ftrace_cmp(const void *a, const void *b)
 static void ftrace_sample(uint64_t now)
 {
     PeStrFeedStats fs;
-    int pres = 0;
+    uint64_t pres = HostFB_GetPresentCount();
     uint32_t vbl = PE_GPU_VSyncQuery(), scan = HostFB_ScanOutCount();
-    HostFB_GetState(NULL, NULL, &pres, NULL);
     PE_StrFeed_GetStats(&fs);
     if (g_ft.t0 && now - g_ft.t0 >= UINT64_C(1000000000) && g_ft.lines < g_ft.max) {
         double p50 = 0, p95 = 0, mx = 0;
@@ -321,9 +322,9 @@ static void ftrace_sample(uint64_t now)
             p95 = g_ft.busy[(g_ft.n * 95u) / 100u] / 1e6;
             mx = g_ft.busy[g_ft.n - 1] / 1e6;
         }
-        fprintf(stderr, "[FTRACE] %.3fs pres=%d vbl=%u paced=%u busy_ms p50=%.2f p95=%.2f max=%.2f "
+        fprintf(stderr, "[FTRACE] %.3fs pres=%llu vbl=%u paced=%u busy_ms p50=%.2f p95=%.2f max=%.2f "
                 "blits=%u skip=%u blit_ms=%.1f blit_max=%.2f scan=%u fmv=%u stream=%d aq=%d win=%dx%d\n",
-                (now - g_ft.t0) / 1e9, pres - g_ft.pres0, vbl - g_ft.vbl0, g_ft.paced, p50, p95, mx,
+                (now - g_ft.t0) / 1e9, (unsigned long long)(pres - g_ft.pres0), vbl - g_ft.vbl0, g_ft.paced, p50, p95, mx,
                 g_ft.blits, g_ft.skipped, g_ft.blit_ns / 1e6, g_ft.blit_max / 1e6,
                 scan - g_ft.scan0,
                 fs.frames_published >= g_ft.fmv0 ? fs.frames_published - g_ft.fmv0 : fs.frames_published,
@@ -472,6 +473,7 @@ int HostWindow_Open(const char *display, int width, int height,
     if (g_win_w <= 0 || g_win_h <= 0) { g_win_w = w; g_win_h = h; }
     g_blit_dirty = 1;
     g_close_requested = 0;
+    HostKeyInput_Reset(&g_keys);
     g_sony_held = 0;
     memset(&g_pacer, 0, sizeof(g_pacer));
     g_host_window_open = 1;
@@ -803,6 +805,12 @@ static int handle_key(const HsKeyboardEvent *ke)
     unsigned long ks = sdl_key_to_keysym(ke->keysym.sym);
     PeCheatKey ck = PE_CHEAT_KEY_NONE;
     uint16_t bit;
+    /* The physical key's ID is its scancode; UNKNOWN (0) or an out-of-range
+     * value uses the per-bit fallback (host_key_merge.h). */
+    uint32_t key = ke->keysym.scancode > 0 ? (uint32_t)ke->keysym.scancode : HOST_KEY_MERGE_KEYS;
+    /* A release clears this key's pad contribution before the cheat menu, dev
+     * menu, hotkeys or Esc can consume it. */
+    if (!down) g_sony_held = HostKeyInput_Release(&g_keys, key);
     if (!ks) return 0;
     /* Cheat console (pe_plat/cheats.h): F1-F5, F7, F8; Esc, arrows and Enter
      * only while its menu is open.  SDL marks auto-repeat presses (no release
@@ -867,10 +875,9 @@ static int handle_key(const HsKeyboardEvent *ke)
      * Start, arrows; controls.conf may replace a button's keys.  Esc and
      * F1-F8 never bind. */
     bit = HostPadRemap_Key(HostPadRemap_Global(), ks);
-    if (bit != 0u) {
-        if (down) g_sony_held |= bit;
-        else g_sony_held &= (uint16_t)~bit;
-    }
+    /* Several keys may share a button: it stays held while any of them is
+     * down, and one key's release clears only its own contribution. */
+    g_sony_held = HostKeyInput_Mapped(&g_keys, key, bit, down);
     return 0;
 }
 
@@ -912,7 +919,7 @@ int HostWindow_Poll(void)
             case HS_WE_EXPOSED: g_blit_dirty = 1; break;   /* the next blit repaints */
             case HS_WE_RESIZED:
             case HS_WE_SIZE_CHANGED: refresh_output_size(); g_blit_dirty = 1; break;
-            case HS_WE_FOCUS_LOST: g_sony_held = 0; g_speed_key_held = 0; g_cheat_held = 0; break;
+            case HS_WE_FOCUS_LOST: HostKeyInput_Reset(&g_keys); g_sony_held = 0; g_speed_key_held = 0; g_cheat_held = 0; g_hot_held = 0; break;
             case HS_WE_CLOSE: g_close_requested = 1; return 1;
             default: break;
             }
@@ -1066,6 +1073,7 @@ void HostWindow_Close(void)
     }
     g_ren = NULL; g_win = NULL; g_video_on = 0;
     g_host_window_open = 0;
+    HostKeyInput_Reset(&g_keys);
     g_sony_held = 0; g_cheat_held = 0;
     HostPadRemap_Reset();
     HostDevMenu_Close();

@@ -13,7 +13,10 @@ Checks
                 `decomp-source: func_XXXXXXXX` header for one.
   2. binary  -- (--binary, repeatable) `nm` of a linked port/test executable
                 or static library: any defined `func_XXXXXXXX` symbol whose
-                address is Psy-Q-classified.
+                address is Psy-Q-classified. For Windows x64, explicit
+                --binary-pdb BINARY PDB uses an identity-checked CodeView/PDB
+                inventory including public, global and local definitions.
+                Missing or incomplete symbol evidence is an audit failure.
   2b. include -- game TUs (pc_port/game/**, pc_port/bootstrap/**) that include a
                 PsyCross header (PsyX/..., psx/...), a Sony Psy-Q SDK header
                 (libgpu.h, libgte.h, libcd.h, inline_c.h, ...), a host/OS header
@@ -42,6 +45,7 @@ Exit 0 = clean (relative to allowlist, or absolutely with --strict), 1 = fail.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import shutil
@@ -228,8 +232,14 @@ def nm_symbols(binary: Path) -> set[int]:
     if not nm:
         raise SystemExit("psyq_port_guard: nm not found (needed for --binary)")
     r = subprocess.run([nm, "--defined-only", str(binary)], capture_output=True, text=True)
-    if r.returncode != 0 and not r.stdout:
+    if r.returncode != 0:
         raise SystemExit(f"psyq_port_guard: nm failed on {binary}: {r.stderr.strip()}")
+    # GNU nm can return 0 with no stdout for a stripped binary or a Windows
+    # PE whose symbol information is in a PDB. An unreadable inventory must
+    # not turn into a successful audit with zero classified functions.
+    if not r.stdout.strip():
+        raise SystemExit(f"psyq_port_guard: no defined symbols from nm for {binary}; "
+                         "cannot verify linked functions")
     addrs = set()
     for line in r.stdout.splitlines():
         m = re.search(r"\s[TtWw]\s+_?func_([0-9A-Fa-f]{8})\b", line)
@@ -238,9 +248,22 @@ def nm_symbols(binary: Path) -> set[int]:
     return addrs
 
 
-def check_binary(binary: Path, cls) -> list[tuple[str, str, str, str]]:
+def pdb_symbols(binary: Path, pdb: Path) -> set[int]:
+    # Explicit identity-bound inventory only. Never follow the filename stored
+    # in the executable, or silently fall back from a failed nm/PDB audit.
+    from pe_pdb_symbols import inspect
+    try:
+        symbols, audit = inspect(binary, pdb)
+    except (ValueError, OSError) as error:
+        raise SystemExit(f"psyq_port_guard: PDB audit failed for {binary}: {error}") from error
+    print("psyq_port_guard: PDB inventory " + json.dumps(audit, sort_keys=True))
+    return symbols
+
+
+def check_binary(binary: Path, cls, pdb: Path | None = None) -> list[tuple[str, str, str, str]]:
     out = []
-    for a in sorted(nm_symbols(binary)):
+    symbols = nm_symbols(binary) if pdb is None else pdb_symbols(binary, pdb)
+    for a in sorted(symbols):
         if a in cls:
             lib, conf, _ = cls[a]
             out.append(("func", f"0x{a:08X}", f"bin:{binary.name}", f"{lib}/{conf} linked"))
@@ -321,6 +344,10 @@ def run(argv=None) -> int:
     ap.add_argument("--ranges", default=str(DEF_RANGES))
     ap.add_argument("--allowlist", default=str(DEF_ALLOW))
     ap.add_argument("--binary", action="append", default=[])
+    ap.add_argument("--binary-pdb", nargs=2, action="append", default=[],
+                    metavar=("BINARY", "PDB"),
+                    help="audit a Windows binary with this explicit matching PDB; "
+                         "also checks binary tables; preserves filename allowlist keys")
     ap.add_argument("--exe", default=str(DEF_EXE))
     ap.add_argument("--require-exe", action="store_true")
     ap.add_argument("--no-sources", action="store_true")
@@ -329,6 +356,16 @@ def run(argv=None) -> int:
     ap.add_argument("--report", help="write every finding as TSV here")
     ap.add_argument("-q", "--quiet", action="store_true")
     a = ap.parse_args(argv)
+
+    binaries = list(a.binary)
+    pdbs: dict[Path, Path] = {}
+    for binary, pdb in a.binary_pdb:
+        key = Path(binary).resolve()
+        if key in pdbs:
+            ap.error(f"duplicate or conflicting --binary-pdb mapping for {binary}")
+        pdbs[key] = Path(pdb)
+        if not any(Path(b).resolve() == key for b in binaries):
+            binaries.append(binary)
 
     cls = load_classification(Path(a.classification))
     if not cls:
@@ -339,8 +376,8 @@ def run(argv=None) -> int:
     if not a.no_sources:
         findings += check_sources(tree, cls)
         findings += check_includes(tree)
-    for b in a.binary:
-        findings += check_binary(Path(b), cls)
+    for b in binaries:
+        findings += check_binary(Path(b), cls, pdbs.get(Path(b).resolve()))
 
     exe_path = Path(a.exe)
     tables = []
@@ -364,7 +401,7 @@ def run(argv=None) -> int:
     if tables:
         if not a.no_sources:
             findings += check_tables_sources(tree, tables)
-        for b in a.binary:
+        for b in binaries:
             findings += check_tables_binary(Path(b), tables)
 
     findings = sorted(set(findings))
@@ -389,7 +426,7 @@ def run(argv=None) -> int:
     allow = set() if a.strict else load_allow(Path(a.allowlist))
     new = [f for f in findings if (f[0], f[1], f[2]) not in allow]
     # stale entries are only judged for the checks that actually ran
-    ran_bins = {f"bin:{Path(b).name}" for b in a.binary}
+    ran_bins = {f"bin:{Path(b).name}" for b in binaries}
 
     def ran(entry):
         k, _key, where = entry

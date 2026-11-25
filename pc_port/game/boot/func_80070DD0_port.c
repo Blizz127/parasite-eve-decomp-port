@@ -12,7 +12,13 @@
  *   return a0 + v0                         (add in the jr delay slot)
  *
  * So: func_80070DD0(a, b) = a + ((int64)(rand & 0xFFFF) * (b - a) >> 16),
- * with exact 32-bit wrap on the final add.  Implemented because the Phase
+ * This host implementation wraps 32-bit subtraction and addition. Original
+ * `sub` and `add` trap on signed overflow; a bounded synthetic comparison
+ * shows that overflowing subtraction stops before RNG advancement in the
+ * original model while this host path advances RNG and returns a wrapped
+ * result. Real-game reachability and the appropriate host exception behavior
+ * remain unverified; see native-random-overflow-20261105/REPORT.txt.
+ * Implemented because the Phase
  * 6E-B2 contract tests exercise its boundary behavior directly; it is not
  * on the current strict-mode frontier (its callers 0x8001585C/0x80015888/
  * func_800176FC are not on the boot-to-black path).

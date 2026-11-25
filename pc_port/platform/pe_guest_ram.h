@@ -30,7 +30,7 @@ typedef uint32_t pe_addr_t;
 /* ── Lifecycle ──────────────────────────────────────────────────────── */
 
 void  PE_RamInit(void);       /* one-time allocation, deterministic zero-fill */
-uint64_t PE_RamGeneration(void); /* invalidates host caches after init/reset */
+uint64_t PE_RamGeneration(void); /* changes on allocation, reset and freeing live RAM */
 void  PE_RamReset(void);      /* zero-fill the existing allocation (allocates if needed) */
 void  PE_RamDestroy(void);    /* free internal allocation  */
 
@@ -74,8 +74,9 @@ void PE_Fill(pe_addr_t address, uint32_t len, uint8_t value);
  * exactly like retail's stack frame.  Frames are a strict LIFO arena in the
  * otherwise unused bottom of the retail stack, [PE_GUEST_FRAME_LO,
  * PE_GUEST_FRAME_HI) (the host scratch windows at 0x801FEFE8.. stay clear).
- * Enter returns the 8-aligned frame base; Leave(base, size) pops it.
- * Overflow is fatal and loud. */
+ * Enter returns the 8-aligned frame base; Leave(base, size) pops it and
+ * requires the same positive size used at entry. Zero-size calls are no-ops.
+ * Overflow or an invalid positive-size leave is fatal and loud. */
 #define PE_GUEST_FRAME_LO 0x801FE000u
 #define PE_GUEST_FRAME_HI 0x801FEC00u
 pe_addr_t PE_GuestFrame_Enter(uint32_t size);

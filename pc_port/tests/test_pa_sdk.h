@@ -138,36 +138,31 @@ static void test_PA_sdk_device_hook(void)
 
 static void test_PA_sdk_jtb_slots(void)
 {
+    /* StopCallback / RestartCallback (0x80073D88 / 0x80073DB8) and their
+     * jump-table targets are the clean-room pe_plat_stop/restart_callback.
+     * They drive the registers directly: no code rewrites the I_STAT/I_MASK/
+     * DPCR pointer words or the static jump-table slots +0x10/+0x18, so the
+     * old RAM stand-ins and unknown-slot stop no longer apply
+     * (docs/evidence/native-irq-callback-20261030). */
     TEST("PA_sdk_jtb_slots");
     PS_Reset();
-    PE_StoreU32(0x8009566Cu, 0x8009564Cu);
-    PE_StoreU32(0x8009565Cu, 0x80074218u);       /* +0x10 */
-    PE_StoreU32(0x80095664u, 0x800742B8u);       /* +0x18 */
-    PE_StoreU32(0x80095670u, PS_S + 0x10u);      /* RAM stand-ins for the */
-    PE_StoreU32(0x80095674u, PS_S + 0x14u);      /* I_STAT/I_MASK/DPCR    */
-    PE_StoreU32(0x80095678u, PS_S + 0x18u);      /* pointer globals       */
 
-    /* +0x18 = func_800742B8: inactive -> activate, restore mask/DPCR. */
+    /* Restart while inactive: activate, restore mask/DPCR. */
     PE_StoreU16(0x800945E4u + 0x32u, 0x0009u);
     PE_StoreU32(0x800945E4u + 0x34u, 0x12345678u);
-    func_80073DB8();
+    ASSERT(func_80073DB8() == 0x800945E4u, "restart returns the state block");
     ASSERT(PE_LoadU16(0x800945E4u) == 1u, "state activated");
-    ASSERT(PE_LoadU16(PS_S + 0x14u) == 0x0009u &&
-           PE_LoadU32(PS_S + 0x18u) == 0x12345678u, "mask and DPCR restored");
-    ASSERT(PS_HasBoundary("func_800743A4"), "HookEntryInt boundary");
+    ASSERT(PE_IRQ_GetMask() == 0x0009u && PE_GPU_ReadDPCR() == 0x12345678u,
+           "mask and DPCR restored");
 
-    /* +0x10 = func_80074218: active -> saved and deactivated. */
-    PE_StoreU32(PS_S + 0x18u, 0xFFFFFFFFu);
-    func_80073D88();
+    /* Stop while active: save, clear, deactivate. */
+    PE_GPU_WriteDPCR(0xFFFFFFFFu);
+    ASSERT(func_80073D88() == 0x800945E4u, "stop returns the state block");
     ASSERT(PE_LoadU16(0x800945E4u) == 0u, "state deactivated");
-    ASSERT(PE_LoadU32(PS_S + 0x18u) == 0x77777777u, "DPCR masked");
-
-    /* An unproven identity is a loud boundary. */
-    PS_Reset();
-    PE_StoreU32(0x8009566Cu, 0x8009564Cu);
-    PE_StoreU32(0x8009565Cu, 0x80011111u);
-    func_80073D88();
-    ASSERT(PS_HasBoundary("func_80073D88_jtb_0x10"), "unknown slot boundary");
+    ASSERT(PE_LoadU16(0x800945E4u + 0x32u) == 0x0009u &&
+           PE_LoadU32(0x800945E4u + 0x34u) == 0xFFFFFFFFu, "mask and DPCR saved");
+    ASSERT(PE_IRQ_GetMask() == 0u && PE_GPU_ReadDPCR() == 0x77777777u, "DPCR masked");
+    ASSERT(func_80073D88() == 0u, "second stop is inert");
     PASS();
 }
 
@@ -194,7 +189,9 @@ static void test_PA_sdk_80073E28(void)
     ASSERT(func_80073E28() == 0x800945E4u, "returns the state block");
     ASSERT(PE_LoadU16(0x800945E4u) == 1u, "guard published");
     ASSERT(PE_LoadU32(0x80094700u) == 0u, "block cleared");
-    ASSERT(PE_LoadU32(0x80094620u) == 0x80094620u + 0xFDCu, "stack top word");
+    /* The setjmp/HookEntryInt exception context at 0x8009461C is a BIOS
+     * exception path the host does not have; the clean-room reset leaves it
+     * alone (docs/evidence/native-irq-callback-20261030). */
     ASSERT(PE_GPU_ReadDPCR() == 0x33333333u, "DPCR");
     ASSERT(PE_LoadU32(0x80095660u) == 0x80074478u &&
            PE_LoadU32(0x80095650u) == 0x800746A0u, "jtb[5], jtb[1]");
@@ -205,8 +202,10 @@ static void test_PA_sdk_80073E28(void)
     ASSERT(PE_LoadU32(0x8009568Cu + 8u) == 0u && PE_LoadU32(0x800956C0u + 4u) == 0u &&
            PE_LoadU32(0x800956ACu) == 0u, "slot tables and counter cleared");
     ASSERT(PE_Timer1_ReadMode() == 0x507u, "timer 1 mode 0x107 written");
-    ASSERT(PS_HasBoundary("func_80074354") && PS_HasBoundary("func_800743A4") &&
-           PS_HasBoundary("func_8007436C"), "BIOS boundaries");
+    /* setjmp A(13h), HookEntryInt B(19h) and CdRemove A(72h) have no host
+     * counterpart: the clean-room reset never reaches their veneers. */
+    ASSERT(!PS_HasBoundary("func_80074354") && !PS_HasBoundary("func_800743A4") &&
+           !PS_HasBoundary("func_8007436C"), "collapsed BIOS services not reached");
     PASS();
 }
 
@@ -228,12 +227,14 @@ static void test_PA_sdk_80073F00(void)
     (void)PE_IRQ_ExchangeMask(0x0001u);
     PE_IRQ_AssertSources(0x0001u);
     func_80073F00();
+    /* 0x80073F00 is the clean-room pe_plat_irq_dispatch: the source is
+     * acknowledged before its handler runs; an unresolved handler is a loud
+     * stop (the dispatch returns at once, leaving the active flag set).
+     * ReturnFromException B(17h) has no host counterpart and is not reached. */
     ASSERT(PE_IRQ_ReadStatus() == 0u, "source acknowledged (W0C)");
-    ASSERT(PS_HasBoundary("func_80073F00_cpu_source") &&
-           g_bootstrap_arg4_call_count == 0, "zero-argument handler call");
-    ASSERT(PE_LoadU32(0x8009567Cu) == 0u, "no pending -> watchdog cleared");
-    ASSERT(PE_LoadU16(0x800945E6u) == 0u, "active cleared");
-    ASSERT(PS_HasBoundary("func_80074384"), "ReturnFromException");
+    ASSERT(PE_Port_ShouldStop() && PE_LoadU16(0x800945E6u) == 1u,
+           "unresolved handler stops the dispatch");
+    ASSERT(!PS_HasBoundary("func_80074384"), "ReturnFromException not reached");
 
     /* Unregistered pending source: watchdog counts, clears past 0x800. */
     PS_Reset();
@@ -293,94 +294,6 @@ static void test_PA_sdk_callback_init(void)
     PASS();
 }
 
-static void test_PA_sdk_gpu_setters(void)
-{
-    const pe_addr_t jtb = PS_S + 0x600u;
-
-    TEST("PA_sdk_gpu_setters");
-    PS_Reset();
-    PE_StoreU32(0x80095744u, jtb);
-    PE_StoreU32(jtb + 13u * 4u, 0x80011110u);
-    PE_StoreU32(0x80095748u, 0x80071A74u);
-    PE_StoreU8(0x8009574Du, 3u);
-    PE_StoreU8(0x8009574Eu, 2u);                 /* debug level 2 */
-    PE_Bios_PrintfLogReset();
-    ASSERT(func_80074C14(5) == 3, "returns the old byte");
-    ASSERT(PE_LoadU8(0x8009574Du) == 5u, "new value stored");
-    {
-        pe_addr_t fmt;
-        uint32_t args[4];
-        ASSERT(PE_Bios_PrintfLog(&fmt, args) == 1u && fmt == 0x80011840u &&
-               args[0] == 5u && g_bootstrap_arg4_call_count == 1 &&
-               g_bootstrap_arg4_calls[0].target == 0x80011110u &&
-               g_bootstrap_arg4_calls[0].arg0 == 1u,
-               "native print, then unresolved jtb[13](1)");
-    }
-    Bootstrap_ResetArg4CallLog();
-    PE_StoreU8(0x8009574Eu, 1u);
-    ASSERT(func_80074C14(5) == 5 && g_bootstrap_arg4_call_count == 0,
-           "unchanged value: no print (level 1), no jtb call");
-
-    PS_Reset();
-    PE_StoreU32(0x80095758u, 0x1234u);
-    ASSERT(func_80074CC8(0x55) == 0x1234 && PE_LoadU32(0x80095758u) == 0x55u,
-           "D_80095758 exchanged");
-    PASS();
-}
-
-static void test_PA_sdk_80074FD4(void)
-{
-    const pe_addr_t jtb = PS_S + 0x600u, rect = PS_S + 0x700u;
-
-    TEST("PA_sdk_80074FD4");
-    PS_Reset();
-    PE_StoreU32(0x80095744u, jtb);
-    PE_StoreU32(jtb + 8u, 0x80012222u);          /* unproven jtb[2] */
-    PE_StoreU32(jtb + 12u, 0x80076434u);
-    func_80074FD4((int)rect, 0x11, 0x22, 0x33);
-    ASSERT(PS_HasBoundary("func_80074FD4_jtb2") &&
-           g_bootstrap_arg4_calls[0].target == 0x80012222u &&
-           g_bootstrap_arg4_calls[0].arg0 == 0x80076434u &&
-           g_bootstrap_arg4_calls[0].arg1 == rect &&
-           g_bootstrap_arg4_calls[0].arg2 == 8u &&
-           g_bootstrap_arg4_calls[0].arg3 == 0x80332211u,
-           "jtb[2](jtb[3], rect, 8, 0x80|b3|b2|b1)");
-    PASS();
-}
-
-static void test_PA_sdk_800751E4(void)
-{
-    const pe_addr_t ot = PS_S + 0x800u;
-
-    TEST("PA_sdk_800751E4");
-    PS_Reset();
-    PE_StoreU32(ot + 0u, 0xABCDEF01u);
-    PE_StoreU32(ot + 4u, 0xABCDEF01u);
-    PE_StoreU32(ot + 8u, 0xABCDEF01u);
-    ASSERT(func_800751E4(ot, 3) == ot + 8u, "returns the last word");
-    ASSERT(PE_LoadU32(ot + 0u) == ((ot + 4u) & 0xFFFFFFu), "byte 3 zeroed, link");
-    ASSERT(PE_LoadU32(ot + 4u) == ((ot + 8u) & 0xFFFFFFu), "second link");
-    ASSERT(PE_LoadU32(ot + 8u) == 0x0009580Cu, "terminator -> D_8009580C");
-    ASSERT(PE_LoadU32(0x8009580Cu) == 0x040957F8u, "D_8009580C seed");
-    ASSERT(g_bootstrap_arg4_call_count == 0, "no print at level 0");
-
-    PS_Reset();
-    PE_StoreU8(0x8009574Eu, 2u);
-    PE_StoreU32(0x80095748u, 0x80071A74u);
-    PE_StoreU32(ot, 0xFFFFFFFFu);
-    PE_Bios_PrintfLogReset();
-    ASSERT(func_800751E4(ot, 1) == ot && PE_LoadU32(ot) == 0x0009580Cu,
-           "count 1: terminator only");
-    {
-        pe_addr_t fmt;
-        uint32_t args[4];
-        ASSERT(PE_Bios_PrintfLog(&fmt, args) == 1u && fmt == 0x800118F8u &&
-               args[0] == ot && args[1] == 1u && g_bootstrap_arg4_call_count == 0,
-               "native debug print (fmt, a0, a1)");
-    }
-    PASS();
-}
-
 static void test_PA_sdk_80075B1C(void)
 {
     /* GetODE is an independent host model of psx-spx GPUSTAT bit 31
@@ -393,52 +306,6 @@ static void test_PA_sdk_80075B1C(void)
     ASSERT(func_80075B1C() == (PE_GPU_ReadStatus() >> 31), "GetODE == GPUSTAT bit 31");
     ASSERT(PE_GPU_WriteGP1(0x08000024u), "interlace display mode");
     ASSERT(func_80075B1C() == (PE_GPU_ReadStatus() >> 31), "GetODE == GPUSTAT bit 31 (interlaced)");
-    PASS();
-}
-
-static void test_PA_sdk_80075CE8(void)
-{
-    const pe_addr_t dr = PS_S + 0xA00u, env = PS_S + 0xB00u;
-
-    TEST("PA_sdk_80075CE8");
-    PS_Reset();
-    PE_StoreU16(0x80095750u, 0x400u);
-    PE_StoreU16(0x80095752u, 0x200u);
-    PE_StoreU16(env + 0u, 10u);  PE_StoreU16(env + 2u, 20u);
-    PE_StoreU16(env + 4u, 100u); PE_StoreU16(env + 6u, 50u);
-    PE_StoreU16(env + 8u, 3u);   PE_StoreU16(env + 0xAu, 4u);
-    PE_StoreU16(env + 0xCu, 8u); PE_StoreU16(env + 0xEu, 16u);
-    PE_StoreU16(env + 0x10u, 8u); PE_StoreU16(env + 0x12u, 8u);
-    PE_StoreU16(env + 0x14u, 0x1234u);
-    PE_StoreU8(env + 0x16u, 1u); PE_StoreU8(env + 0x17u, 0u);
-    PE_StoreU8(env + 0x18u, 1u);
-    PE_StoreU8(env + 0x19u, 0x11u); PE_StoreU8(env + 0x1Au, 0x22u);
-    PE_StoreU8(env + 0x1Bu, 0x33u);
-    PE_StoreU32(dr, 0x00ABCDEFu);
-    func_80075CE8(dr, env);
-    ASSERT(PE_LoadU32(dr) == 0x09ABCDEFu, "length 9 in byte 3 only");
-    ASSERT(PE_LoadU32(dr + 4u) == 0xE300500Au, "draw area top-left");
-    ASSERT(PE_LoadU32(dr + 8u) == 0xE401146Du, "draw area bottom-right (109,69)");
-    ASSERT(PE_LoadU32(dr + 12u) == 0xE5002003u, "offset (3,4)");
-    ASSERT(PE_LoadU32(dr + 16u) == 0xE1000234u, "texpage: dtd 0x200, tpage&0x9FF");
-    ASSERT(PE_LoadU32(dr + 20u) == 0xE20107FFu, "texture window");
-    ASSERT(PE_LoadU32(dr + 24u) == 0xE6000000u, "mask word");
-    ASSERT(PE_LoadU32(dr + 28u) == 0x60332211u, "fill rect command");
-    ASSERT(PE_LoadU32(dr + 32u) == 0x00100007u, "rect x-ox, y-oy");
-    ASSERT(PE_LoadU32(dr + 36u) == 0x00320064u, "rect w, h");
-
-    /* clamp: w beyond the display -> limit-1; negative h -> 0 */
-    PE_StoreU16(env + 4u, 0x500u);
-    PE_StoreU16(env + 6u, 0x8000u);
-    func_80075CE8(dr, env);
-    ASSERT(PE_LoadU32(dr + 36u) == 0x000003FFu, "clamped w, zero h");
-
-    /* no background: 7 words, length 6 */
-    PE_StoreU8(env + 0x18u, 0u);
-    PE_StoreU32(dr + 28u, 0xCAFEF00Du);
-    func_80075CE8(dr, env);
-    ASSERT(PE_LoadU8(dr + 3u) == 6u && PE_LoadU32(dr + 28u) == 0xCAFEF00Du,
-           "no fill words");
     PASS();
 }
 
@@ -478,10 +345,6 @@ static void test_PA_sdk_all(void)
     test_PA_sdk_80073E28();
     test_PA_sdk_80073F00();
     test_PA_sdk_callback_init();
-    test_PA_sdk_gpu_setters();
-    test_PA_sdk_80074FD4();
-    test_PA_sdk_800751E4();
     test_PA_sdk_80075B1C();
-    test_PA_sdk_80075CE8();
     test_PA_sdk_seq_ops();
 }

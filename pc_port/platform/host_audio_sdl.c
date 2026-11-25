@@ -208,6 +208,7 @@ static int sdl_audio_open(void)
     uint32_t dev_frames, samples, ring_frames;
     HsAudioSpec want, have;
 
+    memset(&A, 0, sizeof(A));
     if (!lib) {
         fprintf(stderr, "[AUDIO] SDL2 unavailable; audio output silent\n");
         return 0;
@@ -331,19 +332,21 @@ static void sdl_audio_close(void)
             (unsigned long long)A.overflow_drops,
             (unsigned long long)A.ff_dropped);
     A.QuitSubSystem(HS_INIT_AUDIO);
+    memset(&A, 0, sizeof(A));
 }
 
 /* ── public ────────────────────────────────────────────────────────── */
 
-static int g_open, g_device;
+static int g_open, g_device, g_exit_registered;
 
 int HostAudio_Open(int want_device)
 {
     const char *wav = getenv("PE_AUDIO_WAV");
-    if (g_open) return 1;
+    if (g_open) return g_wav != NULL || g_device;
     if (wav && *wav) {
         g_wav = fopen(wav, "wb");
         if (g_wav) {
+            g_wav_frames = g_wav_last_patch = 0;
             wav_header();
             fprintf(stderr, "[AUDIO] writing WAV dump %s\n", wav);
         } else {
@@ -351,9 +354,10 @@ int HostAudio_Open(int want_device)
         }
     }
     if (want_device) g_device = sdl_audio_open();
-    g_open = 1;
-    atexit(HostAudio_Close);
-    return g_wav != NULL || g_device;
+    g_open = g_wav != NULL || g_device;
+    if (g_open && !g_exit_registered && atexit(HostAudio_Close) == 0)
+        g_exit_registered = 1;
+    return g_open;
 }
 
 int HostAudio_DeviceOpen(void) { return g_device; }
@@ -421,4 +425,5 @@ void HostAudio_Close(void)
     }
     if (g_device) sdl_audio_close();
     g_device = 0;
+    g_open = 0;
 }
