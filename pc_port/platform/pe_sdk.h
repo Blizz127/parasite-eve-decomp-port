@@ -272,8 +272,7 @@ int func_8007F778(void);            /* CdReady queue-depth getter D_800A3608 */
 void func_800870F0(unsigned int a0);
 #include "pe_plat/mdec_expand.h"
 #include "pe_plat/mdec_io_host.h"
-int  func_8010C89C(uint32_t a0, pe_addr_t a1, pe_addr_t a2,
-                   uint32_t a3); /* VLC frame decoder; a3 dead */
+#include "pe_plat/vlc_frame.h" /* func_8010C89C: libpress VLC frame decoder (bounded/resumable adapter) */
 typedef struct PeC89CTelemetry {
     uint32_t a0;                 /* entry cursor (0 = resume) */
     pe_addr_t a1;                /* entry arena */

@@ -566,6 +566,7 @@ shows that the tail reads it after the pop.
 
 Usage: pe_cd_leaf_vectors.py OUT.txt [ENTRY ... | flush | callback | reverb | modetype | spucallees | errmath | spureverb | fidma | cardclear | qsort | cdgen | cdgen2 | cdgen3 | cdgen5 | cdgen6 | cdgen7 | cdgen8 [sweep] | cdgen9 | cdgen10 | cdgen11 | cdgen12 | cdgen13 | cdgen14 | cdgen15 | cdgen16 | cdgen17 | cdgen18 | cdgen19 | cdgen20 | cdgen21 | cdgen22 | cdgen23 | cdgen24 | cdgen25 | cdgen26 | cdgen28 | cdgen29 | cdgen30 | cdgen31 | cdgen32 | cdgen33 | cdgen38 | cdgen39 | cdgen35 | cdgen-indep | cdgen-sweep]
 """
+import os
 import re
 import struct
 import sys
@@ -841,6 +842,9 @@ def _printf_arity(ram, fmt):
     return n
 
 
+CALL_CAP = [8192]   # callee stops per case before a poll loop counts as spun (cdgen36 lowers it)
+
+
 def run_with_callees(ram, entry, args, rets, callees=CALLEES):
     """Run entry; stop at callee entries, record and return scripted v0."""
     pl.LOADS.clear()
@@ -854,7 +858,7 @@ def run_with_callees(ram, entry, args, rets, callees=CALLEES):
         struct.pack_into('<I', ram, 0x1FF010 + 4 * i, a & 0xFFFFFFFF)
     regs[31] = v.RET
     pc = entry
-    for _ in range(8192):
+    for _ in range(CALL_CAP[0]):
         st = Stop((v.RET,) + tuple(callees))
         r = v.execute(ram, pc, (), stop_at=st, initial_regs=regs, instruction_budget=100000)
         if st.hit not in callees:
@@ -2226,6 +2230,152 @@ def _sio35_models(x, rets, stops, ram, args):
     for a, sent in ((0x9B744, SLOT23_44), (0x9B748, SLOT23_48)):
         x = gv.xs32(x)
         struct.pack_into('<I', ram, a, sent if x % 3 else sent & 0x1FFFFFFF)
+
+# Thirty-sixth batch (cdgen36): libcd CD_ready 0x8007B290 (mode, result pointer; BIOS-side CD
+# readiness poll) and 0x80081110 (VSync-timed gate on the libds block 0x8009B6AC..).  Their
+# callees are stopped and recorded; VSync, CheckCallback and getintr follow scripted models
+# whose parameters are the RETS entries (pseudo callees 1 and 2 carry the extra codes):
+#   CD_ready  RETS = printf, VSync base, puts, CheckCallback code, getintr code, CD_flush,
+#             VSync step, getintr memory-effect code, sync / ready callback results (the words
+#             0x8009AFB4 / 0x8009AFB8 hold 0, a sentinel or its alias; getintr results are bit sets)
+#   0x80081110 RETS = VSync base, 0x80081268 return, VSync step, callback return, pump effect
+#             (bit 0 on: the pump rewrites the counter word 0x8009B6B4 absolutely with value
+#             index bits 1-2: -1, 0, 5, 0x80000000)
+# VSync (the n-th call) returns base + n * step.  CheckCallback / getintr return `pos` for
+# their first k calls, then `final` (code = k | pos index << 8 | final index << 12;
+# CheckCallback is masked to 16 bits).  The getintr effect code (bit 0 on) makes its m-th call
+# (bits 1-2, 1..3) store the ready byte 0x8009B296 (bits 3-4) and the sync byte 0x8009B295
+# (bits 5-6) absolutely and 8 response bytes at 0x800A3470 / 0x800A3468 (bit 7); bits 8-11 (< 8)
+# make its first call store RD36_IDX[v] through the register pointer word 0x8009B27C.
+VSYNC, CHKCB, GETINTR, PUTS = 0x80073A44, 0x80073DE8, 0x8007AAB4, 0x80073C5C
+RD36_CB = 0x80130B40       # 0x80081110: the callback word 0x8009B6D0 holds 0 or this sentinel
+RD36_SYNC_CB, RD36_READY_CB = 0x80130C40, 0x80130C80   # CD_ready: the callback words 0x8009AFB4 / 0x8009AFB8 hold 0 or these
+CDGEN36 = {
+    0x8007B290: ('wp', (PRINTF, VSYNC, PUTS, CHKCB, GETINTR, 0x8007B9EC, 1, 2, RD36_SYNC_CB, RD36_READY_CB)),
+    0x80081110: ('ww', (VSYNC, 0x80081268, 1, RD36_CB, 2)),
+}
+RD36_STEPS = (0, 1, 3, 7, 7, 50, 300, 0x10000, 0x80000000, 0xFFFFFFFF,
+              959, 960, 961, 480, 479, 481, 320, 321, 319, 2, 1000)
+RD36_WORDS = {0x8007B290: tuple(range(0xA3470, 0xA3490, 4)) + tuple(range(0xA3468, 0xA3470, 4)) +
+              tuple(range(0x9AFD0, 0x9AFE0, 4)) + (0x9B05C, 0x9B290, 0x9B294, 0x9B298),
+              0x80081110: tuple(range(0x9B6AC, 0x9B6C4, 4)) + (0x9B6C4, 0x9B6C8, 0x9B6CC)}
+RD36_CHOICES = (0, 0, 1, 2, 3, 0xFF, 0x100, 0x7FFFFFFF, 0x80000000, 0xFFFFFFFF)
+RD36_BYTES = (0, 0, 0, 1, 2, 0x55, 0x80, 0xFF)
+RD36_IDX = (0, 1, 2, 3, 0x10, 0x21, 0xFF, 0x80)   # the index byte getintr's first call writes
+RD36_POS = (0, 1, 2, 0xFFFFFFFF, 4, 6, 3, 8, 0x10000, 0x100)   # poll model values (getintr results are bit sets)
+RD36_FIN = (0, 1, 2, 3, 5, 0xFFFFFFFF, 0x10000, 4, 6, 7)
+
+
+def _rd36_seed(entry, ram, x, args, seed):
+    for a in RD36_WORDS[entry]:
+        x = gv.xs32(x)
+        struct.pack_into('<I', ram, a, RD36_CHOICES[(x >> 8) % len(RD36_CHOICES)] if x & 1 else gv.xs32(x))
+    REGBITS.clear()
+    if entry == 0x8007B290:
+        for a in (0x9B295, 0x9B296):        # the sync / ready bytes: often zero, sometimes small / edge
+            x = gv.xs32(x)
+            if x & 1:
+                ram[a] = RD36_BYTES[(x >> 8) % len(RD36_BYTES)]
+        for a, sent in ((0x9AFB4, RD36_SYNC_CB), (0x9AFB8, RD36_READY_CB)):   # installed callbacks: none, sentinel, its alias
+            x = gv.xs32(x)
+            struct.pack_into('<I', ram, a, (0, sent, sent, sent & 0x1FFFFFFF)[x % 4])
+        for _ in range(2):
+            x = gv.xs32(x)
+            REGBITS[(0x1800, 1 << (x % 8))] = [1, 0, (x >> 8) % 6, 0]
+        x = gv.xs32(x)
+        args[0] = (0, 1, 2, 3, 0xFF, 0x100, 0x80000000, gv.xs32(x))[x % 8]
+        x = gv.xs32(x)                       # result pointer: NULL (no response copy) or a record-zone pointer
+        args[1] = 0 if x % 5 == 0 else (0x80000000, 0x00000000, 0xA0000000)[(x >> 8) % 3] | (ZONE & 0x1FFFFF) | (x >> 12) % 0x400 * 4
+    else:
+        x = gv.xs32(x)
+        struct.pack_into('<I', ram, 0x9B6D0, (0, 0, 0, RD36_CB, RD36_CB, RD36_CB & 0x1FFFFFFF)[x % 6])
+    return x
+
+
+def _rd36_models(entry, x, rets, stops, ram, seed):
+    """See the batch comment: VSync, CheckCallback and getintr models, the sweep of the
+    deadline distance for 0x80081110, and the getintr memory effect for CD_ready."""
+    x = gv.xs32(x)
+    base = (0, 1, 100, 0x7FFFFFFF, 0x80000000, 0xFFFFFFF0, x & 0xFFFF, gv.xs32(x),
+            0x7FFFFFFF - (x >> 8) % 2000, 0x80000000 - (x >> 8) % 2000)[x % 10]
+    x = gv.xs32(x)
+    step = RD36_STEPS[x % len(RD36_STEPS)]
+    if entry == 0x80081110 and seed % 2 == 0:
+        # sweep: the first VSync result lies delta ticks beyond the word 0x8009B6C4
+        j = seed // 2
+        step = (1, 1, 2, 7, 40, 700)[(j // 7) % 6]
+        delta = 380 + (j * 7) % 2400
+        if j < 126:                          # boundary block: distances 1190..1210 with every step
+            step = (1, 1, 2, 7, 40, 700)[j // 21]
+            delta = 1190 + j % 21
+        if j >= 126 and j % 4 in (1, 3):     # words near a signed wrap: T + 1200 crosses it
+            struct.pack_into('<I', ram, 0x9B6C4, ((0x7FFFFFFF, 0xFFFFFFFF)[j % 4 // 2] - (j * 13) % 3000) & 0xFFFFFFFF)
+        T = struct.unpack_from('<I', ram, 0x9B6C4)[0]
+        base = (T + delta - step) & 0xFFFFFFFF
+        c = struct.unpack_from('<I', ram, 0x9B6B4)[0]
+        if c == 1:
+            struct.pack_into('<I', ram, 0x9B6B4, 2 + (seed % 97))
+    rets[VSYNC], rets[1] = base, step
+    n = [0]
+
+    def vsync(ram_, r, base=base, step=step):
+        n[0] += 1
+        return (base + n[0] * step) & 0xFFFFFFFF
+    stops[VSYNC] = vsync
+    if entry == 0x8007B290:
+        for c in (CHKCB, GETINTR):
+            x = gv.xs32(x)
+            k, pi, fi = x % 5, (x >> 4) % 10, (x >> 8) % 10
+            pos, final = RD36_POS[pi], RD36_FIN[fi]
+            if c == CHKCB:
+                pos &= 0xFFFF
+                final &= 0xFFFF
+            rets[c] = k | pi << 8 | fi << 12
+            model = _poll_model(k, pos, final)
+            if c == GETINTR:
+                x = gv.xs32(x)
+                eff = (x & 0xFF) if x & 0x100 else 0
+                x = gv.xs32(x)
+                eff |= (x % 12) << 8             # bits 8-11: index byte written on the first call (>= 8: none)
+                calls = [0]
+
+                def gi(ram_, r, model=model, eff=eff, calls=calls):
+                    calls[0] += 1
+                    if calls[0] == 1 and (eff >> 8) < 8:   # production getintr selects CD index 1 under the caller
+                        ptr = struct.unpack_from('<I', ram_, 0x9B27C)[0]
+                        ram_[ptr & 0x1FFFFF] = RD36_IDX[eff >> 8]
+                        pl.STORES.append((ptr, 1, RD36_IDX[eff >> 8]))
+                    if eff & 1 and calls[0] == 1 + ((eff >> 1) & 3) % 3:
+                        _store23(ram_, 0x9B296, 1, RD36_BYTES[(eff >> 3) & 3 | 4 * ((eff >> 3) & 1)])
+                        _store23(ram_, 0x9B295, 1, RD36_BYTES[(eff >> 5) & 3 | 4 * ((eff >> 5) & 1)])
+                        if eff & 0x80:
+                            for j in range(8):
+                                _store23(ram_, 0xA3470 + j, 1, (0x31 * j + eff) & 0xFF)
+                                _store23(ram_, 0xA3468 + j, 1, (0x17 * j + eff) & 0xFF)
+                    return model(ram_, r)
+                rets[2] = eff
+                stops[c] = gi
+            else:
+                stops[c] = model
+        for cb in (RD36_SYNC_CB, RD36_READY_CB):
+            x = gv.xs32(x)
+            rets[cb] = (0, 1, 0xFFFFFFFF, 7, gv.xs32(x))[x % 5]
+            stops[cb & 0x1FFFFFFF] = None
+            rets[cb & 0x1FFFFFFF] = rets[cb]
+    else:
+        x = gv.xs32(x)
+        rets[RD36_CB] = (0, 1, 0xFFFFFFFF, 7, gv.xs32(x))[x % 5]
+        stops[RD36_CB & 0x1FFFFFFF] = None
+        rets[RD36_CB & 0x1FFFFFFF] = rets[RD36_CB]
+        x = gv.xs32(x)                       # pump effect: in a third of the cases it rewrites the counter word absolutely
+        eff = (x & 3) | ((x >> 2) & 3) << 1 if x % 3 == 0 else 0
+        rets[2] = eff
+
+        def pump(ram_, r, eff=eff):
+            if eff & 1:
+                _store23(ram_, 0x9B6B4, 4, (0xFFFFFFFF, 0, 5, 0x80000000)[(eff >> 1) & 3])
+            return rets[0x80081268]
+        stops[0x80081268] = pump
     return x
 
 # Thirty-fourth batch (cdgen34): libpad communication start 0x80082CF0.
@@ -2670,6 +2820,8 @@ def cdgen_cases(base, entries=None, n=6000, table=None, indep=False, sweep=False
                 x = _sio35_seed(ram, x, args)
             if table is CDGEN39:
                 x = (_ds39_seed_flush(ram, x, args) if entry == 0x8007E704 else _ds39_seed_sync(ram, x, args))
+            if table is CDGEN36:
+                x = _rd36_seed(entry, ram, x, args, seed)
             ff_pool = None
             if table is CDGEN19:
                 x, ff_pool = _ff_seed(ram, x, entry, args)
@@ -2733,6 +2885,8 @@ def cdgen_cases(base, entries=None, n=6000, table=None, indep=False, sweep=False
                     x = _card25_models(x, rets, stops)
                 if table is CDGEN26:         # reset slot / hook / recv step may rewrite obj+0x46 / +0x36
                     x = _card26_models(x, rets, stops)
+                if table is CDGEN36:
+                    x = _rd36_models(entry, x, rets, stops, ram, seed)
                 if table is CDGEN28:         # position model; callback / text_490 rewrite the block (absolute)
                     x = _ds28_models(x, rets, stops)
                 if table is CDGEN39:         # flush: queue push may rewrite the count word; sync: lane sequence, pop rewrite
@@ -2928,6 +3082,29 @@ def main():
         out = cdgen_cases(bytes(v.fixture(exe, 0, 0, 0)), table=CDGEN35, indep=True, sweep=True)
         open(sys.argv[1], 'w').write('\n'.join(out) + '\n')
         print('cases', len(out), 'spun', CDGEN_SPUN)
+        return
+    if sys.argv[2:3] == ['cdgen36']:
+        # usage: OUT.txt cdgen36 [N [ENTRY]]; without ENTRY the two entries run as child processes
+        # (CD_ready first) and their outputs are concatenated.
+        n = int(sys.argv[3]) if len(sys.argv) > 3 else 6000
+        if len(sys.argv) > 4:
+            exe = (v.ROOT / 'build/disc1.candidate.exe').read_bytes()
+            CALL_CAP[0] = 700
+            ent = int(sys.argv[4], 16)
+            out = cdgen_cases(bytes(v.fixture(exe, 0, 0, 0)), entries=[ent], table=CDGEN36, indep=True, n=n)
+            open(sys.argv[1], 'w').write('\n'.join(out) + '\n')
+            print('cases', len(out), 'spun', CDGEN_SPUN)
+            return
+        import subprocess
+        procs = [(e, subprocess.Popen([sys.executable, sys.argv[0], sys.argv[1] + '.' + e, 'cdgen36', str(n), e]))
+                 for e in ('8007B290', '80081110')]
+        for e, pr in procs:
+            if pr.wait():
+                raise SystemExit('cdgen36 child %s failed' % e)
+        with open(sys.argv[1], 'w') as o:
+            for e, pr in procs:
+                o.write(open(sys.argv[1] + '.' + e).read())
+                os.remove(sys.argv[1] + '.' + e)
         return
     if sys.argv[2:] == ['cdgen32']:
         exe = (v.ROOT / 'build/disc1.candidate.exe').read_bytes()

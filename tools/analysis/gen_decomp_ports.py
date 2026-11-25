@@ -802,6 +802,7 @@ PE_PLAT_REPLACED = {
     "func_80078004": "pc_port/platform/pe_plat_gte_div.c",  # libgte SquareRoot0 (clean-room)
     "func_80079FB4": "pc_port/platform/pe_plat_gte_div.c",  # libgte ratan2 (clean-room)
     "func_80078134": "pc_port/platform/pe_plat_gte_vn.c",  # libgte VectorNormal (clean-room)
+    "func_80077F7C": "pc_port/platform/pe_plat_gte_init.c",  # libgte InitGeom (clean-room)
     "func_8007E594": "pc_port/platform/pe_plat_ds_leaf.c",  # libds CQ_clear_queue (clean-room)
     "func_8007E5C4": "pc_port/platform/pe_plat_ds_leaf.c",  # libds command-queue pop (clean-room)
     "func_8007E6B0": "pc_port/platform/pe_plat_ds_leaf.c",  # libds command-queue next slot (clean-room)
@@ -899,10 +900,16 @@ PE_PLAT_REPLACED = {
     "func_800824F0": "pc_port/platform/pe_plat_cd_gen33.c",  # libds DsDataCallback (black-box vectors)
     "func_8007F72C": "pc_port/platform/pe_plat_cd_gen33.c",  # libds DsSystemStatus (black-box vectors)
     "func_8007C13C": "pc_port/platform/pe_plat_cd_gen33.c",  # libcd text_1688 CD interrupt poll (black-box vectors)
+    "func_80082314": "pc_port/platform/pe_plat_ds_gen38.c",  # libds DsGetDiskType (black-box vectors)
     "func_8007E704": "pc_port/platform/pe_plat_ds_gen39.c",  # libds text_170 command-queue flush (black-box vectors)
     "func_8007E964": "pc_port/platform/pe_plat_ds_gen39.c",  # libds text_3D0 command complete / error handler (black-box vectors)
     "func_8007E8F4": "pc_port/platform/pe_plat_ds_gen30.c",  # libds text_360 pending-command dispatch (black-box vectors)
     "func_8007C304": "pc_port/platform/pe_plat_cd_gen32.c",  # StSetStream (independent black-box vectors)
+    "func_8010BE3C": "pc_port/platform/pe_plat_mdec_reset.c",  # libpress MDEC reset wrapper (independent black-box vectors)
+    "func_8010C0FC": "pc_port/platform/pe_plat_mdec_core.c",  # libpress MDEC reset core (independent ordered black-box traces, cdgen40)
+    "func_8010C1EC": "pc_port/platform/pe_plat_mdec_core.c",  # libpress MDEC table-upload start (cdgen40)
+    "func_8007B290": "pc_port/platform/pe_plat_cd_ready.c",  # libcd CD_ready (independent black-box vectors, cdgen36)
+    "func_80081110": "pc_port/platform/pe_plat_81110.c",  # libds-block transfer-step gate (independent black-box vectors, cdgen36)
     "func_8007EB88": "pc_port/platform/pe_plat_ds_gen31.c",  # libds text_5F4 command-queue push (black-box vectors)
     "func_80076170": "pc_port/platform/pe_plat_gpu_words.c",  # libgpu draw-area top-left word (clean-room)
     "func_80076208": "pc_port/platform/pe_plat_gpu_words.c",  # libgpu draw-area bottom-right word (clean-room)
@@ -1015,6 +1022,8 @@ PE_PLAT_REPLACED = {
     "func_80075B84": "pc_port/platform/pe_plat_gpu_area.c",  # SetDrawArea (psx-spx GP0 E3h/E4h)
     "func_80077294": "pc_port/platform/pe_plat_gpu_dma_queue.c",  # GPU queue pump/wait (clean-room, native-gpu-rows-20261125)
     "func_80077404": "pc_port/platform/pe_plat_gpu_timeout.c",  # GPU wait timeout check (clean-room, native-gpu-rows-20261125)
+    "func_80074A44": "pc_port/platform/pe_plat_gpu_resetgraph.c",  # ResetGraph (clean-room, native-resetgraph-20261125)
+    "func_80076C34": "pc_port/platform/pe_plat_gpu_swap.c",  # GPU enqueue/immediate issue (clean-room, native-76c34-20261125)
     "func_80073C94": "pc_port/platform/pe_plat_irq_callback.c",  # ResetCallback (clean-room)
     "func_80073E28": "pc_port/platform/pe_plat_irq_callback.c",  # same as ResetCallback (vectors)
     "func_80073CC4": "pc_port/platform/pe_plat_irq_callback.c",  # InterruptCallback (clean-room)
@@ -1039,6 +1048,7 @@ PE_PLAT_REPLACED = {
     "func_80075424": "pc_port/platform/pe_libgpu.c",
     "func_8010BD4C": "pc_port/game/boot/func_8010BD4C_port.c",
     "func_8010BFA0": "pc_port/platform/pe_plat_mdec_io_host.c",  # libpress DecDCTin wrapper
+    "func_8010C89C": "pc_port/platform/pe_plat_vlc_frame.c",  # libpress VLC frame decoder (bounded/resumable)
     "func_8010C01C": "pc_port/platform/pe_plat_mdec_io_host.c",  # libpress DecDCTout wrapper
     "func_8010C0D8": "pc_port/game/boot/func_8010BE3C_port.c",
     "func_800752AC": "pc_port/game/boot/func_800752AC_port.c",
@@ -1097,8 +1107,11 @@ PE_PLAT_REPLACED = {
     "func_8007A354": "pc_port/platform/pe_plat_cd.c",   # CdLastPos
 }
 PE_PLAT_HEADERS = {
+    "pc_port/platform/pe_plat_81110.c": "pc_port/include/pe_plat/cd.h",
+    "pc_port/platform/pe_plat_cd_ready.c": "pc_port/include/pe_plat/cd.h",
     "pc_port/game/boot/func_8010BD4C_port.c": "pc_port/include/pe_plat/mdec_expand.h",
     "pc_port/platform/pe_plat_mdec_io_host.c": "pc_port/include/pe_plat/mdec_io_host.h",
+    "pc_port/platform/pe_plat_vlc_frame.c": "pc_port/include/pe_plat/vlc_frame.h",
     "pc_port/game/boot/func_8010BE3C_port.c": "pc_port/include/pe_plat/mdec_callback.h","pc_port/game/boot/func_8007512C_port.c": "pc_port/include/psx_compat.h",
                    "pc_port/game/boot/func_80076C34_port.c": "pc_port/include/psx_compat.h",
                    "pc_port/game/boot/func_800752AC_port.c": "pc_port/include/psx_compat.h",
@@ -1124,6 +1137,7 @@ PE_PLAT_HEADERS = {
                    "pc_port/platform/pe_plat_gte_cmd2.c": "pc_port/include/pe_plat/gte.h",
                    "pc_port/platform/pe_plat_gte_div.c": "pc_port/include/pe_plat/gte.h",
                    "pc_port/platform/pe_plat_gte_vn.c": "pc_port/include/pe_plat/gte.h",
+                   "pc_port/platform/pe_plat_gte_init.c": "pc_port/include/pe_plat/gte.h",
                    "pc_port/platform/pe_plat_ds_leaf.c": "pc_port/include/pe_plat/cd.h",
                    "pc_port/platform/pe_plat_cd_initialize_callbacks.c": "pc_port/include/pe_plat/cd.h",
                    "pc_port/platform/pe_plat_cd_search_file_host.c": "pc_port/include/pe_plat/cd.h",
@@ -1194,6 +1208,8 @@ PE_PLAT_HEADERS = {
                    "pc_port/platform/pe_plat_ds_gen39.c": "pc_port/include/pe_plat/cd.h",
                    "pc_port/platform/pe_plat_ds_gen30.c": "pc_port/include/pe_plat/cd.h",
                    "pc_port/platform/pe_plat_cd_gen32.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_mdec_reset.c": "pc_port/include/pe_plat/mdec_callback.h",
+                   "pc_port/platform/pe_plat_mdec_core.c": "pc_port/include/pe_plat/mdec_callback.h",
                    "pc_port/platform/pe_plat_ds_gen31.c": "pc_port/include/pe_plat/cd.h",
                    "pc_port/platform/pe_plat_cd_gen6.c": "pc_port/include/pe_plat/cd.h",
                    "pc_port/platform/pe_plat_cd_gen7.c": "pc_port/include/pe_plat/cd.h",
@@ -1216,6 +1232,8 @@ PE_PLAT_HEADERS = {
                    "pc_port/platform/pe_plat_gpu_area.c": "pc_port/include/pe_plat/gpu_area.h",
                    "pc_port/platform/pe_plat_gpu_timeout.c": "pc_port/include/pe_plat/gpu_timeout.h",
                    "pc_port/platform/pe_plat_gpu_dma_queue.c": "pc_port/include/pe_plat/gpu_dma_queue.h",
+                   "pc_port/platform/pe_plat_gpu_resetgraph.c": "pc_port/include/pe_plat/gpu_resetgraph.h",
+                   "pc_port/platform/pe_plat_gpu_swap.c": "pc_port/include/pe_plat/gpu_swap.h",
                    "pc_port/platform/pe_plat_irq_callback.c": "pc_port/include/pe_plat/irq_callback.h",
                    "pc_port/platform/pe_save.c": "pc_port/include/pe_plat/pad.h",
                    "pc_port/platform/pe_plat_pad.c": "pc_port/include/pe_plat/pad.h",

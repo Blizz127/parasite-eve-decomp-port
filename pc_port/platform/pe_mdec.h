@@ -82,6 +82,12 @@ void PE_MDEC_ClearDmaChannels(void);
  * an existing DMA; it never turns hardware's zero-BA encoding into a no-op. */
 int PE_MDEC_SubmitInputTable(pe_addr_t command_block, uint32_t size_words);
 void PE_MDEC_GetState(PeMdecState *out);
+/* MDEC status word for a native status poll (guest 0x1F801824 read).  Only
+ * bit 29 (command busy, psx-spx) is reported: set while an input DMA0 is
+ * still active, clear otherwise; every other status bit reads 0 (not
+ * modelled).  Callers must test bit 29 only.  Raw status reads through the
+ * MMIO value path remain a boundary. */
+uint32_t PE_MDEC_StatusWord(void);
 /* Same whole-block count validation as input; validates the word-aligned
  * destination span before servicing a pending DMA or changing DPCR. */
 int PE_MDEC_SubmitOutput(pe_addr_t destination,uint32_t words);

@@ -37,7 +37,9 @@
 #include "pe_sdk.h"
 #include "stub_registry.h"
 #include "pe_bootstrap.h"
+#include "game_port.h"
 #include <string.h>
+#include <stdio.h>
 
 /* ── Globals ───────────────────────────────────────────────────────── */
 /* D_800B0DCD / D_800B0DD8 are guest-RAM lvalue macros (psx_compat.h). */
@@ -59,9 +61,45 @@ static void PE_698D4_WaitIdle(void)
     }
 }
 
+/* The mount sequence after the DsSystemStatus / queue idle checks.  DsGetDiskType is the clean-room native
+ * following the retail command flow: it issues the verify command and waits for its completion callback,
+ * which only the CD device model delivers (the queue also drains through it before the file searches). */
+static int PE_698D4_Mount(void)
+{
+    int r;
+
+    r = func_80082314();
+    if (r == 1) return 1;
+    if (r != 4) return -1;
+
+    PE_698D4_WaitIdle();
+    r = func_80081414(PE_698D4_CDLFILE, PE_NAME_DISC1_IDF);
+    if (r != 0 && r != -1) {
+        PE_698D4_WaitIdle();
+        r = func_80081414(PE_698D4_CDLFILE, PE_NAME_PE_IMG);
+        if (r != 0 && r != -1) {
+            D_800B0DD8 = (unsigned int)func_80080C48(PE_698D4_CDLFILE);
+            D_800B0DCD |= 1;
+        }
+    }
+
+    PE_698D4_WaitIdle();
+    r = func_80081414(PE_698D4_CDLFILE, PE_NAME_DISC2_IDF);
+    if (r != 0 && r != -1) {
+        PE_698D4_WaitIdle();
+        r = func_80081414(PE_698D4_CDLFILE, PE_NAME_PE_IMG);
+        if (r != 0 && r != -1) {
+            D_800B0DD8 = (unsigned int)func_80080C48(PE_698D4_CDLFILE);
+            D_800B0DCD |= 2;
+        }
+    }
+
+    return (D_800B0DCD == 0) ? -2 : 0;
+}
+
 int func_800698D4(void)
 {
-    int s0, r;
+    int s0;
 
     if (g_bootstrap_disc) {
         /* Explicit test fixture (not the default definition of successful
@@ -106,31 +144,25 @@ int func_800698D4(void)
     if (s0 != 1) return 1;   /* audit item 19: retail returns 1 (src/func_800698D4.c) */
     if (func_8007F778() != 0) return 1;
 
-    r = func_80082314();
-    if (r == 1) return 1;
-    if (r != 4) return -1;
-
-    PE_698D4_WaitIdle();
-    r = func_80081414(PE_698D4_CDLFILE, PE_NAME_DISC1_IDF);
-    if (r != 0 && r != -1) {
-        PE_698D4_WaitIdle();
-        r = func_80081414(PE_698D4_CDLFILE, PE_NAME_PE_IMG);
-        if (r != 0 && r != -1) {
-            D_800B0DD8 = (unsigned int)func_80080C48(PE_698D4_CDLFILE);
-            D_800B0DCD |= 1;
+    {   /* Real hardware has the drive attached before the first mount: attach the device model for the
+         * whole mount (the credits path attaches the same way).  Without a disc image there is no
+         * device and the native's stuck-wait stop names the no-device case. */
+        PeCdAttach cd_attach;
+        int cd_attached;
+        cd_attached = PE_Cd_AttachDevice(&cd_attach);
+        if (!cd_attached) {
+            /* No device could be attached (no disc image, the device already enabled, or the drive is not host-booted and idle): the
+             * verify command could never complete.  Named stop instead of an endless wait. */
+            fprintf(stderr, "[CD] the CD device model could not be attached for the first mount (no disc image, device already enabled, or the drive is not host-booted idle): DsGetDiskType cannot complete\n");
+            PE_Port_RequestStop(PE_PORT_STOP_UNRESOLVED_BOUNDARY);
+            return -1;
         }
+        /* The mount happens before the game has any timeline, and the pre-native mount took no emulated time: the drive
+         * (and the libds per-VBlank worker it installs) runs, the emulated clocks, VBlank edges and counters do not. */
+        HostFB_DeviceQuietBegin();
+        int mounted = PE_698D4_Mount();
+        HostFB_DeviceQuietEnd();
+        if (cd_attached) PE_Cd_DetachDevice(&cd_attach);
+        return mounted;
     }
-
-    PE_698D4_WaitIdle();
-    r = func_80081414(PE_698D4_CDLFILE, PE_NAME_DISC2_IDF);
-    if (r != 0 && r != -1) {
-        PE_698D4_WaitIdle();
-        r = func_80081414(PE_698D4_CDLFILE, PE_NAME_PE_IMG);
-        if (r != 0 && r != -1) {
-            D_800B0DD8 = (unsigned int)func_80080C48(PE_698D4_CDLFILE);
-            D_800B0DCD |= 2;
-        }
-    }
-
-    return (D_800B0DCD == 0) ? -2 : 0;
 }

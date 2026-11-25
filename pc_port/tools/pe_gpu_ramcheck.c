@@ -90,7 +90,23 @@ int PE_GuestHook_Call(const char *slot, const char *caller, pe_addr_t fn, unsign
     return 1;
 }
 
+int PE_GuestCall(const char *site, pe_addr_t fn, unsigned arity, uintptr_t a0, uintptr_t a1, uintptr_t a2, uintptr_t a3)
+{
+    int ret = 0;
+    (void)site;
+    (void)PE_GuestHook_Call("", "", fn, arity, a0, a1, a2, a3, &ret);
+    return ret;
+}
+
 /* host-guard stubs (pe_plat/gpu_regs.h): every pointer in the vectors is valid */
+/* host-hook stubs (pe_plat/gpu_host.h): host state is not part of the vectors */
+#include "pe_plat/gpu_host.h"
+void pe_plat_gpu_host_drawsync(int32_t mode) { (void)mode; }
+int32_t pe_plat_gpu_host_deadline_clock(int32_t now) { return now; }
+int pe_plat_gpu_host_wait_tick(void) { return 0; }
+int pe_plat_gpu_host_dma_preflight(uint32_t packet) { (void)packet; return 1; }
+void pe_plat_gpu_host_dma_run(void) {}
+void pe_plat_gpu_host_present_dispenv(uint32_t env) { (void)env; }
 bool PE_RangeIsRam(pe_addr_t a, size_t n) { (void)a; (void)n; return true; }
 int PE_MMIO_IsModelled(pe_addr_t a, size_t n) { (void)a; (void)n; return 1; }
 void PE_GuestHook_Refuse(const char *slot, const char *caller, pe_addr_t fn, unsigned arity, uintptr_t a0, uintptr_t a1,

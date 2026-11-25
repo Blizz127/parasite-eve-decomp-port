@@ -41,6 +41,11 @@ void HostFB_SetVBlankDispatch(int (*dispatch)(void));
 void HostFB_StreamTick(void);
 /* One CD-status poll: device time with the device attached (pe_cdreg). */
 void HostFB_DevicePoll(void);
+/* Quiet device window: the CD device model advances (drive events and interrupts are delivered) while the
+ * emulated clocks, VBlank edges and the VSync call/scanline counters stay where they were; End restores the
+ * counters.  For the first mount, which retail runs before the game has any timeline. */
+void HostFB_DeviceQuietBegin(void);
+void HostFB_DeviceQuietEnd(void);
 void HostFB_DrawSync(int mode);
 int  HostFB_WritePPM(const char *path);
 const uint8_t *HostFB_GetPixels(void);

@@ -19,6 +19,7 @@
 #include "pe_mdec.h"
 #include "pe_irq_delivery.h"
 #include "pe_irq.h"
+#include "pe_guestcode.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -50,6 +51,12 @@ static int     fb_drawsync_count = 0;
  * TRANSITION_OUTER_LOOP.md and VSYNC_CONTRACT.md. */
 static uint32_t fb_vsync_timer = 0;      /* 0x80094578 (1F801110 low half) */
 static uint32_t fb_vsync_baseline = 0;   /* 0x8009457C, 16-bit scanline latch */
+/* Quiet device window (HostFB_DeviceQuietBegin/End): the CD device model runs on its own clock, the emulated
+ * clocks (RCNT2, VBlank edges, VSync counters) do not move. */
+static int      fb_device_quiet = 0;
+static uint32_t fb_quiet_cycles;           /* quiet device time since the last worker call */
+static int      fb_quiet_vsync_count;
+static uint32_t fb_quiet_vsync_timer, fb_quiet_vsync_baseline;
 
 /* Last PutDispEnv geometry, reused by the VBlank scan-out below. */
 static struct { int valid; uint32_t dw, top, dh; int rgb24; } fb_scan;
@@ -342,6 +349,30 @@ static void HostFB_ServiceDeviceIrq(void)
 }
 static void HostFB_DeviceTime(uint32_t cycles)
 {
+    if (fb_device_quiet) {
+        /* Device-only time: advance the drive and deliver its interrupts, but not RCNT2, the VBlank edge
+         * accumulator or the frame hooks.  The elapsed quantum is still spent on the device, so a wait
+         * that needs the drive's response ends after the same number of device events. */
+        while (cycles && !PE_Port_ShouldStop()) {
+            uint32_t step = PE_CdReg_TimeSlice(cycles);
+            PE_CdReg_ServiceDevice(step);
+            if (PE_Port_ShouldStop()) return;
+            HostFB_ServiceDeviceIrq();
+            if (PE_Port_ShouldStop()) return;
+            PE_MMIO_Commit();
+            cycles -= step;
+            fb_quiet_cycles += step;
+            while (fb_quiet_cycles >= 564480u && !PE_Port_ShouldStop()) {
+                /* One frame of device time: run the libds per-VBlank worker the attach installed in the libetc
+                 * VSync callback slot 0 (D_8009568C), as the VBlank handler would, without a VBlank edge (no
+                 * D_800956AC bump, no GPU/audio step, no other callback slot). */
+                uint32_t worker = PE_LoadU32(0x8009568Cu);
+                fb_quiet_cycles -= 564480u;
+                if (worker) (void)PE_GuestCall("quiet-window libds VSync worker", worker, 0, 0, 0, 0, 0);
+            }
+        }
+        return;
+    }
     /* Advance to each CD deadline and VBlank edge separately, servicing
      * IRQs between sectors. Keep the full elapsed quantum: at double speed
      * a 564480-cycle NTSC frame contains 2.5 sectors, not one sector. */
@@ -408,6 +439,24 @@ static void HostFB_VBlankGameCallbacks(void)
     }
 }
 
+void HostFB_DeviceQuietBegin(void)
+{
+    fb_quiet_vsync_count = fb_vsync_count;
+    fb_quiet_vsync_timer = fb_vsync_timer;
+    fb_quiet_vsync_baseline = fb_vsync_baseline;
+    fb_quiet_cycles = 0;
+    fb_device_quiet = 1;
+}
+
+void HostFB_DeviceQuietEnd(void)
+{
+    if (!fb_device_quiet) return;
+    fb_device_quiet = 0;
+    fb_vsync_count = fb_quiet_vsync_count;
+    fb_vsync_timer = fb_quiet_vsync_timer;
+    fb_vsync_baseline = fb_quiet_vsync_baseline;
+}
+
 void HostFB_SetVBlankDispatch(int (*dispatch)(void))
 {
     g_vblank_dispatch = dispatch;
@@ -464,6 +513,7 @@ uint32_t HostFB_VSync(int mode)
             if(device) HostFB_DeviceTime(564480u);
             else { PE_GPU_VBlankStep(); HostFB_VBlankGameCallbacks(); }
             if(PE_Port_ShouldStop()) break;
+            if (fb_device_quiet) continue;   /* no VBlank edge happened: no scan-out / shot hook */
             HostFB_ScanOutIdleVBlank();
             HostFB_ShotVBlank();
         }

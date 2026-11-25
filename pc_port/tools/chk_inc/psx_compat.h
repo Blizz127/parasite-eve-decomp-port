@@ -8,4 +8,7 @@
 uint32_t func_80073A44(int mode);   /* VSync */
 uint32_t func_800773D0(void);       /* GPU deadline seeder */
 void func_80076B20(unsigned int command);                        /* GPU control write */
+uint16_t func_80073E10(uint16_t new_mask);                 /* SetIntrMask */
+uint32_t func_80073CF4(uint32_t channel, uint32_t handler);  /* DMACallback */
+int func_80076EE4(void);                                   /* GPU queue pump */
 #endif

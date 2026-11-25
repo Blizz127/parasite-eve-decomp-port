@@ -12,6 +12,11 @@
 #include "pe_plat/gpu_area.h"    /* SetTexWindow/SetDrawArea -> pe_plat names */
 #include "pe_plat/gpu_timeout.h" /* GPU wait timeout (0x80077404) -> pe_plat name */
 #include "pe_plat/gpu_dma_queue.h" /* GPU queue pump/wait (0x80077294) -> pe_plat name */
+#include "pe_plat/gpu_drawsync.h" /* DrawSync (0x80074DC0) -> pe_plat name */
+#include "pe_plat/gpu_dma_start.h" /* GPU DMA start (0x80076B98) -> pe_plat name */
+#include "pe_plat/gpu_putdispenv.h" /* PutDispEnv (0x800755F0) -> pe_plat name */
+#include "pe_plat/gpu_resetgraph.h" /* ResetGraph (0x80074A44) -> pe_plat name */
+#include "pe_plat/gpu_swap.h" /* GPU enqueue/immediate issue (0x80076C34) -> pe_plat name */
 #include "pe_plat/irq_callback.h" /* ResetCallback/InterruptCallback -> pe_plat names */
 #include "pe_plat/pad.h"          /* PadGetState -> pe_plat name */
 
@@ -66,7 +71,7 @@ void func_8006E60C(void);
  * func_80073C94/func_80072714/func_80072724  — pe_libetc.c
  * func_80074924/749D8/74A44/74BB8            — pe_libgpu.c
  * func_8007D054                              — pe_libsnd.c
- * func_80077F7C/func_80079004/func_80079024  — pe_gte.c
+ * func_80077F7C  — pe_plat_gte_init.c (clean-room);  func_80079004/func_80079024 — pe_plat_gte_regs.c
  * func_800409B4                              — pe_libcard.c
  * func_800844E4/func_80082534                — pe_save.c
  * func_8007EC14/func_8007ED58/func_8007F72C/func_8007F778/

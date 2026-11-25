@@ -20,6 +20,7 @@
 #include "pe_plat/gpu_dma_queue.h"
 #include "pe_plat/gpu_drawsync.h"
 #include "pe_plat/gpu_regs.h"
+#include "pe_plat/gpu_host.h"
 
 #define B_DEBUG    0x8009574Eu
 #define W_TRACE    0x80095748u
@@ -33,22 +34,24 @@ int pe_plat_gpu_drawsync(int32_t mode)
     int result = 0;
     unsigned epoch;
     uint32_t root, target;
+    pe_plat_gpu_host_drawsync(mode);   /* host framebuffer DrawSync telemetry (not in the vectors) */
     if (PE_LoadU8(B_DEBUG) >= 2u) {
         uint32_t trace = PE_LoadU32(W_TRACE);
         epoch = PE_Port_StopEpoch();
         if (trace == BIOS_PRINTF) {
             uint32_t arg = (uint32_t)mode;
             (void)PE_Bios_Printf(FMT_TRACE, &arg, 1);
-        } else if (!PE_GuestHook_Call("DrawSync_debug", "func_80074DC0", trace, 2, FMT_TRACE,
-                                      (uint32_t)mode, 0, 0, &result)) {
-            return 0;
+        } else {
+            /* retail's jalr through the hook word: the generic guest-call boundary names this function */
+            (void)PE_GuestCall("func_80074DC0", trace, 2, FMT_TRACE, (uint32_t)mode, 0, 0);
         }
         if (PE_Port_StopEpoch() != epoch) return 0;
     }
     root = PE_LoadU32(W_TABLE);
-    if (!pe_gpu_reg_ok(root + SLOT_WAIT, 4)) return pe_gpu_reg_refuse("DrawSync_table", "func_80074DC0", root);
+    /* Host: a table pointer that is not guest RAM (library jump table never set up: zero, or the canary of
+     * unit tests; retail would fault) runs the native queue pump, like the shipped slot and a zero slot. */
+    if (!pe_gpu_reg_ok(root + SLOT_WAIT, 4)) return pe_plat_gpu_dma_queue_run(mode);
     target = PE_LoadU32(root + SLOT_WAIT);
-    /* A zero slot (jump table not set up yet, as in the unit tests) runs the native queue pump too. */
     if (target == 0x80077294u || target == 0u) return pe_plat_gpu_dma_queue_run(mode);
     epoch = PE_Port_StopEpoch();
     if (!PE_GuestHook_Call("DrawSync_slot", "func_80074DC0", target, 1, (uint32_t)mode, 0, 0, 0, &result) ||

@@ -390,12 +390,12 @@ def drawsync_cases(base, count=4000):
 
 
 # ------------------------------------------------------------ row: dispenv
-def dispenv_cases(base, count=6000):
+def dispenv_cases(base, count=6000, byvals=(0, 1, 2, 0xFF), seed0=0x755F0000, clamps=True):
     out = []
     E16 = (0, 1, 2, 16, 100, 255, 256, 257, 280, 281, 320, 352, 353, 384, 400, 401, 480, 512, 560, 561, 640,
            0x3FF, 0x400, 0x7FFF, 0x8000, 0xFFFF, 0xFFF0)
     for k in range(count):
-        seed = 0x755F0000 + k
+        seed = seed0 + k
         rng = Rng(seed)
         ram = bytearray(base)
         env = ZONE + 0x20 * (rng.next() % 16)
@@ -403,7 +403,7 @@ def dispenv_cases(base, count=6000):
         fields[2] = rng.pick((256, 320, 384, 512, 640, 280, 281, 352, 353, 400, 401, 560, 561, rng.next() & 0xFFFF))
         if rng.next() % 4 == 0:                  # tiny screen widths hit the minimum-width clamp
             fields[6] = rng.pick((0, 1, 2, 3, 4, 5, 8, 0xFFFF, 0x8000))
-        by = [rng.pick((0, 1, 2, 0xFF)) for _ in range(4)]
+        by = [rng.pick(byvals) for _ in range(4)]
         for i, x in enumerate(fields):
             struct.pack_into('<H', ram, (env + 2 * i) & 0x1FFFFF, x)
         for i, x in enumerate(by):
@@ -439,6 +439,8 @@ def dispenv_cases(base, count=6000):
         if isinstance(res, str):
             continue
         out.append(emit(0x800755F0, seed, args, rets, res, ev))
+    if not clamps:
+        return out
     # Pattern 1: every clamp boundary +-1.  A table entry is built so that the
     # unclamped value lands exactly on each bound; y bounds through sy/sh.
     k = 0
@@ -490,7 +492,67 @@ def dispenv_cases(base, count=6000):
     return out
 
 
-ROWS = {'timeout': timeout_cases, 'dmastart': dmastart_cases, 'dmaq': dmaq_cases, 'drawsync': drawsync_cases,
+def dispenv2_cases(base, count=8000):
+    # flag/pad bytes beyond {0,1,2,FF}: DAY1_dispenv case 704 (pad0 = 8, byte 13 = 0x16, cache == environment)
+    return dispenv_cases(base, count, (0, 1, 2, 3, 8, 0x16, 0x80, 0xFF), 0x755F4000, False)
+
+
+# ------------------------------------------------------------ row: resetgraph
+RG_CALLEES = {0x80077A28: 'FILL', 0x80073C94: 'RESETCB', 0x80077A54: 'GPUCW', 0x80077144: 'G2700',
+              0x80130000: 'HOOKA', 0x80130040: 'HOOKB', 0x80130100: 'LOG', 0x80130140: 'LOG2'}
+
+
+def resetgraph_cases(base, count=12000):
+    """ResetGraph (0x80074A44).  Reset modes (low three bits 0, 3, 5): diagnostic print (not for 5), fill of the
+    0x80 library bytes, the libetc reset callback, the table-root word handed to the GPU control word writer, the GPU
+    control function with the mode, the video-mode byte, the display limits copied from a table indexed by it, the
+    two cache fills; result = the video-mode byte.  Other modes: debug trace, table slot call (the light path)."""
+    out = []
+    for k in range(count):
+        seed = 0x74A44000 + k
+        rng = Rng(seed)
+        ram = bytearray(base)
+        kind = rng.next() % 20
+        if kind < 12:                          # reset modes
+            low = rng.pick((0, 3, 5))
+            if rng.next() & 1:
+                mode = rng.pick((0, 3, 5, 8, 0xB, 0xD, 0x10, 0x13, 0x15, 0x100, 0x103, 0x105, 0x80000000, 0x80000003,
+                                 0x80000005, 0xFFFFFFF8, 0xFFFFFFFB, 0xFFFFFFFD)) if rng.next() & 1 else (rng.next() & 0xFF & ~7) | low
+            else:
+                mode = (rng.word() & ~7 & 0xFFFFFFFF) | low
+        else:                                   # light modes
+            low = rng.pick((1, 2, 4, 6, 7))
+            mode = rng.pick((low, low, 8 + low, 0x100 | low, 0xFFFFFFF8 | low, (rng.word() & ~7 & 0xFFFFFFFF) | low))
+        light = (mode & 7) not in (0, 3, 5)
+        ram[0x9574E] = rng.pick((0, 1, 2, 3, 0x7F, 0xFF, rng.next() & 0xFF))
+        if rng.next() % 3:
+            put32(ram, 0x80095748, rng.pick((0x80071A74, 0x80130100, 0x80130140)))
+        if light:
+            slot = rng.pick((0x80077144, 0x80077144, 0x80130000, 0x80130040))
+            if rng.next() % 4 == 0:
+                put32(ram, 0x80095744, ZONE + 0x400)
+                put32(ram, ZONE + 0x400 + 0x34, slot)
+            else:
+                put32(ram, 0x80095704 + 0x34, slot)
+        else:
+            if rng.next() % 3 == 0:
+                put32(ram, 0x80095744, rng.pick((0, 0xFFFFFFFF, 0x12345678, 0x80095704, rng.word())))
+            for a in range(0x800957CC, 0x800957CC + 0x40C, 2):      # display limit tables
+                put16(ram, a, rng.next() if rng.next() % 4 else rng.pick((0, 0x400, 0x200, 0xFFFF)))
+            ram[0x9574C] = rng.next() & 0xFF
+        rets = {'FILL': [rng.word()], 'RESETCB': [rng.word()], 'GPUCW': [rng.word()],
+                'G2700': [rng.pick((0, 1, 2, 5, 0x7F, 0x80, 0xFF, 0x100, 0x1234567, 0x80000001)) if rng.next() & 1 else rng.word()],
+                'HOOKA': [rng.word()], 'HOOKB': [rng.word()], 'LOG': [rng.word()], 'LOG2': [rng.word()]}
+        callees = {a: (n, rets[n]) for a, n in RG_CALLEES.items()}
+        args = [mode, rng.word(), rng.word(), rng.word()]
+        ev, res = run(ram, 0x80074A44, args, callees, budget=60000, max_calls=20)
+        if isinstance(res, str):
+            continue
+        out.append(emit(0x80074A44, seed, args, rets, res, ev))
+    return out
+
+
+ROWS = {'resetgraph': resetgraph_cases, 'dispenv2': dispenv2_cases, 'timeout': timeout_cases, 'dmastart': dmastart_cases, 'dmaq': dmaq_cases, 'drawsync': drawsync_cases,
         'dispenv': dispenv_cases}
 
 

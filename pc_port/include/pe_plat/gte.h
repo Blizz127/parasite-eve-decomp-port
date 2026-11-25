@@ -58,6 +58,8 @@ int32_t pe_plat_gte_rot_average_nclip4(uint32_t v0, uint32_t v1, uint32_t v2, ui
 void pe_plat_gte_set_fog_near_far(uint32_t near_z, uint32_t far_z, int32_t h);
 uint32_t pe_plat_gte_square_root0(uint32_t value);
 int32_t pe_plat_gte_ratan2(int32_t y, int32_t x);
+/* InitGeom (pe_plat_gte_init.c, clean-room from psx-spx + the host GTE model). */
+void pe_plat_gte_init_geom(void);
 /* Batch 4 (pe_plat_gte_vn.c, same vector tool, `batch4`). */
 uint32_t pe_plat_gte_vector_normal(uint32_t in, uint32_t out);
 
@@ -95,6 +97,7 @@ uint32_t pe_plat_gte_vector_normal(uint32_t in, uint32_t out);
 #define func_80078004 pe_plat_gte_square_root0
 #define func_80079FB4 pe_plat_gte_ratan2
 #define func_80078134 pe_plat_gte_vector_normal
+#define func_80077F7C pe_plat_gte_init_geom
 /* Canonical guest-name prototypes for the bindings above (generated
  * from the pe_plat prototypes; tools read callee signatures from these). */
 uint32_t func_80078C94(uint32_t matrix, uint32_t vector);
@@ -130,5 +133,6 @@ void func_80077E64(uint32_t near_z, uint32_t far_z, int32_t h);
 uint32_t func_80078004(uint32_t value);
 int32_t func_80079FB4(int32_t y, int32_t x);
 uint32_t func_80078134(uint32_t in, uint32_t out);
+void func_80077F7C(void);
 uint32_t func_80078934(uint32_t m, uint32_t v, uint32_t out);
 #endif

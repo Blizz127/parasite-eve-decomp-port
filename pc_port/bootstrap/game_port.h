@@ -49,6 +49,9 @@ typedef void (*PEPortPresentHook)(void);
 void PE_Port_SetPresentHook(PEPortPresentHook hook);
 void PE_Port_InvokePresentHook(void);
 void PE_Port_RequestStop(PEPortStopReason reason);
+/* Quiet CD-device window (platform/host_framebuffer.c): the drive advances, the emulated clocks do not. */
+void HostFB_DeviceQuietBegin(void);
+void HostFB_DeviceQuietEnd(void);
 int  PE_Port_BeginMainIteration(void);
 int  PE_Port_ShouldStop(void);
 int  PE_Port_FramePresentationAllowed(void);
@@ -79,6 +82,9 @@ const char *PE_Port_StopReasonName(PEPortStopReason reason);
 void PE_Port_EscapeArm(jmp_buf *escape);
 void PE_Port_EscapeDisarm(void);
 void PE_Port_EscapePoint(void);
+/* 1 while an escape is armed: a stop requested now unwinds (longjmp) at the next escape point, abandoning the
+ * caller's guard and mask state, so a caller holding a cleared I_MASK restores it first. */
+int PE_Port_EscapeArmed(void);
 
 /* Credits pad refill (HOST_ADAPTED).  Retail's VSync interrupt refills the
  * BIOS pad buffer every VBlank.  The credits loop (ovl_0457 func_801235DC)

@@ -37,6 +37,8 @@
 #include "pe_plat/gpu_timeout.h"
 #include "pe_plat/gpu_dma_queue.h"
 #include "pe_plat/gpu_regs.h"
+#include "pe_plat/gpu_host.h"
+#include "pe_plat/irq_callback.h"
 
 #define W_Q        0x80095874u
 #define W_R        0x80095878u
@@ -63,9 +65,27 @@ static int queue_empty(int32_t mode, uint32_t q, uint32_t r)
 
 static uint32_t chcr_word(void)
 {
-    uint32_t p = PE_LoadU32(P_CHCR);
+    uint32_t p = pe_gpu_reg_word(P_CHCR, PE_GPU_REG_CHCR2, 4);
     if (!pe_gpu_reg_ok(p, 4)) return pe_gpu_reg_refuse("dmaq_chcr", "func_80077294", p);
     return PE_LoadU32(p);
+}
+
+/* Host wait pass (not in the vectors; pe_plat/gpu_host.h): after each timeout check of a
+ * waiting pass the host DMA2 transfer progresses through the DMA IRQ checkpoint; a wait
+ * that can never progress is cut with a named boundary (target = the timeout check). */
+static int32_t wait_result;
+static int wait_pass(void)
+{
+    int t = pe_plat_gpu_host_wait_tick();
+    if (t == 0) return 0;
+    if (t > 0) {
+        PE_GuestHook_Refuse("func_80077404_wait_cut", "func_80077294", 0x80077404u, 0, 0, 0, 0, 0,
+                            "GPU wait cannot make progress");
+        wait_result = -1;
+    } else {
+        wait_result = 0;
+    }
+    return 1;
 }
 
 int32_t pe_plat_gpu_dma_queue_run(int32_t mode)
@@ -83,10 +103,11 @@ int32_t pe_plat_gpu_dma_queue_run(int32_t mode)
             if (mode != 0) break;                       /* poll: report below */
             if (pe_plat_gpu_timeout() != 0) return -1;  /* wait: timeout check, try again */
             if (PE_Port_ShouldStop()) return 0;
+            if (wait_pass() != 0) return wait_result;
             continue;
         }
         {
-            uint32_t ip = PE_LoadU32(P_IMASK);
+            uint32_t ip = pe_gpu_reg_word(P_IMASK, PE_GPU_REG_IMASK, 2);
             uint32_t saved;
             if (!pe_gpu_reg_ok(ip, 2)) return pe_gpu_reg_refuse("dmaq_imask", "func_80077294", ip);
             saved = PE_LoadU16(ip);
@@ -102,12 +123,17 @@ int32_t pe_plat_gpu_dma_queue_run(int32_t mode)
                 q = PE_LoadU32(W_Q);
                 if (((r + 1u) & 0x3Fu) == q && PE_LoadU32(W_FLAG758) == 0u) {
                     uint32_t cbt = PE_LoadU32(P_CBTAB), cb;
-                    if (!pe_gpu_reg_ok(cbt + 4u, 4)) return pe_gpu_reg_refuse("dmaq_cbtab", "func_80077294", cbt);
-                    cb = PE_LoadU32(cbt + 4u);
-                    if (!PE_GuestHook_Call("dmaq_callback", "func_80077294", cb, 1, 2, 0, 0, 0, &ret)) return 0;
+                    if (!pe_gpu_reg_ok(cbt + 4u, 4)) {
+                        /* Host: libetc jump table never set up (zero or canary in unit tests; retail would
+                         * fault): the shipped slot is the native DMA callback setter. */
+                        (void)func_80073CF4(2, 0);
+                    } else {
+                        cb = PE_LoadU32(cbt + 4u);
+                        if (!PE_GuestHook_Call("dmaq_callback", "func_80077294", cb, 1, 2, 0, 0, 0, &ret)) return 0;
+                    }
                 }
                 {
-                    uint32_t gp = PE_LoadU32(P_GPU);
+                    uint32_t gp = pe_gpu_reg_word(P_GPU, PE_GPU_REG_GPU1, 4);
                     uint32_t s;
                     uint32_t polls = 0;
                     if (!pe_gpu_reg_ok(gp, 4)) return pe_gpu_reg_refuse("dmaq_gpu", "func_80077294", gp);
@@ -140,7 +166,7 @@ int32_t pe_plat_gpu_dma_queue_run(int32_t mode)
                 if (q == r) break;
             }
             saved = PE_LoadU32(W_MASKSAVE);
-            ip = PE_LoadU32(P_IMASK);
+            ip = pe_gpu_reg_word(P_IMASK, PE_GPU_REG_IMASK, 2);
             if (!pe_gpu_reg_ok(ip, 2)) return pe_gpu_reg_refuse("dmaq_imask", "func_80077294", ip);
             (void)PE_LoadU16(ip);
             PE_StoreU16(ip, (uint16_t)saved);
@@ -156,6 +182,7 @@ int32_t pe_plat_gpu_dma_queue_run(int32_t mode)
         if (mode == 0) {
             if (pe_plat_gpu_timeout() != 0) return -1;
             if (PE_Port_ShouldStop()) return 0;
+            if (wait_pass() != 0) return wait_result;
             continue;                                   /* look at the queue again */
         }
         break;
@@ -165,7 +192,7 @@ int32_t pe_plat_gpu_dma_queue_run(int32_t mode)
         c = chcr_word();
         waiting = (c & CHCR_BUSY) != 0u;
         if (!waiting) {
-            uint32_t gp = PE_LoadU32(P_GPU);
+            uint32_t gp = pe_gpu_reg_word(P_GPU, PE_GPU_REG_GPU1, 4);
             if (!pe_gpu_reg_ok(gp, 4)) return pe_gpu_reg_refuse("dmaq_gpu", "func_80077294", gp);
             waiting = !(PE_LoadU32(gp) & STAT_READY);
         }
@@ -173,5 +200,6 @@ int32_t pe_plat_gpu_dma_queue_run(int32_t mode)
         if (mode != 0) return n != 0 ? (int32_t)n : 1;
         if (pe_plat_gpu_timeout() != 0) return -1;
         if (PE_Port_ShouldStop()) return 0;
+        if (wait_pass() != 0) return wait_result;
     }
 }

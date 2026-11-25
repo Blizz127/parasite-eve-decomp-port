@@ -17,7 +17,8 @@
  * Contract (from vectors): the command words are sent through the GPU jump
  * table slot +0x10 (0x80076B20) in this order: GP1(05h) always; GP1(08h) only
  * if the display part (flag word, x, y, w, h) differs from the cache; GP1(06h)
- * and GP1(07h) if either part differs; then the 20-byte environment is
+ * and GP1(07h) if the screen part differs OR the environment's scratch byte +0x12 holds 8 (the marker the
+ * display branch leaves there; the vectors of set D2 showed it with a pre-set 8 and an unchanged cache); then the 20-byte environment is
  * copied into the cache (BIOS memcpy) and the environment pointer is returned.
  * Display mode word: 0x08000000 | hres bits (class 0..4 -> 0, 1, 0x40, 2, 3;
  * class from the signed width: <=280, <=352, <=400, <=560, wider) | 0x24 if
@@ -35,6 +36,7 @@
 #include "pe_bios_string.h"
 #include "pe_plat/gpu_putdispenv.h"
 #include "pe_plat/gpu_regs.h"
+#include "pe_plat/gpu_host.h"
 
 #define B_DEBUG    0x8009574Eu
 #define W_TRACE    0x80095748u
@@ -60,7 +62,9 @@ static int send(uint32_t cmd)
 {
     uint32_t root = PE_LoadU32(W_TABLE);
     uint32_t target;
-    if (!pe_gpu_reg_ok(root + SLOT_CTL, 4)) return pe_gpu_reg_refuse("PutDispEnv_table", "func_800755F0", root);
+    /* Host: a table pointer that is not guest RAM (library jump table never set up) takes the native
+     * control write too (retail would fault). */
+    if (!pe_gpu_reg_ok(root + SLOT_CTL, 4)) { func_80076B20(cmd); return 1; }
     target = PE_LoadU32(root + SLOT_CTL);
     int ret = 0;
     unsigned epoch;
@@ -92,8 +96,10 @@ uint32_t pe_plat_gpu_put_disp_env(uint32_t env)
         if (trace == BIOS_PRINTF) {
             uint32_t arg = env;
             (void)PE_Bios_Printf(FMT_TRACE, &arg, 1);
-        } else if (!PE_GuestHook_Call("PutDispEnv_debug", "func_800755F0", trace, 2, FMT_TRACE, env, 0, 0, &ret)) {
-            return 0;
+        } else {
+            /* retail's jalr through the hook word: the generic guest-call boundary names this function */
+            (void)ret;
+            (void)PE_GuestCall("func_800755F0", trace, 2, FMT_TRACE, env, 0, 0);
         }
         if (PE_Port_StopEpoch() != epoch) return 0;
     }
@@ -124,10 +130,10 @@ uint32_t pe_plat_gpu_put_disp_env(uint32_t env)
         PE_StoreU8(env + 0x12u, 8u);
     }
 
-    /* screen part: runs when either part changed */
+    /* screen part: runs when it differs from the cache or the display branch left its marker (8) */
     screen_changed = PE_LoadU16(CACHE + 8u) != PE_LoadU16(env + 8u) || PE_LoadU16(CACHE + 10u) != PE_LoadU16(env + 10u) ||
                      PE_LoadU16(CACHE + 12u) != PE_LoadU16(env + 12u) || PE_LoadU16(CACHE + 14u) != PE_LoadU16(env + 14u);
-    if (changed || screen_changed) {
+    if (screen_changed || PE_LoadU8(env + 0x12u) == 8u) {   /* 8 = the scratch byte's "display part was sent" marker */
         int cls, pal;
         int32_t div, tx1, tx2, x1, x2, y1, y2, ymin, w;
         uint32_t vmb;
@@ -158,5 +164,8 @@ uint32_t pe_plat_gpu_put_disp_env(uint32_t env)
         if (!send(0x07000000u | (((uint32_t)y2 & 0x3FFu) << 10) | ((uint32_t)y1 & 0x3FFu))) return 0;
     }
     (void)func_80071A34(CACHE, env, 0x14);
+    /* Host (not in the vectors): the GP1 05h..08h writes above set the GPU model's display
+     * start / range / mode; the host framebuffer presents the environment's display area. */
+    pe_plat_gpu_host_present_dispenv(env);
     return env;
 }

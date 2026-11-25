@@ -48,15 +48,15 @@
  * natives, and a stub for a bound callee is compiled only when the file that
  * defines that callee is not linked (#ifndef CHK_HAVE_<FILE>).  Run from the
  * repo root, one line at a time:
- *   cc -std=c99 -Wall -Wextra -Werror -DCHK_HAVE_SPU_MODETYPE -DCHK_HAVE_MATH_ERR -DCHK_HAVE_SPU_FIDMA -DCHK_HAVE_CARD_CLEAR -DCHK_HAVE_QSORT -DCHK_HAVE_CD_GEN -Dfunc_8007DDC4=chk_new_card -Dfunc_8007DDB4=chk_card_write -Dfunc_8007C564=chk_st_cd_interrupt -Dfunc_8007B9EC=chk_cd_flush -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/tools/pe_spu_caller_check.c pc_port/platform/pe_plat_spu_modetype.c pc_port/platform/pe_plat_math_err.c pc_port/platform/pe_plat_spu_fidma.c pc_port/platform/pe_plat_card_clear.c pc_port/platform/pe_plat_qsort.c pc_port/platform/pe_plat_libc.c pc_port/platform/pe_plat_cd_gen.c -Wl,--unresolved-symbols=ignore-all -o check
+ *   cc -std=c99 -Wall -Wextra -Werror -DCHK_HAVE_SPU_MODETYPE -DCHK_HAVE_MATH_ERR -DCHK_HAVE_SPU_FIDMA -DCHK_HAVE_CARD_CLEAR -DCHK_HAVE_QSORT -DCHK_HAVE_CD_GEN -Dfunc_8007DDC4=chk_new_card -Dfunc_8007DDB4=chk_card_write -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/tools/pe_spu_caller_check.c pc_port/platform/pe_plat_spu_modetype.c pc_port/platform/pe_plat_math_err.c pc_port/platform/pe_plat_spu_fidma.c pc_port/platform/pe_plat_card_clear.c pc_port/platform/pe_plat_qsort.c pc_port/platform/pe_plat_libc.c pc_port/platform/pe_plat_cd_gen.c -Wl,--unresolved-symbols=ignore-all -o check
  *     (modetype v3, errmath, fidma v2, cardclear, qsort, cdgen v2 vectors)
- *   cc -std=c99 -Wall -Wextra -Werror -DCHK_HAVE_CD_GEN2 -Dfunc_8007B9EC=chk_cd_flush -Dfunc_8007EE84=chk_ds_command -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/tools/pe_spu_caller_check.c pc_port/platform/pe_plat_cd_gen2.c -o check
+ *   cc -std=c99 -Wall -Wextra -Werror -DCHK_HAVE_CD_GEN2 -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/tools/pe_spu_caller_check.c pc_port/platform/pe_plat_cd_gen2.c -o check
  *     (cdgen2 v3 vectors)
  *   cc -std=c99 -Wall -Wextra -Werror -DCHK_HAVE_CD_GEN3 -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/tools/pe_spu_caller_check.c pc_port/platform/pe_plat_cd_gen3.c -o check
  *     (cdgen3 vectors, DsFlush cases: grep '^8007F69C ' vectors.txt > v_flush.txt)
- *   cc -std=c99 -Wall -Wextra -Werror -DCHK_HAVE_CD_GEN4 -Dfunc_800824F0=chk_ds_data_callback -Dfunc_8007EE84=chk_ds_command -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/tools/pe_spu_caller_check.c pc_port/platform/pe_plat_cd_gen4.c -o check
+ *   cc -std=c99 -Wall -Wextra -Werror -DCHK_HAVE_CD_GEN4 -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/tools/pe_spu_caller_check.c pc_port/platform/pe_plat_cd_gen4.c -o check
  *     (cdgen3 vectors, 0x80081268 cases: grep '^80081268 ' vectors.txt > v_81268.txt)
- *   cc -std=c99 -Wall -Wextra -Werror -DCHK_HAVE_CD_GEN5 -Dfunc_8007FCFC=chk_cd_send_cmd -Dfunc_8007F0C8=chk_ds_packet -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/tools/pe_spu_caller_check.c pc_port/platform/pe_plat_cd_gen5.c -o check
+ *   cc -std=c99 -Wall -Wextra -Werror -DCHK_HAVE_CD_GEN5 -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/tools/pe_spu_caller_check.c pc_port/platform/pe_plat_cd_gen5.c -o check
  *     (cdgen5 vectors, libcd/libds cases:
  *      grep -E '^(8007FB44|8007FCBC|80080CDC|8008227C|80082204|8007F608) ' vectors.txt > v_cd.txt)
  *   cc -std=c99 -Wall -Wextra -Werror -DCHK_HAVE_GPU_GEN -Dfunc_80076C34=chk_76c34 -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/tools/pe_spu_caller_check.c pc_port/platform/pe_plat_gpu_gen.c -o check
@@ -120,11 +120,12 @@
  *      PE_GuestCall, both with one argument; they and 0x80083644 (pe_plat_pad_recv_step) replay the absolute
  *      obj+0x46 / +0x36 writes coded in RETS (state26); 0x80084F8C is pe_plat_pad_record_busy; the native is
  *      void, so no return is compared)
- *   cc -std=c99 -Wall -Wextra -Werror -DCHK_HAVE_DS_GEN28 -Dfunc_800824F0=chk_ds_data_callback -Dfunc_8007EE84=chk_ds_command -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/tools/pe_spu_caller_check.c pc_port/platform/pe_plat_ds_gen28.c -o check
+ *   cc -std=c99 -Wall -Wextra -Werror -DCHK_HAVE_DS_GEN28 -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/tools/pe_spu_caller_check.c pc_port/platform/pe_plat_ds_gen28.c -o check
  *     (cdgen28 vectors; the stack buffer passed to 0x80080AE4, 0x80080C48 and the DS_CB3 callback 0x80130A00
  *      is compared frame-relative ("F+n"); 0x80080C48 returns the live *0x8009B6EC plus a coded delta, and the
  *      callback / 0x80082204 replay the absolute block writes coded in RETS (pos28 / cb28 / blk28); the
- *      hand-ported DsCommand / DsDataCallback are -D doubles; the native is void)
+ *      DsCommand / DsDataCallback are the pe_plat_cd_queue_command_host / pe_plat_ds_data_callback stand-ins below,
+ *      forwarding to chk_ds_command / chk_ds_data_callback; the native is void)
  *   cc -std=c99 -Wall -Wextra -Werror -DCHK_HAVE_CD_GEN29 -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/tools/pe_spu_caller_check.c pc_port/platform/pe_plat_cd_gen29.c -o check
  *     (cdgen29 vectors; no callees; register reads (the status byte) replayed in order and register stores
  *      compared in order; PE_CdLoad* / PE_CdStore* are the plain value accesses here, the poll tick is a
@@ -606,6 +607,29 @@ int32_t pe_plat_bios_strncmp(pe_plat_guest_addr a, pe_plat_guest_addr b, int32_t
 int chk_ds_packet(uint32_t mode, pe_addr_t loc, int count, uint32_t a3, pe_addr_t buf);
 int chk_ds_packet(uint32_t mode, pe_addr_t loc, int count, uint32_t a3, pe_addr_t buf)
 { char t[96]; snprintf(t, sizeof t, "8007F0C8,%08X,%08X,%08X,%08X,%08X", mode, loc, (uint32_t)count, a3, buf); note(t); return (int)ret_of(0x8007F0C8u); }
+/* Stand-ins for the callees whose guest names pe_plat/cd.h now binds to pe_plat_* providers (the header lines used to map the
+ * guest names with -Dfunc_X=chk_*, which redefine those macros under -Werror).  Each forwards to the chk_* double above, so the
+ * recorded call text is unchanged; they exist only in the modes that need them and only where no other definition does. */
+#ifdef CHK_HAVE_CD_GEN
+void pe_plat_cd_stream_handler_host(void);
+void pe_plat_cd_stream_handler_host(void) { chk_st_cd_interrupt(); }
+#endif
+#if (defined(CHK_HAVE_CD_GEN) || defined(CHK_HAVE_CD_GEN2)) && !defined(CHK_HAVE_CD_ISSUE_WRAPPER) && !defined(CHK_HAVE_CD_RETRY)
+void pe_plat_cd_flush(void) { chk_cd_flush(); }
+#endif
+#if defined(CHK_HAVE_CD_GEN2) || defined(CHK_HAVE_CD_GEN4) || defined(CHK_HAVE_DS_GEN28)
+uint32_t pe_plat_cd_queue_command_host(uint32_t command, uint32_t param, uint32_t extra, uint32_t callback);
+uint32_t pe_plat_cd_queue_command_host(uint32_t command, uint32_t param, uint32_t extra, uint32_t callback)
+{ return chk_ds_command(command, param, extra, callback); }
+#endif
+#if defined(CHK_HAVE_CD_GEN4) || defined(CHK_HAVE_DS_GEN28)
+uint32_t pe_plat_ds_data_callback(uint32_t callback) { return chk_ds_data_callback(callback); }
+#endif
+#ifdef CHK_HAVE_CD_GEN5
+int pe_plat_cd_issue_wrapper(uint32_t command, uint32_t data) { return chk_cd_send_cmd(command, data); }
+int pe_plat_cd_command_sequence_host(uint32_t mode, uint32_t loc, int count, uint32_t extra, uint32_t callback)
+{ return chk_ds_packet(mode, loc, count, extra, callback); }
+#endif
 /* cdgen7: CD data callbacks go through the host dispatcher; the vectors'
  * sentinel 0x80130980 stands for the callback target. */
 int PE_Cd_DispatchDataCallback(pe_addr_t target, uint32_t status, pe_addr_t response)
@@ -1620,8 +1644,10 @@ int main(int c, char **v)
                          (fn & 0x1FFFFFFFu) == 0x00130C80u || fn == 0x80084FE4u ||
                          fn == 0x800834E8u || fn == 0x80083578u || fn == 0x8007AAB4u || fn == 0x8007F72Cu || fn == 0x8007E5C4u)   /* no argument: $a0 there is leftover */
                     snprintf(w, sizeof w, "%08X@%u", fn, cnt);
-                else if ((fn & 0x1FFFFFFFu) == 0x00130AC0u || (fn & 0x1FFFFFFFu) == 0x00131240u ||
-                         (fn & 0x1FFFFFFFu) == 0x00131280u) snprintf(w, sizeof w, "%08X,%08X@%u", fn, x0, cnt);
+                else if (((fn & 0x1FFFFFFFu) == 0x00130AC0u || (fn & 0x1FFFFFFFu) == 0x00131240u ||
+                          (fn & 0x1FFFFFFFu) == 0x00131280u) &&
+                         entry != 0x8007E704u && entry != 0x8007E964u)   /* cdgen39 also dispatches 0x…131240 (three fields, below) */
+                    snprintf(w, sizeof w, "%08X,%08X@%u", fn, x0, cnt);
                 else if (fn == 0x80073C84u || fn == 0x8007E1E4u || fn == 0x8007E1F4u) snprintf(w, sizeof w, "%08X,%08X,%08X@%u", fn, x0, x1, cnt);
                 else if (fn == 0x80071A04u) { char p[24]; fmt_want_ptr(p, sizeof p, x0); snprintf(w, sizeof w, "80071A04,%s,%08X,%08X@%u", p, x1, x2, cnt); }
                 else if (fn == 0x8007F0C8u && entry == 0x80082314u) {   /* cdgen38: the record is in the caller's frame */

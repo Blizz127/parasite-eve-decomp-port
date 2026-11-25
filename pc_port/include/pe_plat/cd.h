@@ -167,10 +167,9 @@ uint32_t pe_plat_ds_data_callback(uint32_t callback);
 int pe_plat_ds_system_status(void);
 void pe_plat_cd_intr_poll(void);
 /* libds DsGetDiskType 0x80082314 (pe_plat_ds_gen38.c, independent
- * re-implementation from black-box vectors: cdgen38).  NOT BOUND: the
- * retail command flow needs the CD device, which the production boot has
- * not enabled when func_800698D4 mounts (see
- * docs/evidence/native-cd-rows-20261125/REPORT.md). */
+ * re-implementation from black-box vectors: cdgen38).  Follows the retail
+ * command flow, so it needs the CD device model: func_800698D4 attaches it
+ * around the first mount (PE_698D4_Mount). */
 int pe_plat_ds_get_disk_type(void);
 /* libds text_170 0x8007E704, the command-queue flush (pe_plat_ds_gen39.c,
  * independent re-implementation from black-box vectors: cdgen39). */
@@ -271,6 +270,16 @@ void pe_plat_cd_data_ready_callback(void);
 #endif
 void pe_plat_cd_flush(void);
 #define func_8007B9EC pe_plat_cd_flush
+/* libcd CD_ready 0x8007B290: the BIOS-side CD readiness poll (pe_plat_cd_ready.c,
+ * independent re-implementation from black-box vectors: cdgen36).  The wrapper
+ * pe_plat_cd_ready above is a different guest function (0x8007A488). */
+int pe_plat_cd_ready_poll(uint32_t mode, uint32_t result);
+#define func_8007B290 pe_plat_cd_ready_poll
+/* libds-block transfer-step gate 0x80081110 (pe_plat_81110.c, independent
+ * re-implementation from black-box vectors: cdgen36). */
+void pe_plat_ds_81110(void);
+int pe_plat_ds_81110_value(void);   /* the same step, returning the value the vectors show in $v0 */
+#define func_80081110 pe_plat_ds_81110
 
 #define func_8007E594 pe_plat_ds_cq_clear
 #define func_8007E5C4 pe_plat_ds_cq_pop
@@ -347,6 +356,7 @@ void pe_plat_cd_flush(void);
 #define func_8007F72C pe_plat_ds_system_status
 #define func_8007C13C pe_plat_cd_intr_poll
 #define func_8007E704 pe_plat_ds_text_170
+#define func_80082314 pe_plat_ds_get_disk_type
 #define func_8007E964 pe_plat_ds_text_3d0
 #define func_8007E8F4 pe_plat_ds_text_360
 #define func_8007EB88 pe_plat_ds_text_5f4
@@ -460,6 +470,8 @@ int func_80081D18(int a0, int a1, int a2);
 /* Canonical guest-name prototypes for the bindings above (generated
  * from the pe_plat prototypes; tools read callee signatures from these). */
 int func_8007C044(uint32_t buffer, uint32_t words);
+void func_80081110(void);
+int func_8007B290(uint32_t mode, uint32_t result);
 /* Canonical guest-name prototypes for the bindings above (generated
  * from the pe_plat prototypes; tools read callee signatures from these). */
 int func_8007E8F4(void);
@@ -546,4 +558,7 @@ void func_8007E704(uint32_t status, uint32_t response);
 /* Canonical guest-name prototypes for the bindings above (generated
  * from the pe_plat prototypes; tools read callee signatures from these). */
 void func_8007E964(uint32_t status, uint32_t response);
+/* Canonical guest-name prototypes for the bindings above (generated
+ * from the pe_plat prototypes; tools read callee signatures from these). */
+int func_80082314(void);
 #endif

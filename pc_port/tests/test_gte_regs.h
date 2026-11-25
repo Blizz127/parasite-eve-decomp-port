@@ -42,6 +42,35 @@ static void test_GTE_regs_pack(void)
     PASS();
 }
 
+/* InitGeom (pe_plat_gte_init.c): ctrl 24..30 get the library defaults, every
+ * other control register and the guest callback word 0x800A3450 are left alone
+ * (the original's BIOS-patch/CP0 effects are a documented, unmodelled gap). */
+static void test_GTE_initgeom_controls(void)
+{
+    uint32_t before[32], again[32];
+    uint32_t i, pass;
+    static const uint32_t expect[7] = {0u, 0u, 0x3E8u, 0xFFFFEF9Eu, 0x01400000u, 0x155u, 0x100u};
+    TEST("GTE_initgeom_controls");
+    for (pass = 0; pass < 3; pass++) {
+        ResetTestState();
+        memset(&g_pe_gte, 0, sizeof g_pe_gte);
+        PE_StoreU32(0x800A3450u, pass);
+        for (i = 0; i < 32; i++)
+            PE_GTE_WriteCtrl(i, 0x9E3779B9u * (i + 1u + pass * 7u));
+        for (i = 0; i < 32; i++) before[i] = PE_GTE_ReadCtrl(i);
+        func_80077F7C();
+        for (i = 0; i < 32; i++) {
+            uint32_t want = (i >= 24u && i <= 30u) ? expect[i - 24u] : before[i];
+            ASSERT(PE_GTE_ReadCtrl(i) == want, "ctrl register after InitGeom");
+        }
+        ASSERT(PE_LoadU32(0x800A3450u) == pass, "guest callback word untouched");
+        for (i = 0; i < 32; i++) again[i] = PE_GTE_ReadCtrl(i);
+        func_80077F7C();
+        for (i = 0; i < 32; i++) ASSERT(PE_GTE_ReadCtrl(i) == again[i], "idempotent");
+    }
+    PASS();
+}
+
 static void test_GTE_regs_rtv0_sequence(void)
 {
     static const int16_t R[9] = { 0x0E00, -0x123, 0x0400, 0x0011, 0x1000, -0x7FF, -0x0F00, 0x0222, 0x0B00 };

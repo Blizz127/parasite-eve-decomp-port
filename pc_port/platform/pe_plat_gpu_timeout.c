@@ -24,6 +24,7 @@
 #include "pe_bios_string.h"
 #include "pe_plat/gpu_timeout.h"
 #include "pe_plat/gpu_regs.h"
+#include "pe_plat/gpu_host.h"
 #include "psx_compat.h"
 
 #define W_LIMIT   0x80095888u
@@ -41,6 +42,7 @@
 int32_t pe_plat_gpu_timeout(void)
 {
     int32_t now = (int32_t)func_80073A44(-1);
+    now = pe_plat_gpu_host_deadline_clock(now);   /* host: compare in the clock the deadline was seeded in */
     int32_t limit = (int32_t)PE_LoadU32(W_LIMIT);
     if (now <= limit) {
         int32_t count = (int32_t)PE_LoadU32(W_COUNT);

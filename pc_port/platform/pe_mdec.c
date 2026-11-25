@@ -157,6 +157,7 @@ uint32_t PE_MDEC_ReadDMA0(uint32_t offset)
     if(offset==8u) return g_mdec.dma0_chcr;
     return (uint32_t)MdecBoundary("MDEC_DMA0_register",offset);
 }
+static uint64_t Fnv1a64(const uint8_t *data, uint32_t size);
 void PE_MDEC_WriteDMA0(uint32_t offset,uint32_t value)
 {
     if(g_mdec.dma0_active) {
@@ -186,6 +187,27 @@ void PE_MDEC_WriteDMA0(uint32_t offset,uint32_t value)
     }
     g_dma0_source=source;g_dma0_port_bytes=bytes;g_input_pending=0;
     g_mdec.dma0_chcr=value;g_mdec.dma0_active=1;
+    /* A DMA0 input transfer started from the registers is the same submission
+     * PE_MDEC_SubmitInputTable records (whatever command is latched, including
+     * none): command, source, word count, BCR, payload hash, counters. */
+    {
+        PeMdecUpload *upload=&g_mdec.uploads[g_mdec.upload_count % PE_MDEC_UPLOAD_HISTORY];
+        g_mdec.input_wait_count++;
+        upload->command=g_mdec.command_last_write;
+        upload->source=source;
+        upload->word_count=bytes/4u;
+        upload->bcr=g_mdec.dma0_bcr;
+        upload->payload_fnv1a64=Fnv1a64(PE_TranslateConst(source,bytes),bytes);
+        g_mdec.upload_count++;
+        /* A latched quant/scale command is, for the block API, only
+         * command_last_write plus a queued DMA; take the same internal state
+         * (no CPU-latched payload wait, block-level service) so a later
+         * block-level submission does not see a pending CPU command. */
+        if(g_cpu_words && !g_cpu_received && (g_cpu_command>>29u)>=2u && (g_cpu_command>>29u)<=3u) {
+            g_cpu_command=g_cpu_words=g_cpu_received=0;
+            g_dma0_port_bytes=0;
+        }
+    }
 }
 uint32_t PE_MDEC_ReadDMA1(uint32_t offset)
 {
@@ -507,6 +529,10 @@ static int MdecAdmitOutputRead(unsigned order,uint32_t bytes)
         return MdecBoundary("MDEC_output_short",bytes);
     return 1;
 }
+uint32_t PE_MDEC_StatusWord(void)
+{
+    return g_mdec.dma0_active ? 0x20000000u : 0u;
+}
 int PE_MDEC_Service(void)
 {
     int completed=0,input_progress=0,output_progress=0;
@@ -734,6 +760,7 @@ void PE_MDEC_Init(void)
     g_decode_command=0;g_drain=0;
 }
 
+static void MdecControlWrite(uint32_t value);
 void PE_MDEC_BeginReset(void)
 {
     g_dma1_port=0;
@@ -746,10 +773,25 @@ void PE_MDEC_BeginReset(void)
     g_input_pos=g_input_count=g_current.pos=g_current.count=g_macroblocks=0;
     MdecClearOutputQueue();
     g_decode_valid=g_input_pending=0;g_output_bytes=0;
-    PE_MDEC_WriteControl(0x80000000u);
+    MdecControlWrite(0x80000000u);
 }
 
+/* Register-level control write.  A reset command (bit 31) arriving this way
+ * is the event PE_MDEC_BeginReset models, so it takes the same path: the
+ * reset counter advances and the model (registers, telemetry, FIFOs) restarts
+ * exactly as BeginReset leaves it.  Other control words only update the
+ * control latch. */
 void PE_MDEC_WriteControl(uint32_t value)
+{
+    if (value & 0x80000000u) {
+        PE_MDEC_BeginReset();
+        if (value != 0x80000000u) MdecControlWrite(value);
+        return;
+    }
+    MdecControlWrite(value);
+}
+
+static void MdecControlWrite(uint32_t value)
 {
     g_mdec.control_last_write = value;
     g_mdec.control_write_count++;

@@ -3,6 +3,8 @@
  * decoder is not bound into the production movie path. */
 #include "pe_vlc_decode.h"
 #include "pe_plat/vlc_frame.h"
+#include "retail_mdec_vlc_bound_cases.h"
+#include "retail_c89c_real_sequence.h"
 #include "retail_mdec_vlc_cases.h"
 #include "mdec_vlc_check_core.h"
 
@@ -90,6 +92,7 @@ static int PressAdapterCall(const uint8_t *in,size_t n,uint32_t expect_len,uint6
     ResetTestState();
     memset(PE_Translate(0x80150000u,64u*2016u),0,64u*2016u);
     memcpy(PE_Translate(0x80150000u,n),in,n);
+    PE_StoreU32(0x8011EB8Cu,0x00FFFFFFu);             /* shipped value of the bound word */
     memset(PE_Translate(0x80160000u,region),0xCD,region);
     uint32_t a0r=0,a1r=0;
     int ret=pe_plat_vlc_frame_host_regs(0x80150000u,0x80160000u,0x80130000u,0u,&a0r,&a1r);
@@ -134,6 +137,31 @@ static void test_PRESS_vlc_adapter(void)
         snprintf(msg,sizeof(msg),"adapter hang %s: %s",MDECVLC_hang[k].name,why);
         ASSERT(ok,msg);
     }
+    ResetTestState();
+    PE_Disc_Close(disc);PASS();
+}
+
+/* Bounded/resume chains of the original and the 253-call real playback sequence, replayed through the adapter in guest RAM. */
+#define C89CR_RESET() ResetTestState()
+#define C89CR_STOPPED() PE_Port_ShouldStop()
+#include "c89c_replay_core.h"
+static int PressReplayRaw(void *ctx, uint32_t lba, uint8_t raw[2352])
+{
+    return PE_Disc_ReadRawSector((PE_Disc *)ctx, lba, raw);
+}
+static void test_PRESS_c89c_replay(void)
+{
+    TEST_RETAIL_DISC1("PRESS_c89c_replay");
+    char err[256]={0},msg[400];unsigned ns,nk,nc,nr;
+    PE_Disc *disc=BTL6_OpenDisc1(err,sizeof(err));
+    ASSERT(disc!=NULL,err[0]?err:"opening movie disc unavailable");
+    int ok=C89CReplayBound(PressReplayRaw,disc,err,sizeof(err),&ns,&nk,&nc);
+    snprintf(msg,sizeof(msg),"C89C bound/resume replay: %s",ok?"":err);
+    ASSERT(ok,msg);
+    ASSERT(nc==96u && ns>=1390u && nk==4u,"C89C bound replay coverage");
+    ok=C89CReplayReal(PressReplayRaw,disc,err,sizeof(err),&nr);
+    snprintf(msg,sizeof(msg),"C89C real-sequence replay: %s",ok?"":err);
+    ASSERT(ok && nr==253u,msg);
     ResetTestState();
     PE_Disc_Close(disc);PASS();
 }
