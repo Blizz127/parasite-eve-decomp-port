@@ -170,6 +170,18 @@ void HostFB_PresentDispEnv(pe_addr_t env)
     else if (end > 258) end = 258;
     uint32_t top = (uint32_t)(start - 16);
     uint32_t dh = (uint32_t)(end - start);
+    {   /* harness aid: PE_DISPENV_LOG=1 logs each distinct DISPENV (disp rect, screen rect) */
+        static int on = -1; static uint32_t last[8]; static int have;
+        uint32_t cur[8] = { dx, dy, dw, (uint32_t)PE_LoadU16(env + 6u),
+                            (uint32_t)PE_LoadU16(env + 8u), (uint32_t)PE_LoadU16(env + 10u),
+                            (uint32_t)PE_LoadU16(env + 12u), (uint32_t)PE_LoadU16(env + 14u) };
+        if (on < 0) on = getenv("PE_DISPENV_LOG") != NULL;
+        if (on && (!have || memcmp(cur, last, sizeof cur))) {
+            fprintf(stderr, "[DISPENV] vblank=%u disp=(%u,%u,%u,%u) screen=(%u,%u,%u,%u) -> top=%u dh=%u\n",
+                    (unsigned)PE_GPU_VSyncQuery(), cur[0], cur[1], cur[2], cur[3], cur[4], cur[5], cur[6], cur[7], top, dh);
+            memcpy(last, cur, sizeof last); have = 1;
+        }
+    }
 
     if (!PE_Port_FramePresentationAllowed()) return;
     fb_scan.valid = 1; fb_scan.dw = dw; fb_scan.top = top; fb_scan.dh = dh;

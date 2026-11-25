@@ -31,6 +31,7 @@
 #include "pe_plat/bios_file.h"
 #include "pe_plat/bios_string.h"
 #include "pe_plat/bios_rand.h"
+#include "pe_plat/bios_event.h"
 #include "pe_plat/bios_sys.h"
 #include "pe_plat/gpu_status.h"
 #include "pe_plat/gpu_area.h"
@@ -160,7 +161,6 @@ void PE_GTE_WriteCtrl(uint32_t reg, uint32_t value);
 void PE_GTE_Command(uint32_t cmd);
 
 /* ── memory-card BIOS / libcard (pc_port/platform/pe_bios_card.c) ──── */
-int  func_800726F4(uint32_t handle);                 /* B(0Bh) TestEvent */
 int  func_8007DD44(uint32_t chan);                   /* A(ABh) _card_info */
 int  func_8007DD54(uint32_t chan);                   /* A(ACh) _card_load */
 int  func_8007DD74(pe_addr_t chan);                  /* _card_clear: _new_card + sector-3Fh write (pe_plat_card_clear.c) */
@@ -271,6 +271,7 @@ int  func_8007F72C(void);            /* CdReady */
 int func_8007F778(void);            /* CdReady queue-depth getter D_800A3608 */
 void func_800870F0(unsigned int a0);
 #include "pe_plat/mdec_expand.h"
+#include "pe_plat/mdec_io_host.h"
 int  func_8010C89C(uint32_t a0, pe_addr_t a1, pe_addr_t a2,
                    uint32_t a3); /* VLC frame decoder; a3 dead */
 typedef struct PeC89CTelemetry {
@@ -363,8 +364,6 @@ int  func_8007B558(uint32_t cmd, uint32_t data, pe_addr_t dst,
                    uint32_t mode);   /* CD command-issue controller */
 int  func_8007FCFC(uint32_t cmd, uint32_t data); /* CD issue wrapper */
 char *func_800719F4(char *destination, const char *source); /* BIOS A(15h) strcat */
-void func_8010BFA0(pe_addr_t command_block,uint32_t mode);
-void func_8010C01C(pe_addr_t destination,uint32_t words);
 void func_8010BE3C(int mode);         /* libpress DecDCTReset wrapper */
 
 /* ── streaming wrappers (pc_port/game/boot/, Phase 6E-B16) ────────── */

@@ -1,5 +1,52 @@
 # Changelog
 
+## 2026-11-25 — source sync 2, no new build
+
+Source only. No new binary. Synced from the development tree at `9f7d1a099`
+(previous source sync: `541ce991f`, same day), same rule as before: unchanged
+public files are replaced, curated files get the change as a patch, and files
+that define Psy-Q SDK functions, include backend headers, or carry
+retail-derived test data stay unpublished. 85 development commits are folded
+in: 54 files added, 16 changed (11 replaced, 5 patched).
+
+**Native PC port (source): more host providers replacing Psy-Q code**
+
+- New host providers under `pc_port/platform/pe_plat_*.c` for the GPU queue
+  pump, DMA start, DrawSync, PutDispEnv, wait timeout and TIM upload, the BIOS
+  event services, libds/libpad leaves (DsDataCallback, DsSystemStatus,
+  DsGetDiskType, command-queue flush, PadStartCom, SIO0 start) and the MDEC
+  I/O wrappers, plus a BS-frame to MDEC run-length decoder
+  (`pe_vlc_decode.c`) with its guest adapter. Each header states it was
+  written clean-room from psx-spx and black-box input/output vectors of the
+  original code, with no SDK source.
+- The declaration-only `pe_plat` headers the already-published providers
+  include (`cd.h`, `gte.h`, `cd_stream.h`, `gpu_primitive.h`, `bios_file.h`,
+  `bios_string.h`, `state.h`) are published, so the provider sources resolve
+  their includes. `psx_compat.h` stays unpublished (it defines two
+  Psy-Q-classified functions).
+- Carried from the held list of the previous sync: key-merge sources and
+  four CTests in `pc_port/CMakeLists.txt`, held-key merge and latch reset in
+  `host_window.c`, a `%llu` fix in `plat_cheats.c`, wording fixes in
+  `test_native.c`.
+
+**Not published (held)**
+
+- Hand ports of Psy-Q-classified functions, `pe_libcd.c`, `pe_libetc.c`,
+  `pe_bios_card.c`, `psx_compat.h`, the quarantined source-derived providers,
+  and three retail-derived test-vector headers.
+- The development-side `CMakeLists.txt` and `test_native.c` changes since
+  `541ce991f` do not apply cleanly to the curated copies. The PC port still
+  does not build from this repository alone.
+
+**Verification**
+
+- Strict Psy-Q guard on the published `pc_port` tree: PASS, 0 findings.
+- Retail-data guard (strict) on all 70 written files: no retail byte runs.
+- Private-content and secrets scan: clean (0 findings).
+
+**Public binaries** stay held while the runtime links Psy-Q-classified
+functions. Newest public binary: [`native-only-e26d98fd`](https://github.com/Blizz127/parasite-eve-decomp-port/releases/tag/native-only-e26d98fd); hardware-tested Day 1 build: [`day1-r5`](https://github.com/Blizz127/parasite-eve-decomp-port/releases/tag/day1-r5).
+
 ## 2026-11-25 — source sync, no new build
 
 Source only. No new binary. Synced from the development tree at `541ce991f`

@@ -358,8 +358,8 @@ void pe_plat_cheats_frame(void)
         static int every = -1;
         if (every < 0) every = getenv("PE_WARP_TRACE") ? atoi(getenv("PE_WARP_TRACE")) : 0;
         if (every > 0 && C.frames % every == 0)
-            fprintf(stderr, "[CHEATS] trace present=%d token=%08X cur=%08X story=%08X d1a0=%08X ticks=%u vm=%08X\n",
-                    C.frames, (unsigned)PE_LoadU32(GA_TOKEN), (unsigned)PE_LoadU32(GA_ROOM_CUR),
+            fprintf(stderr, "[CHEATS] trace present=%llu token=%08X cur=%08X story=%08X d1a0=%08X ticks=%u vm=%08X\n",
+                    (unsigned long long)C.frames, (unsigned)PE_LoadU32(GA_TOKEN), (unsigned)PE_LoadU32(GA_ROOM_CUR),
                     (unsigned)PE_LoadU32(GA_STORY), (unsigned)PE_LoadU32(GA_D1A0),
                     (unsigned)PE_LoadU32(0x8009CDA4u), (unsigned)PE_LoadU32(0x8009CE00u));
     }

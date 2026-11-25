@@ -1800,6 +1800,8 @@ int PE_GPU_WriteGP1(uint32_t value)
         if(op==5)g_gpu.state.display_start=value&0x7FFFFu;
         if(op==6)g_gpu.state.display_horizontal_range=value&0xFFFFFFu;
         if(op==7)g_gpu.state.display_vertical_range=value&0xFFFFFu;
+        if(op==7||op==5||op==8){static int on=-1; if(on<0)on=getenv("PE_DISPENV_LOG")!=NULL;
+            if(on)fprintf(stderr,"[GP1] vblank=%u op=%02x val=%06x\n",(unsigned)g_gpu.state.vsync_count,(unsigned)op,(unsigned)(value&0xFFFFFFu));}
         if(op==8) {
             g_gpu.state.display_mode=value&255u;
             g_gpu.state.status=(g_gpu.state.status&~0x7F4000u) |

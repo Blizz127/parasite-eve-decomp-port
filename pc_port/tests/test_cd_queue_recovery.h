@@ -41,10 +41,14 @@ static void test_DAY2_cd_queue_recovery(void)
                 g_bootstrap_arg4_calls[0].arg1==CDREC_cases[k].arg1,"recovery callback boundary contract");
         } else ASSERT(!PE_Port_ShouldStop()&&!g_stub_order_count,"queue recovery unexpected boundary");
     }
+    /* A count above the ring size (9) is walked the way the original does (the ring index wraps and
+     * entries repeat); the clean-room native (pe_plat_ds_gen39.c) has no host callback-array guard
+     * of the retired hand port, so the callback words are zero here and the queue must be emptied. */
     ResetTestState();CdRecoverySeed();PE_StoreU32(0x800A3608u,9u);
-    { uint64_t before=hit_camera_hash(CDREC_ranges,4);
-      func_8007E704(5u,0u);
-      ASSERT(PE_Port_ShouldStop() && CountOrderLog("func_8007E704_queue_count")==1 &&
-        hit_camera_hash(CDREC_ranges,4)==before,"corrupt queue count must stop before host callback-array overflow"); }
+    for(unsigned i=0;i<8;i++) PE_StoreU32(0x800A3540u+i*24u+16u,0u);
+    PE_StoreU32(0x800A3690u,0u);   /* the push ring index and the queue head: seeded garbage would index outside guest RAM */
+    PE_StoreU32(0x800A3600u,0u);
+    func_8007E704(5u,0u);
+    ASSERT(!PE_Port_ShouldStop() && PE_LoadU32(0x800A3608u)==0u,"corrupt queue count 9 is walked and the queue emptied");
     PASS();
 }

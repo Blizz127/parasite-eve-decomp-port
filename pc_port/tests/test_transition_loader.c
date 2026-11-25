@@ -39,7 +39,7 @@ int __wrap_pe_plat_cd_read_poll_host(pe_addr_t local)
     }
     return (DAY1_transition_cases[current].profile&2)?retry[i]:simple[i];
 }
-pe_addr_t __wrap_func_800718D0(pe_addr_t tim)
+pe_addr_t __wrap_pe_plat_gpu_load_tim(pe_addr_t tim)
 {
     call(0x800718D0,tim,0,0,0,0,0);
     if(++tims==1 && DAY1_transition_cases[current].mutate)PE_StoreU32(0x800B0DD8u,2013);

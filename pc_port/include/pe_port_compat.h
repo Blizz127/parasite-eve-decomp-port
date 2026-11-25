@@ -6,9 +6,12 @@
 
 #include "psx_compat.h"
 #include "pe_plat/bios_rand.h"   /* BIOS rand/srand -> pe_plat names */
+#include "pe_plat/bios_event.h"  /* BIOS event services -> pe_plat names */
 #include "pe_plat/bios_sys.h"    /* BIOS exit/FlushCache/ChangeClear* -> pe_plat names */
 #include "pe_plat/gpu_status.h"  /* GetODE -> pe_plat name */
 #include "pe_plat/gpu_area.h"    /* SetTexWindow/SetDrawArea -> pe_plat names */
+#include "pe_plat/gpu_timeout.h" /* GPU wait timeout (0x80077404) -> pe_plat name */
+#include "pe_plat/gpu_dma_queue.h" /* GPU queue pump/wait (0x80077294) -> pe_plat name */
 #include "pe_plat/irq_callback.h" /* ResetCallback/InterruptCallback -> pe_plat names */
 #include "pe_plat/pad.h"          /* PadGetState -> pe_plat name */
 

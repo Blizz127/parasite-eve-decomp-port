@@ -59,6 +59,14 @@ int pe_plat_pad_load_act_info(uint32_t record, int arg);
  * vectors: pc_port/tools/pe_cd_leaf_vectors.py entries 0x80084FC4/0x80084FE4). */
 void pe_plat_pad_rc2_wait_set(uint32_t limit);
 int pe_plat_pad_rc2_wait_check(void);
+/* libpad communication start 0x80082CF0 (pe_plat_pad_gen34.c, clean-room from
+ * black-box vectors: pe_cd_leaf_vectors.py cdgen34). */
+int pe_plat_pad_start_com(void);
+#define func_80082CF0 pe_plat_pad_start_com
+/* libpad/libcard SIO0 start 0x80082E00 (pe_plat_pad_gen35.c, clean-room from
+ * black-box vectors: pe_cd_leaf_vectors.py cdgen35). */
+int pe_plat_pad_sio_start(uint32_t record);
+#define func_80082E00 pe_plat_pad_sio_start
 #define func_800825C0 pe_plat_pad_get_state
 #define func_80082680 pe_plat_pad_info_mode
 #define func_80082974 pe_plat_pad_set_act
@@ -133,4 +141,8 @@ void func_80082534(void);
 /* Canonical guest-name prototypes for the bindings above (generated
  * from the pe_plat prototypes; tools read callee signatures from these). */
 void func_800844E4(uint32_t first,uint32_t second);
+/* Canonical guest-name prototype for the PadStartCom binding. */
+int func_80082CF0(void);
+/* Canonical guest-name prototype for the binding above. */
+int func_80082E00(uint32_t record);
 #endif

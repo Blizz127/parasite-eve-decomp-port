@@ -451,7 +451,120 @@ its return is ignored by the void host API. Global words around the output
 locations are nonzero seeded values. No target hand-port or test bodies
 were used in designing these vectors.
 
-Usage: pe_cd_leaf_vectors.py OUT.txt [ENTRY ... | flush | callback | reverb | modetype | spucallees | errmath | spureverb | fidma | cardclear | qsort | cdgen | cdgen2 | cdgen3 | cdgen5 | cdgen6 | cdgen7 | cdgen8 [sweep] | cdgen9 | cdgen10 | cdgen11 | cdgen12 | cdgen13 | cdgen14 | cdgen15 | cdgen16 | cdgen17 | cdgen18 | cdgen19 | cdgen20 | cdgen21 | cdgen22 | cdgen23 | cdgen24 | cdgen25 | cdgen26 | cdgen28 | cdgen29 | cdgen30 | cdgen31 | cdgen32 | cdgen-indep | cdgen-sweep]
+Thirty-third batch (`cdgen33`, table CDGEN33; sw-cd 2026-11-25): remaining
+libcd/libds rows currently hand ports.  DsDataCallback 0x800824F0 (one
+argument; calls 0x80073CF4), DsSystemStatus 0x8007F72C (no arguments; calls
+the status-lane getter 0x8007FBF0 and the queue-length query 0x8007F778;
+both stopped with independent, swept returns) and Cd_SetIntrMask / text_1688
+0x8007C13C (no arguments; polls the acknowledge worker 0x8007AAB4 through
+the CD register pointer word 0x8009B27C).  0x8007AAB4 returns POS33[p] for
+its first k calls, then FIN33[f]; on its first call it also writes the byte
+at the register pointer's target = IDX33[w] (w == 8: no write; in production
+the worker selects register index 1, so the register byte changes under the
+caller).  While 0x8007AAB4 returns nonzero the entry dispatches the callback
+words 0x8009AFB8 (result bit 2; sentinel 0x80131180, or its alias) and 0x8009AFB4
+(bit 1; sentinel 0x80131140) with the status byte at 0x8009B295 / 0x8009B294
+and the response address 0x800A3468 / 0x800A3460 (null words are skipped); the
+CD index byte read before the loop is restored (& 3) after it.  Every nonzero
+final result of 0x8007AAB4 spins forever, so FIN33 is all zero.  RETS code k | p << 4 | f << 8 | w << 12.  In a quarter of the
+cases the register pointer word is moved into the record zone (plain
+memory).  For 0x8007F72C a third of the results are drawn from discriminator sets (0x8007FBF0: 1 and
+values that only share low bits with 1; 0x8007F778: positive values with a zero low half, 0x7FFFFFFF,
+0x80000000, -1).
+
+Thirty-fifth batch (`cdgen35`, table CDGEN35): the SIO0 start routine
+0x80082E00 (guest name `_padInitSioMode` in the classification; one argument,
+a 0xF0-byte pad/card record).  Fresh-author batch (sw-pad, 2026-11-25): the
+design came only from running the original under the harness with the callees
+reported by `_check_callees_complete` (0x80083578, 0x80084FC4) stopped and
+the slot words 0x8009B744 / 0x8009B748 pointing at sentinels
+(SLOT23_44 / SLOT23_48 or their KUSEG aliases), then observing which words it
+reads and writes.  No target hand-port, test body or disassembly was used.
+Seeds: the record (+0xC word, +0x36 / +0x50 bytes, +0x3C pointer, +0xE8 byte,
+filler), the index word 0x8009B764 (0, 1, -1, 4..8, -2 and wrap values) and
+every counter cell 0x8009B774..0x8009B79C that 0x8009B77C + 4 * index can
+reach (small, negative and edge words; positive counts stay <= 6), the
+interrupt-status pointer word 0x8009B784 and the SIO base word 0x8009B788
+(EXE value, or a record-zone pointer in some cases).  SIO status
+(0x1F801044) and control (0x1F80104A) reads follow per-case value sequences
+(SIO35_SEQ), so the first and second status reads differ; the data-register
+read after the byte write is seeded in half of the cases.  The two slots
+return scripted values and, on their m-th call, may rewrite one word the
+routine reads later (record +0xC / +0x36 / +0x50 / +0x3C, a counter cell,
+the index word, the status pointer), absolutely, so a native that hoists a
+read fails.  0x80083578 and 0x80084FC4 return scripted values the original
+ignores.
+
+Thirty-fourth batch (`cdgen34`, table CDGEN34): the libpad communication
+start routine 0x80082CF0 (guest name PadStartCom in the classification; no
+argument).  Fresh-author batch (sw-padstart, 2026-11-25), designed from harness
+runs only: `_check_callees_complete` reported the five static callees
+(0x80072714, 0x80072724, 0x80073C84, 0x8007E1E4, 0x8007E1F4), all stopped with
+scripted returns, and one-variable grids over the guest words the routine reads
+showed which words matter (the slot word 0x8009B728 and the argument word
+0x8009B758 are read twice, the interrupt-status pointer word 0x8009B784 once)
+and where each read sits relative to the callees (a callee write that changes a
+later read proves the read comes after that call).  The callees' scripted
+returns are ignored by the original; each callee's RETS value is instead a
+code for an absolute write it makes on its call (the checker's stub repeats the
+write): the interrupt-status pointer word (the EXE value or a record-zone
+pointer), the mask word behind a zone pointer, the argument word, the slot word
+(0, a sentinel, its KUSEG alias, a second sentinel), an unread guest word, or
+the counter words.  The slot sentinels 0x80131240 / 0x80131280 return and may
+write on their first or second call.  The mask register (0x1F801074) is seeded
+per case.  No target hand-port, test body or disassembly was used.
+
+Usage: pe_cd_leaf_vectors.py OUT.txt [ENTRY ... | flush | callback | reverb | modetype | spucallees | errmath | spureverb | fidma | cardclear | qsort | cdgen | cdgen2 | cdgen3 | cdgen5 | cdgen6 | cdgen7 | cdgen8 [sweep] | cdgen9 | cdgen10 | cdgen11 | cdgen12 | cdgen13 | cdgen14 | cdgen15 | cdgen16 | cdgen17 | cdgen18 | cdgen19 | cdgen20 | cdgen21 | cdgen22 | cdgen23 | cdgen24 | cdgen25 | cdgen26 | cdgen28 | cdgen29 | cdgen30 | cdgen31 | cdgen32 | cdgen33 | cdgen34 | cdgen35 | cdgen-indep | cdgen-sweep]
+Thirty-eighth batch (`cdgen38`, table CDGEN38; sw-cd 2026-11-25): libds
+DsGetDiskType 0x80082314 (no arguments; currently a host adapter).  Callees
+stopped and recorded: DsPacket 0x8007F0C8 (five arguments; its record pointer
+is in the caller's frame, compared as "F+n"), DsSystemStatus 0x8007F72C,
+the lane getter 0x8007FBF0 (a0 recorded; first read LANE38[i0], later ones LANE38B[i1], RETS code i0 | i1 << 4; a second read of 0x10 makes the function return 0x10), CdIntToPos 0x80080B44,
+DsEndReadySystem 0x80081DF8 and 0x800822AC.  DsSystemStatus follows a coded
+sequence (RETS code m | idx_i << 4i): m calls whose values come from SV38
+(odd calls never 1, even calls never 3) and end with 1 at an odd call or 3 at
+an even one (every other sequence waits forever and is not generated).  The
+lane getter returns one value (2 in about a third of the cases); DsPacket
+returns 0 or a nonzero word.  When DsPacket is nonzero the original polls the
+plain word 0x800B28F8 (which the command-complete callback text_EC writes in
+production): MEMSEQ, a harness model of that asynchronous event (psx-spx: the
+drive answers some frames after the command), feeds k zeros, then a nonzero V
+and then W for the final load; the checker replays those reads in order.
+
+Thirty-ninth batch (`cdgen39`, table CDGEN39, first entry; sw-cd 2026-11-25): libds text_170
+0x8007E704 (status, response; void; currently a hand port in cd_stream_port.c),
+the command-queue flush.  It walks the ring of 0x18-byte entries at
+0x800A3540 (head word 0x800A3600, count word 0x800A3608), calls the queue
+push 0x8007EB88 (stopped, three arguments recorded) with (word 0, the low byte of status, response) for every entry whose
+word 0 is nonzero, clears the queue block (75 zero stores) and then calls each
+entry's callback word (+0x10) with (status byte, response).  Callback words are 0, a
+sentinel (0x80131200 / 0x80131240) or its KUSEG alias; the port dispatches them
+through PE_Cd_DispatchDataCallback.  Seeded: head (0..9, 15, -1, 0x7FFFFFFF,
+0x80000000: the wrap test is signed), count (0..16, -1, 0x80000000), the entry
+words and the response (zone pointer or word).  0x8007EB88 may rewrite the count
+word on its call m (RETS code m | v << 4; absolute, logged), which decides
+whether the loop reloads the count each pass.
+
+Thirty-ninth batch, second entry (`cdgen39`, table CDGEN39; sw-cd 2026-11-25): libds text_3D0
+0x8007E964 (status, response; void; currently a hand port in cd_stream_port.c),
+the command-complete / error handler.  It works on the ring of 0x18-byte
+entries at 0x800A3540 (read index 0x800A3604, write index 0x800A3600, count
+0x800A3608; entry +0 sequence, +4 byte, +0xC word, +0x10 callback word, +0x14
+retry word), records the sequence and status at 0x800A3510 / 0x800A3514
+(copy8 0x80080998 of the response to 0x800A3515), handles status 2 (advance the
+read index when the next entry has the same sequence, else push 0x8007EB88,
+run the entry callback, pop 0x8007E5C4) and status 5 (retry: read index :=
+write index and decrement the retry word, or the same push / callback / pop),
+dispatches the global callback word 0x800B8AB0, and while the lane getter
+0x8007FBF0 reads 1 and the count is positive issues 0x8007FB44(byte +4, word
++0xC) for the current entry.  Callback words (entry: 0x80131300 / 0x80131340,
+global: 0x80131380 / 0x801313C0, or the KUSEG alias) go through
+PE_Cd_DispatchDataCallback.  The lane getter returns LV39[i1] on its first call
+and LV39[i2] on later ones (RETS code i1 | i2 << 4); 0x8007E5C4 may rewrite the
+count word (RETS code bit 0, value CW39[code >> 4 & 7]; absolute, logged), which
+shows that the tail reads it after the pop.
+
+Usage: pe_cd_leaf_vectors.py OUT.txt [ENTRY ... | flush | callback | reverb | modetype | spucallees | errmath | spureverb | fidma | cardclear | qsort | cdgen | cdgen2 | cdgen3 | cdgen5 | cdgen6 | cdgen7 | cdgen8 [sweep] | cdgen9 | cdgen10 | cdgen11 | cdgen12 | cdgen13 | cdgen14 | cdgen15 | cdgen16 | cdgen17 | cdgen18 | cdgen19 | cdgen20 | cdgen21 | cdgen22 | cdgen23 | cdgen24 | cdgen25 | cdgen26 | cdgen28 | cdgen29 | cdgen30 | cdgen31 | cdgen32 | cdgen33 | cdgen38 | cdgen39 | cdgen35 | cdgen-indep | cdgen-sweep]
 """
 import re
 import struct
@@ -527,6 +640,30 @@ def _sio_load(fmt, buf, a):
 
 
 pl._ns['LOAD'] = _sio_load
+
+# Plain-memory wait model (cdgen38; a harness model after the CD driver, not
+# behaviour of the original): MEMSEQ[offset] = [values, reads].  A word that
+# guest code polls and that only an asynchronous event (a command callback run
+# from the CD interrupt, psx-spx: the drive answers some frames after the
+# command) can change reads `values[i]` on its i-th read (the last value
+# repeats), written into RAM just before the load.  Empty = off.  Like the
+# SIO / CD register models it is a hardware-event stand-in, so the checker
+# replays these reads in order (mmio_read) and the native's wait loop needs
+# the host wait contract (tick per poll, stop budget).
+MEMSEQ = {}
+_sio_load_chain = pl._ns['LOAD']
+
+
+def _mem_load(fmt, buf, a):
+    m = MEMSEQ.get(a & ~3)
+    if m is not None:
+        vals = m[0]
+        struct.pack_into('<I', buf, a & ~3, vals[min(m[1], len(vals) - 1)])
+        m[1] += 1
+    return _sio_load_chain(fmt, buf, a)
+
+
+pl._ns['LOAD'] = _mem_load
 
 
 _cd_store_chain = v._store
@@ -1929,6 +2066,408 @@ def _stream32_seed(ram, x, args):
     return x
 
 
+# Thirty-third batch (sw-cd): see the docstring.
+CDGEN33 = {
+    0x800824F0: ('w', (0x80073CF4,)),
+    0x8007F72C: ('', (0x8007F778, 0x8007FBF0)),
+    0x8007C13C: ('', (0x8007AAB4,)),
+}
+POS33 = (1, 2, 4, 6, 3, 7, 0x102, 0x104, 0x7FFFFFFF, 0x100, 0xFFFFFFFF, 0x80000000, 0x10000, 0xFF, 0x10002, 8)
+FIN33 = (0, 0, 0, 0, 0, 0, 0, 0)   # any nonzero final result makes 0x8007C13C loop forever (pilot: 104 of 120 cases spun)
+IDX33 = (0, 1, 2, 3, 0x10, 0x21, 0xFF, 0x80)
+
+
+def _ack33_model(code):
+    """0x8007AAB4 (no argument): POS33[p] for the first k calls, then FIN33[f];
+    on call 1 it writes the byte at the register pointer's target (the word
+    0x8009B27C) = IDX33[w] (w == 8: none), absolute and logged as a store."""
+    k, p, f, w = code & 15, (code >> 4) & 15, (code >> 8) & 15, (code >> 12) & 15
+    n = [0]
+
+    def fn(ram, r):
+        n[0] += 1
+        if n[0] == 1 and w < 8:
+            ptr = struct.unpack_from('<I', ram, 0x9B27C)[0]
+            ram[ptr & 0x1FFFFF] = IDX33[w]
+            pl.STORES.append((ptr, 1, IDX33[w]))
+        return POS33[p] if n[0] <= k else FIN33[f]
+    return fn
+
+
+CD33_CB = ((0x9AFB4, 0x80131140), (0x9AFB8, 0x80131180))   # callback words and their sentinels (alias: & 0x1FFFFFFF)
+
+
+def _cd33_seed(ram, x, entry, args):
+    if entry == 0x8007C13C:           # the register pointer word: the CD block, or plain memory in a quarter
+        x = gv.xs32(x)
+        if x % 4 == 0:
+            struct.pack_into('<I', ram, 0x9B27C, ZONE + ((x >> 8) % 0x400) * 4)
+        for word, sent in CD33_CB:    # callback words: 0, the sentinel, or its KUSEG alias (positive nonzero)
+            x = gv.xs32(x)
+            struct.pack_into('<I', ram, word, (0, sent, sent, sent & 0x1FFFFFFF)[x % 4])
+        x = gv.xs32(x)
+        struct.pack_into('<I', ram, 0x9B294, x)      # the status bytes handed to the callbacks (+0, +1)
+    return x
+
+
+# Thirty-fifth batch (cdgen35): SIO0 start routine 0x80082E00.
+CDGEN35 = {0x80082E00: ('p', (0x80083578, 0x80084FC4, SLOT23_44, SLOT23_48))}
+SIO35_SEQ = {}            # register address -> remaining values for successive reads (the last one repeats)
+_pre35_load = pl._ns['LOAD']
+
+
+def _sio35_load(fmt, buf, a):
+    q = SIO35_SEQ.get(a)
+    if q:
+        n = struct.calcsize(fmt)
+        val = q.pop(0) if len(q) > 1 else q[0]
+        struct.pack_into(fmt, buf, a, val & ((1 << (8 * n)) - 1))
+    return _pre35_load(fmt, buf, a)
+
+
+pl._ns['LOAD'] = _sio35_load
+W35_CELLS = (0x9B774, 0x9B778, 0x9B77C, 0x9B780, 0x9B78C, 0x9B790, 0x9B794, 0x9B798, 0x9B79C)
+W35_VALS = (0xFFFFFFFF, 0xFFFFFFFD, 0, 0, 1, 2, 3, 4, 6, 5, 0x80000000, 0xFFFFFFFB, 0)
+IDX35 = (0, 0, 0, 1, 1, 0xFFFFFFFF, 4, 5, 6, 7, 8, 0xFFFFFFFE, 0x40000000, 0x40000001, 0xC0000000, 0)
+RC35 = (0, 1, 7, 0xF0, 0x100, 0x12345678, 0xFFFFFFFF, 0x80000000)
+RV35 = (0, 1, 0xFFFFFFFF, 0x42)
+
+
+def _mut35(ram, rec, code, n_call):
+    """Slot model: the write made on the slot's m-th call (code bits: 0-1
+    return value, 2-4 write kind, 5-8 value index, 9-10 cell choice, 11-13
+    m).  Absolute writes, applied to RAM and logged as stores."""
+    kind, vi, m = (code >> 2) & 7, (code >> 5) & 15, (code >> 11) & 7
+    if n_call != m or kind == 7:
+        return
+    if kind == 0:
+        _store23(ram, (rec + 0xC) & 0x1FFFFF, 4, RC35[vi & 7])
+    elif kind == 1:
+        _store23(ram, W35_CELLS[1 + ((code >> 9) & 3)] & 0x1FFFFF, 4, W35_VALS[vi % len(W35_VALS)])
+    elif kind == 2:
+        _store23(ram, 0x9B764, 4, IDX35[vi])
+    elif kind == 3:
+        _store23(ram, (rec + 0x50) & 0x1FFFFF, 1, (0, 1, 2, 0xFF)[vi & 3])
+    elif kind == 4:
+        _store23(ram, (rec + 0x36) & 0x1FFFFF, 1, (0, 1, 2, 0x80)[vi & 3])
+    elif kind == 5:
+        _store23(ram, (rec + 0x3C) & 0x1FFFFF, 4, (ZONE + 0x1E10, ZONE + 0x1E00, ZONE + 0x1E01, ZONE + 0x1E20)[vi & 3])
+    else:
+        _store23(ram, 0x9B784, 4, (0x1F801070, ZONE + 0x1F00, 0x1F801070, ZONE + 0x1F10)[vi & 3])
+
+
+def _sio35_slot(code, rec):
+    cnt = [0]
+
+    def f(ram, r):
+        cnt[0] += 1
+        _mut35(ram, rec, code, cnt[0])
+        return RV35[code & 3]
+    return f
+
+
+def _sio35_seed(ram, x, args):
+    x = gv.xs32(x)
+    rec = ZONE + (x % 0x200) * 4
+    args[0] = rec
+    for k in range(0, 0x100, 4):             # filler
+        x = gv.xs32(x)
+        struct.pack_into('<I', ram, (rec + k) & 0x1FFFFF, x)
+    x = gv.xs32(x)
+    struct.pack_into('<I', ram, (rec + 0xC) & 0x1FFFFF, RC35[x % len(RC35)] if x & 0x100 else gv.xs32(x))
+    x = gv.xs32(x)                            # +0x3C is stored through unconditionally: a record-zone pointer (low
+    # pointers touch unlogged RAM and the harness drops those cases)
+    struct.pack_into('<I', ram, (rec + 0x3C) & 0x1FFFFF,
+                     (ZONE + 0x1E10, ZONE + 0x1E00, ZONE + 0x1E01, ZONE + 0x1000 + (x >> 8) % 0x600)[x % 4])
+    for off, ch in ((0x36, (0, 0, 1, 2, 0x80, 0xFF)), (0x50, (0, 0, 1, 2, 0xFF))):
+        x = gv.xs32(x)
+        ram[(rec + off) & 0x1FFFFF] = ch[x % len(ch)] if x & 0x100 else (x >> 16) & 0xFF
+    x = gv.xs32(x)                            # the byte at +0xE8: 8 selects the RCNT2 limit 0x50 instead of 0x91
+    ram[(rec + 0xE8) & 0x1FFFFF] = 8 if x % 3 == 0 else (x >> 8) & 0xFF
+    x = gv.xs32(x)
+    struct.pack_into('<I', ram, 0x9B764, IDX35[x % len(IDX35)] if x & 0x100 else (0, 1, 0xFFFFFFFF)[x % 3])
+    for a in W35_CELLS:
+        x = gv.xs32(x)
+        struct.pack_into('<I', ram, a, W35_VALS[x % len(W35_VALS)])
+    x = gv.xs32(x)
+    base = 0x1F801040
+    if x % 6 == 0:                            # SIO block in the record zone
+        base = ZONE + 0x1C00
+        struct.pack_into('<I', ram, 0x9B788, base)
+        for off in (0x4, 0xA):
+            x = gv.xs32(x)
+            struct.pack_into('<H', ram, (base + off) & 0x1FFFFF, x & 0xFFFF)
+    x = gv.xs32(x)
+    if x % 4 == 0:                            # the interrupt-status pointer word
+        struct.pack_into('<I', ram, 0x9B784, ZONE + 0x1F00)
+    SIO35_SEQ.clear()
+    if base == 0x1F801040:
+        for a, n in ((0x1044, 3), (0x104A, 2)):
+            seq = []
+            for _ in range(n):
+                x = gv.xs32(x)
+                if a == 0x1044:
+                    seq.append(((x >> 8) & 0xFDFF) | (0x200 if x & 1 else 0))
+                else:
+                    seq.append((0, 0x1003, 0x3003, 0xFFFF, 0x10, 0x2000, (x >> 8) & 0xFFFF)[x % 7])
+            SIO35_SEQ[a] = seq
+        x = gv.xs32(x)
+        if x & 1:                             # the data register read after the byte write: any value
+            SIO35_SEQ[0x1040] = [(x >> 8) & 0xFF]
+    return x
+
+
+def _sio35_models(x, rets, stops, ram, args):
+    for sent in (SLOT23_44, SLOT23_48):
+        x = gv.xs32(x)
+        code = x & 0x3FFF
+        rets[sent] = rets[sent & 0x1FFFFFFF] = code
+        stops[sent] = stops[sent & 0x1FFFFFFF] = _sio35_slot(code, args[0])
+    for a, sent in ((0x9B744, SLOT23_44), (0x9B748, SLOT23_48)):
+        x = gv.xs32(x)
+        struct.pack_into('<I', ram, a, sent if x % 3 else sent & 0x1FFFFFFF)
+    return x
+
+# Thirty-fourth batch (cdgen34): libpad communication start 0x80082CF0.
+PAD34_SA, PAD34_SB = 0x80131240, 0x80131280      # slot sentinels (arity one)
+CDGEN34 = {0x80082CF0: ('', (0x80072714, 0x80072724, 0x80073C84, 0x8007E1E4, 0x8007E1F4, PAD34_SA, PAD34_SB))}
+PAD34_NAMES = (0x80072714, 0x80072724, 0x80073C84, 0x8007E1E4, 0x8007E1F4, PAD34_SA, PAD34_SB)
+P34_PTR = (0x1F801070, ZONE + 0x1F00, ZONE + 0x1F40, ZONE + 0x1F80)
+P34_ARG = (0, 1, 2, 0x1000, 0xFFFFFF10, 0xFFFFFF0F, 0x7FFFFF10, 0x80000000, 0xFFFFFFFF, 0x12345678, 0xF0, 0xEF)
+P34_MASK = (0, 1, 2, 0x80, 0xFFFE, 0xFFFF, 0x10000, 0xFFFFFFFE, 0xFFFFFFFF, 0x80000000, 0x12345678, 0x7FFFFFFF)
+P34_SLOT = (0, PAD34_SA, PAD34_SA & 0x1FFFFFFF, PAD34_SB, PAD34_SB & 0x1FFFFFFF)
+P34_CNT = (0, 1, 0xFFFFFFFF, 0x12345678)
+
+
+def _mut34(ram, code, n_call, is_slot):
+    """A callee's write on its m-th call (code bits 0-2 kind, 3-6 value index,
+    7 call number for a slot: 1 or 2; a BIOS callee is called once).
+    Absolute writes, applied to RAM and logged as stores."""
+    kind, vi = code & 7, (code >> 3) & 15
+    if n_call != (1 + ((code >> 7) & 1) if is_slot else 1):
+        return
+    if kind == 1:
+        _store23(ram, 0x9B784, 4, P34_PTR[vi & 3])
+    elif kind == 2:
+        _store23(ram, 0x9B758, 4, P34_ARG[vi % len(P34_ARG)])
+    elif kind == 3:
+        _store23(ram, 0x9B728, 4, P34_SLOT[vi % len(P34_SLOT)])
+    elif kind == 4:
+        _store23(ram, (P34_PTR[1 + (vi & 1) + ((vi >> 1) & 1)] + 4) & 0x1FFFFF, 4, P34_MASK[(vi * 5 + 1) % len(P34_MASK)])
+    elif kind == 5:
+        _store23(ram, 0x9B75C, 4, (0, 1, 0xFFFFFFFF, 0x42)[vi & 3])
+    elif kind == 6:
+        _store23(ram, (0xA5AC0, 0xA5AC4)[vi & 1], 4, P34_CNT[(vi >> 1) & 3])
+
+
+def _pad34_callee(code, is_slot):
+    cnt = [0]
+
+    def f(ram, r):
+        cnt[0] += 1
+        _mut34(ram, code, cnt[0], is_slot)
+        return code & 0x3F
+    return f
+
+
+def _pad34_seed(ram, x, args):
+    x = gv.xs32(x)
+    struct.pack_into('<I', ram, 0x9B784, P34_PTR[0] if x & 3 == 0 else P34_PTR[1 + (x >> 4) % 3])
+    for ptr in P34_PTR[1:]:                   # the mask word behind a zone pointer, and the status word
+        x = gv.xs32(x)
+        struct.pack_into('<I', ram, (ptr + 4) & 0x1FFFFF, P34_MASK[x % len(P34_MASK)] if x & 0x100 else gv.xs32(x))
+        x = gv.xs32(x)
+        struct.pack_into('<I', ram, ptr & 0x1FFFFF, x)
+    x = gv.xs32(x)                            # the mask register (hardware read)
+    struct.pack_into('<I', ram, 0x1074, P34_MASK[x % len(P34_MASK)] if x & 0x100 else gv.xs32(x))
+    x = gv.xs32(x)
+    struct.pack_into('<I', ram, 0x9B758, P34_ARG[x % len(P34_ARG)] if x & 0x100 else gv.xs32(x))
+    x = gv.xs32(x)
+    struct.pack_into('<I', ram, 0x9B728, (0, 0, P34_SLOT[1], P34_SLOT[1], P34_SLOT[2], P34_SLOT[3], P34_SLOT[4])[x % 7])
+    for a in (0x9B75C, 0xA5AC0, 0xA5AC4):
+        x = gv.xs32(x)
+        struct.pack_into('<I', ram, a, (0, 1, 0xFFFFFFFF, x)[x % 4])
+    return x
+
+
+def _pad34_models(x, rets, stops, ram, args):
+    for sent in PAD34_NAMES:
+        x = gv.xs32(x)
+        code = x & 0xFF if x & 0x300 else 0      # about a quarter of the callees make a write
+        is_slot = sent in (PAD34_SA, PAD34_SB)
+        if is_slot and x & 0xC00 == 0:             # some slot calls zero the slot word (the second read is null-checked)
+            code = 3 | (x & 0x80)
+        rets[sent] = rets[sent & 0x1FFFFFFF] = code
+        stops[sent] = stops[sent & 0x1FFFFFFF] = _pad34_callee(code, is_slot)
+    return x
+
+
+# Thirty-eighth and thirty-ninth batches (sw-cd): see the docstring.
+CDGEN38 = {
+    0x80082314: ('', (0x8007F0C8, 0x8007F72C, 0x8007FBF0, 0x80080B44, 0x80081DF8, 0x800822AC)),
+}
+SV38 = (0, 2, 4, 0xFFFFFFFF, 0x101, 0x10001, 0x80000000, 5, 3, 1,
+        0x103, 0x10003, 0x80000003, 0x80000001, 0x1000001, 0x3000000)   # idx 8 = 3, idx 9 = 1; the rest test as neither
+OTHER38 = (0, 1, 2, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 15)
+LANE38 = (2, 2, 2, 0, 1, 3, 0x102, 0x10002, 0xFFFFFFFF)       # first lane read
+LANE38B = (0x10, 0x10, 0, 1, 2, 0x110, 0x10010, 0x1010, 0x80000010, 0x20, 0xFFFFFFFF, 0x100)   # second lane read
+PKT38 = (0, 0, 0, 1, 2, 0x100, 0x10000, 0x80000000, 0xFFFFFFFF)
+WORD38 = (1, 2, 3, 4, 0x100, 0x10000, 0x80000000, 0xFFFFFFFF)
+
+
+def _ds38_models(x, rets, stops):
+    x = gv.xs32(x)
+    m = 1 + (x % 7 if x & 0x100 else (x >> 12) % 4)
+    code = m
+    for i in range(1, m + 1):
+        x = gv.xs32(x)
+        if i == m:
+            idx = 9 if i % 2 else 8
+        else:                                # neither the call's terminal value nor (odd) 1 / (even) 3
+            pool = OTHER38 + ((8,) if i % 2 else (9,))   # an odd call may see 3, an even one 1
+            idx = pool[x % len(pool)]
+        code |= idx << (4 * i)
+    rets[0x8007F72C] = code
+    n = [0]
+
+    def ss(ram, r):
+        n[0] += 1
+        return SV38[(code >> (4 * min(n[0], m))) & 15]
+    stops[0x8007F72C] = ss
+    x = gv.xs32(x)
+    i0, i1 = x % 9, (x >> 8) % 12
+    rets[0x8007FBF0] = i0 | i1 << 4          # first lane read LANE38[i0], every later one LANE38B[i1]
+    stops[0x8007FBF0] = (lambda ln: (lambda ram, r: LANE38[i0] if ln.append(1) or len(ln) == 1 else LANE38B[i1]))([])
+    x = gv.xs32(x)
+    rets[0x8007F0C8] = PKT38[x % 9] if x & 0x100 else gv.xs32(x)
+    if rets[0x8007F0C8]:
+        x = gv.xs32(x)
+        k = x % 5
+        x = gv.xs32(x)
+        v = WORD38[x % 8] if x & 0x100 else gv.xs32(x) | 1
+        x = gv.xs32(x)
+        w = (v, 0, 1, v, gv.xs32(x))[(x >> 8) % 5]
+        MEMSEQ[0xB28F8] = [[0] * k + [v, w], 0]
+    return x
+
+
+# Thirty-fifth batch (sw-cd): see the docstring.
+CD39_CB = (0x80131200, 0x80131240)
+HEAD39F = (0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3, 4, 8, 9, 15, 0xFFFFFFFF, 0x7FFFFFFF, 0x80000000)
+COUNT39 = (0, 1, 1, 2, 2, 3, 4, 5, 8, 9, 16, 0xFFFFFFFF, 0x80000000)
+CNTW39 = (0, 1, 2, 3, 5, 0xFFFFFFFF, 0x80000000, 9)
+
+
+def _ds39_seed_flush(ram, x, args):
+    for k in range(-2, 26):
+        a = (0xA3540 + 0x18 * k) & 0x1FFFFF
+        x = gv.xs32(x)
+        struct.pack_into('<I', ram, a, (0, 0, 1, 2, 2, x & 0xFF, 0xFFFFFFFF, 0x80000000, x)[x % 9])
+        x = gv.xs32(x)
+        sent = CD39_CB[(x >> 8) & 1]
+        struct.pack_into('<I', ram, a + 0x10, (0, 0, sent, sent, sent & 0x1FFFFFFF)[x % 5])
+    x = gv.xs32(x)
+    struct.pack_into('<I', ram, 0xA3600, HEAD39F[x % len(HEAD39F)])
+    x = gv.xs32(x)
+    struct.pack_into('<I', ram, 0xA3608, COUNT39[x % len(COUNT39)])
+    x = gv.xs32(x)
+    args[1] = ZONE + (x % 0x400) * 4 if x % 4 else gv.xs32(x)
+    return x
+
+
+def _ds39_models_flush(x, rets, stops):
+    x = gv.xs32(x)
+    m = x % 4                                 # 0: never rewrites the count word
+    v = (x >> 8) % len(CNTW39)
+    rets[0x8007EB88] = m | v << 4
+    n = [0]
+
+    def push(ram, r):
+        n[0] += 1
+        if m and n[0] == m:
+            _store23(ram, 0xA3608, 4, CNTW39[v])
+        return 0
+    stops[0x8007EB88] = push
+    for sent in CD39_CB:                      # callbacks stopped (sentinel and alias); results ignored
+        stops[sent] = None
+        stops[sent & 0x1FFFFFFF] = None
+        rets[sent] = rets[sent & 0x1FFFFFFF] = gv.xs32(x)
+    return x
+
+
+# Thirty-sixth batch (sw-cd): see the docstring.
+CDGEN39 = {
+    0x8007E704: ('wp', (0x8007EB88,)),
+    0x8007E964: ('bp', (0x8007E5C4, 0x8007EB88, 0x8007FB44, 0x8007FBF0, 0x80080998)),
+}
+CD39_ENTRY_CB = (0x80131300, 0x80131340)
+CD39_GLOBAL_CB = (0x80131380, 0x801313C0)
+LV39 = (1, 1, 1, 0, 2, 3, 0xFFFFFFFF, 0x101, 0x10001, 0x80000001)
+CW39 = (0, 1, 2, 5, 0x100, 0xFFFFFFFF, 0x80000000, 3)
+STATUS39 = (2, 2, 5, 5, 0, 1, 3, 4, 6, 0x102, 0x205, 0xFF, 0x12)
+HEAD39S = (0, 1, 2, 3, 4, 5, 6, 7, 7, 7, 0, 1, 2, 8, 9, 0xFFFFFFFF, 0x80000000, 0x7FFFFFFF)
+RETRY39 = (0, 1, 2, 3, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFE, 0x80000000, 0x7F000000, 0x100)
+
+
+def _ds39_seed_sync(ram, x, args):
+    prev = 0
+    for k in range(-2, 26):
+        a = (0xA3540 + 0x18 * k) & 0x1FFFFF
+        x = gv.xs32(x)
+        if x % 5 < 2 and prev:                       # a chained entry: the same sequence as the previous one
+            seq = prev
+        else:
+            seq = (0, 0, 1, 2, 3, 4, 0xFFFFFFFF, x & 0xFF, x)[x % 9]
+        prev = seq
+        struct.pack_into('<I', ram, a, seq)
+        x = gv.xs32(x)
+        struct.pack_into('<I', ram, a + 4, x)
+        struct.pack_into('<I', ram, a + 8, gv.xs32(x))
+        x = gv.xs32(x)
+        struct.pack_into('<I', ram, a + 0xC, x)
+        x = gv.xs32(x)
+        cb = CD39_ENTRY_CB[(x >> 8) & 1]
+        struct.pack_into('<I', ram, a + 0x10, (0, 0, cb, cb, cb & 0x1FFFFFFF)[x % 5])
+        x = gv.xs32(x)
+        struct.pack_into('<I', ram, a + 0x14, RETRY39[x % 10] if x & 0x100 else (x >> 12) & 0xF)
+    x = gv.xs32(x)
+    struct.pack_into('<I', ram, 0xA3604, HEAD39S[x % len(HEAD39S)])
+    x = gv.xs32(x)
+    struct.pack_into('<I', ram, 0xA3600, (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0xFFFFFFFF)[x % 11])
+    x = gv.xs32(x)
+    struct.pack_into('<I', ram, 0xA3608, (0, 1, 2, 5, 0x100, 0xFFFFFFFF, 0x80000000, 1, 3)[x % 9])
+    x = gv.xs32(x)
+    g = CD39_GLOBAL_CB[(x >> 8) & 1]
+    struct.pack_into('<I', ram, 0xB8AB0, (0, g, g, g & 0x1FFFFFFF)[x % 4])
+    x = gv.xs32(x)
+    args[0] = STATUS39[x % len(STATUS39)] if x & 0x300 else args[0]
+    x = gv.xs32(x)
+    args[1] = ZONE + (x % 0x400) * 4 if x % 4 else gv.xs32(x)
+    return x
+
+
+def _ds39_models_sync(x, rets, stops):
+    x = gv.xs32(x)
+    i1, i2 = x % 10, (x >> 8) % 10
+    rets[0x8007FBF0] = i1 | i2 << 4
+    stops[0x8007FBF0] = (lambda ln: (lambda ram, r: LV39[i1] if ln.append(1) or len(ln) == 1 else LV39[i2]))([])
+    x = gv.xs32(x)
+    w, v = x & 1, (x >> 4) % 8
+    rets[0x8007E5C4] = w | v << 4
+
+    def pop(ram, r):
+        if w:
+            _store23(ram, 0xA3608, 4, CW39[v])
+        return 0
+    stops[0x8007E5C4] = pop
+    rets[0x8007EB88] = 0                       # the queue push: no rewrite here
+    for sent in CD39_ENTRY_CB + CD39_GLOBAL_CB:   # callbacks stopped (sentinel and alias); results ignored
+        stops[sent] = None
+        stops[sent & 0x1FFFFFFF] = None
+        rets[sent] = rets[sent & 0x1FFFFFFF] = gv.xs32(x)
+    return x
+
+
 def cdgen_cases(base, entries=None, n=6000, table=None, indep=False, sweep=False):
     """indep: draw each callee's scripted return from its own xorshift step.
     The default (kept for the committed cdgen..cdgen5 sets) derives them
@@ -1940,6 +2479,7 @@ def cdgen_cases(base, entries=None, n=6000, table=None, indep=False, sweep=False
     a callee's result against any small constant is exercised.  Off by
     default so the committed vector sets reproduce."""
     out = []
+    CDGEN_SPUN.clear()
     table = table or CDGEN
     for entry in entries or table:        # every static jal target must be a stopped callee
         _check_callees_complete(base, entry, table[entry][1])
@@ -2122,6 +2662,14 @@ def cdgen_cases(base, entries=None, n=6000, table=None, indep=False, sweep=False
                 x = _ds31_seed(ram, x, args)
             if table is CDGEN32:
                 x = _stream32_seed(ram, x, args)
+            if table is CDGEN33:
+                x = _cd33_seed(ram, x, entry, args)
+            if table is CDGEN34:
+                x = _pad34_seed(ram, x, args)
+            if table is CDGEN35:
+                x = _sio35_seed(ram, x, args)
+            if table is CDGEN39:
+                x = (_ds39_seed_flush(ram, x, args) if entry == 0x8007E704 else _ds39_seed_sync(ram, x, args))
             ff_pool = None
             if table is CDGEN19:
                 x, ff_pool = _ff_seed(ram, x, entry, args)
@@ -2149,6 +2697,13 @@ def cdgen_cases(base, entries=None, n=6000, table=None, indep=False, sweep=False
                 if c in CDGEN_PTR_RET:
                     x = gv.xs32(x)
                     rets[c] = ZONE + (x % 0x400) * 4
+            if table is CDGEN33 and entry == 0x8007F72C:   # discriminators: == 1 vs low bits; signed > 0 vs nonzero / low-half tests
+                x = gv.xs32(x)
+                if x & 1:
+                    rets[0x8007FBF0] = (1, 1, 1, 0x101, 0x10001, 0x80000001, 0x100, 0x1000001)[(x >> 8) % 8]
+                x = gv.xs32(x)
+                if x & 1:
+                    rets[0x8007F778] = (0, 1, 2, 0x10000, 0x100, 0x7FFFFFFF, 0x80000000, 0xFFFFFFFF, 0x10001)[(x >> 8) % 9]
             if entry == 0x80080F98:          # timeout base 0x8009B6C4 near VSync(-1) - 1200
                 x = gv.xs32(x)
                 d = (0, 1, 0xFFFFFFFF, 2, 0x80000000, gv.xs32(x))[x % 6]
@@ -2180,6 +2735,25 @@ def cdgen_cases(base, entries=None, n=6000, table=None, indep=False, sweep=False
                     x = _card26_models(x, rets, stops)
                 if table is CDGEN28:         # position model; callback / text_490 rewrite the block (absolute)
                     x = _ds28_models(x, rets, stops)
+                if table is CDGEN39:         # flush: queue push may rewrite the count word; sync: lane sequence, pop rewrite
+                    x = (_ds39_models_flush(x, rets, stops) if entry == 0x8007E704 else _ds39_models_sync(x, rets, stops))
+                if table is CDGEN38:         # DsSystemStatus sequence, lane / packet draws, 0x800B28F8 wait model
+                    x = _ds38_models(x, rets, stops)
+                if table is CDGEN33 and entry == 0x8007C13C:   # acknowledge worker: POS33[p] k times, then FIN33[f]
+                    x = gv.xs32(x)
+                    k, p_, f_ = x % 6, (x >> 8) % len(POS33), (x >> 12) % len(FIN33)
+                    x = gv.xs32(x)
+                    w_ = x % 12 if x % 12 < 8 else 8
+                    rets[0x8007AAB4] = k | p_ << 4 | f_ << 8 | w_ << 12
+                    stops[0x8007AAB4] = _ack33_model(rets[0x8007AAB4])
+                    for _word, sent in CD33_CB:      # callbacks are stopped; their results are ignored
+                        stops[sent] = None
+                        stops[sent & 0x1FFFFFFF] = None
+                        rets[sent] = rets[sent & 0x1FFFFFFF] = gv.xs32(x)
+                if table is CDGEN34:         # every callee may make one absolute write (its RETS code)
+                    x = _pad34_models(x, rets, stops, ram, args)
+                if table is CDGEN35:         # the two slots return scripted values and may rewrite later reads
+                    x = _sio35_models(x, rets, stops, ram, args)
                 if table is CDGEN21:         # the timeout check: 0 for j calls, then a final value
                     x = gv.xs32(x)
                     j, f = x % 10, (x >> 8) % len(WAIT_FINAL)
@@ -2202,9 +2776,11 @@ def cdgen_cases(base, entries=None, n=6000, table=None, indep=False, sweep=False
                     res = run_with_callees(ram, entry, args, rets, stops)
                 finally:
                     LOWRAM_ON[0] = False
+                    MEMSEQ.clear()
                     SIO_ACK[0] = None
                     REGBITS.clear()
                     REGCOUNT.clear()
+                    SIO35_SEQ.clear()
             except AssertionError as e:
                 if 'instruction budget' not in str(e):
                     raise
@@ -2321,6 +2897,37 @@ def main():
         out = qsort_cases(bytes(v.fixture(exe, 0, 0, 0)))
         open(sys.argv[1], 'w').write('\n'.join(out) + '\n')
         print('cases', len(out))
+        return
+    if sys.argv[2:] == ['cdgen34']:
+        exe = (v.ROOT / 'build/disc1.candidate.exe').read_bytes()
+        out = cdgen_cases(bytes(v.fixture(exe, 0, 0, 0)), table=CDGEN34, indep=True, sweep=True)
+        open(sys.argv[1], 'w').write('\n'.join(out) + '\n')
+        print('cases', len(out), 'spun', CDGEN_SPUN)
+        return
+    if sys.argv[2:3] == ['cdgen38']:
+        exe = (v.ROOT / 'build/disc1.candidate.exe').read_bytes()
+        out = cdgen_cases(bytes(v.fixture(exe, 0, 0, 0)), table=CDGEN38, indep=True, sweep=True)
+        open(sys.argv[1], 'w').write('\n'.join(out) + '\n')
+        print('cases', len(out), 'spun', CDGEN_SPUN)
+        return
+    if sys.argv[2:3] == ['cdgen39']:
+        exe = (v.ROOT / 'build/disc1.candidate.exe').read_bytes()
+        out = cdgen_cases(bytes(v.fixture(exe, 0, 0, 0)), table=CDGEN39, indep=True, sweep=True)
+        open(sys.argv[1], 'w').write('\n'.join(out) + '\n')
+        print('cases', len(out), 'spun', CDGEN_SPUN)
+        return
+    if sys.argv[2:3] == ['cdgen33']:      # optional entries: per-entry output is independent of the others
+        exe = (v.ROOT / 'build/disc1.candidate.exe').read_bytes()
+        out = cdgen_cases(bytes(v.fixture(exe, 0, 0, 0)), entries=[int(a, 16) for a in sys.argv[3:]] or None,
+                          table=CDGEN33, indep=True, sweep=True)
+        open(sys.argv[1], 'w').write('\n'.join(out) + '\n')
+        print('cases', len(out), 'spun', CDGEN_SPUN)
+        return
+    if sys.argv[2:] == ['cdgen35']:
+        exe = (v.ROOT / 'build/disc1.candidate.exe').read_bytes()
+        out = cdgen_cases(bytes(v.fixture(exe, 0, 0, 0)), table=CDGEN35, indep=True, sweep=True)
+        open(sys.argv[1], 'w').write('\n'.join(out) + '\n')
+        print('cases', len(out), 'spun', CDGEN_SPUN)
         return
     if sys.argv[2:] == ['cdgen32']:
         exe = (v.ROOT / 'build/disc1.candidate.exe').read_bytes()

@@ -892,8 +892,15 @@ PE_PLAT_REPLACED = {
     "func_80083014": "pc_port/platform/pe_plat_pad_gen24.c",  # libpad text_770 card transfer step (black-box vectors)
     "func_80082B70": "pc_port/platform/pe_plat_card_gen25.c",  # libcard MemCard_TimerCallback (black-box vectors)
     "func_80084C4C": "pc_port/platform/pe_plat_pad_gen26.c",  # libpad text_108 pad-record step (black-box vectors)
+    "func_80082CF0": "pc_port/platform/pe_plat_pad_gen34.c",  # libpad communication start (fresh-author black-box vectors, cdgen34)
+    "func_80082E00": "pc_port/platform/pe_plat_pad_gen35.c",  # libpad/libcard SIO0 start (fresh-author black-box vectors, cdgen35)
     "func_80081E70": "pc_port/platform/pe_plat_ds_gen28.c",  # libds text_FC DS ready callback (black-box vectors)
     "func_8007C044": "pc_port/platform/pe_plat_cd_gen29.c",  # libcd CD_getsector2 (black-box vectors)
+    "func_800824F0": "pc_port/platform/pe_plat_cd_gen33.c",  # libds DsDataCallback (black-box vectors)
+    "func_8007F72C": "pc_port/platform/pe_plat_cd_gen33.c",  # libds DsSystemStatus (black-box vectors)
+    "func_8007C13C": "pc_port/platform/pe_plat_cd_gen33.c",  # libcd text_1688 CD interrupt poll (black-box vectors)
+    "func_8007E704": "pc_port/platform/pe_plat_ds_gen39.c",  # libds text_170 command-queue flush (black-box vectors)
+    "func_8007E964": "pc_port/platform/pe_plat_ds_gen39.c",  # libds text_3D0 command complete / error handler (black-box vectors)
     "func_8007E8F4": "pc_port/platform/pe_plat_ds_gen30.c",  # libds text_360 pending-command dispatch (black-box vectors)
     "func_8007C304": "pc_port/platform/pe_plat_cd_gen32.c",  # StSetStream (independent black-box vectors)
     "func_8007EB88": "pc_port/platform/pe_plat_ds_gen31.c",  # libds text_5F4 command-queue push (black-box vectors)
@@ -901,6 +908,7 @@ PE_PLAT_REPLACED = {
     "func_80076208": "pc_port/platform/pe_plat_gpu_words.c",  # libgpu draw-area bottom-right word (clean-room)
     "func_800762BC": "pc_port/platform/pe_plat_gpu_words.c",  # libgpu texture-window word (clean-room)
     "func_80077AC4": "pc_port/platform/pe_plat_gpu_words.c",  # libgpu AddPrim (clean-room)
+    "func_800718D0": "pc_port/platform/pe_plat_gpu_tim.c",  # libgpu TIM image uploader (clean-room, native-tim-20261125)
     "func_80074924": "pc_port/platform/pe_plat_gpu_drawenv.c",  # libgpu SetDefDrawEnv (clean-room)
     "func_8007A400": "pc_port/platform/pe_plat_cd.c",  # command name
     "func_8007A434": "pc_port/platform/pe_plat_cd.c",  # interrupt name
@@ -988,6 +996,10 @@ PE_PLAT_REPLACED = {
     "func_80071A24": "pc_port/platform/func_80071A24_port.c",
     "func_80071A54": "pc_port/platform/pe_bios_rand.c",  # BIOS A(2Fh) rand
     "func_80071A64": "pc_port/platform/pe_bios_rand.c",  # BIOS A(30h) srand
+    "func_800726F4": "pc_port/platform/pe_plat_bios_event.c",  # BIOS B(0Bh) TestEvent
+    "func_800857E4": "pc_port/platform/pe_plat_bios_event.c",  # BIOS B(09h) CloseEvent
+    "func_800857F4": "pc_port/platform/pe_plat_bios_event.c",  # BIOS B(0Dh) DisableEvent
+    "func_80085804": "pc_port/platform/pe_plat_bios_event.c",  # BIOS B(20h) UnDeliverEvent
     "func_800719E4": "pc_port/platform/func_800719E4_port.c",  # BIOS B(38h)
     "func_800726C4": "pc_port/platform/pe_libetc.c",  # BIOS A(44h) FlushCache
     "func_80073C74": "pc_port/platform/pe_libetc.c",  # BIOS B(5Bh) ChangeClearPAD
@@ -1001,6 +1013,8 @@ PE_PLAT_REPLACED = {
     "func_80075B1C": "pc_port/platform/pe_plat_gpu_status.c",  # GetODE (psx-spx GPUSTAT.31)
     "func_80075B4C": "pc_port/platform/pe_plat_gpu_area.c",  # SetTexWindow (psx-spx GP0 E2h)
     "func_80075B84": "pc_port/platform/pe_plat_gpu_area.c",  # SetDrawArea (psx-spx GP0 E3h/E4h)
+    "func_80077294": "pc_port/platform/pe_plat_gpu_dma_queue.c",  # GPU queue pump/wait (clean-room, native-gpu-rows-20261125)
+    "func_80077404": "pc_port/platform/pe_plat_gpu_timeout.c",  # GPU wait timeout check (clean-room, native-gpu-rows-20261125)
     "func_80073C94": "pc_port/platform/pe_plat_irq_callback.c",  # ResetCallback (clean-room)
     "func_80073E28": "pc_port/platform/pe_plat_irq_callback.c",  # same as ResetCallback (vectors)
     "func_80073CC4": "pc_port/platform/pe_plat_irq_callback.c",  # InterruptCallback (clean-room)
@@ -1024,6 +1038,8 @@ PE_PLAT_REPLACED = {
     "func_80075358": "pc_port/game/boot/func_80075358_port.c",
     "func_80075424": "pc_port/platform/pe_libgpu.c",
     "func_8010BD4C": "pc_port/game/boot/func_8010BD4C_port.c",
+    "func_8010BFA0": "pc_port/platform/pe_plat_mdec_io_host.c",  # libpress DecDCTin wrapper
+    "func_8010C01C": "pc_port/platform/pe_plat_mdec_io_host.c",  # libpress DecDCTout wrapper
     "func_8010C0D8": "pc_port/game/boot/func_8010BE3C_port.c",
     "func_800752AC": "pc_port/game/boot/func_800752AC_port.c",
     "func_80076354": "pc_port/game/boot/func_800752AC_port.c",
@@ -1082,6 +1098,7 @@ PE_PLAT_REPLACED = {
 }
 PE_PLAT_HEADERS = {
     "pc_port/game/boot/func_8010BD4C_port.c": "pc_port/include/pe_plat/mdec_expand.h",
+    "pc_port/platform/pe_plat_mdec_io_host.c": "pc_port/include/pe_plat/mdec_io_host.h",
     "pc_port/game/boot/func_8010BE3C_port.c": "pc_port/include/pe_plat/mdec_callback.h","pc_port/game/boot/func_8007512C_port.c": "pc_port/include/psx_compat.h",
                    "pc_port/game/boot/func_80076C34_port.c": "pc_port/include/psx_compat.h",
                    "pc_port/game/boot/func_800752AC_port.c": "pc_port/include/psx_compat.h",
@@ -1168,8 +1185,13 @@ PE_PLAT_HEADERS = {
                    "pc_port/platform/pe_plat_pad_gen24.c": "pc_port/include/pe_plat/pad.h",
                    "pc_port/platform/pe_plat_card_gen25.c": "pc_port/include/pe_plat/bios_file.h",
                    "pc_port/platform/pe_plat_pad_gen26.c": "pc_port/include/pe_plat/pad.h",
+                   "pc_port/platform/pe_plat_pad_gen34.c": "pc_port/include/pe_plat/pad.h",
+                   "pc_port/platform/pe_plat_pad_gen35.c": "pc_port/include/pe_plat/pad.h",
                    "pc_port/platform/pe_plat_ds_gen28.c": "pc_port/include/pe_plat/cd.h",
                    "pc_port/platform/pe_plat_cd_gen29.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_cd_gen33.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_ds_gen38.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat_ds_gen39.c": "pc_port/include/pe_plat/cd.h",
                    "pc_port/platform/pe_plat_ds_gen30.c": "pc_port/include/pe_plat/cd.h",
                    "pc_port/platform/pe_plat_cd_gen32.c": "pc_port/include/pe_plat/cd.h",
                    "pc_port/platform/pe_plat_ds_gen31.c": "pc_port/include/pe_plat/cd.h",
@@ -1178,6 +1200,7 @@ PE_PLAT_HEADERS = {
                    "pc_port/platform/pe_plat_card_gen8.c": "pc_port/include/pe_plat/bios_file.h",
                    "pc_port/platform/pe_plat_gpu_words.c": "pc_port/include/pe_plat/gpu_primitive.h",
                    "pc_port/platform/pe_plat_gpu_drawenv.c": "pc_port/include/pe_plat/gpu_primitive.h",
+                   "pc_port/platform/pe_plat_gpu_tim.c": "pc_port/include/pe_plat/gpu_primitive.h",
                    "pc_port/platform/pe_plat_gpu_primitive.c": "pc_port/include/pe_plat/gpu_primitive.h",
                    "pc_port/platform/pe_plat_gpu_address.c": "pc_port/include/pe_plat/gpu_address.h",
                    "pc_port/platform/pe_plat_state.c": "pc_port/include/pe_plat/state.h",
@@ -1186,10 +1209,13 @@ PE_PLAT_HEADERS = {
                    "pc_port/platform/pe_bios_string.c": "pc_port/include/pe_plat/bios_string.h",
                    "pc_port/platform/func_80071A24_port.c": "pc_port/include/pe_plat/bios_string.h",
                    "pc_port/platform/pe_bios_rand.c": "pc_port/include/pe_plat/bios_rand.h",
+                   "pc_port/platform/pe_plat_bios_event.c": "pc_port/include/pe_plat/bios_event.h",
                    "pc_port/platform/func_800719E4_port.c": "pc_port/include/pe_plat/bios_sys.h",
                    "pc_port/platform/pe_libetc.c": "pc_port/include/pe_plat/bios_sys.h",
                    "pc_port/platform/pe_plat_gpu_status.c": "pc_port/include/pe_plat/gpu_status.h",
                    "pc_port/platform/pe_plat_gpu_area.c": "pc_port/include/pe_plat/gpu_area.h",
+                   "pc_port/platform/pe_plat_gpu_timeout.c": "pc_port/include/pe_plat/gpu_timeout.h",
+                   "pc_port/platform/pe_plat_gpu_dma_queue.c": "pc_port/include/pe_plat/gpu_dma_queue.h",
                    "pc_port/platform/pe_plat_irq_callback.c": "pc_port/include/pe_plat/irq_callback.h",
                    "pc_port/platform/pe_save.c": "pc_port/include/pe_plat/pad.h",
                    "pc_port/platform/pe_plat_pad.c": "pc_port/include/pe_plat/pad.h",

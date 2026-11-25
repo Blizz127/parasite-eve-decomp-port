@@ -9,6 +9,7 @@
 #include "host_frame_pacer.h"
 #include "host_window_scale.h"
 #include "host_pad.h"
+#include "host_key_merge.h"
 #include "host_audio.h"
 #include "pe_audio_driver.h"
 #include "game_port.h"
@@ -161,7 +162,10 @@ static size_t g_last_size;
 static int g_blit_dirty;
 
 int g_host_window_open = 0;
-static uint16_t g_sony_held = 0;
+static uint16_t g_sony_held = 0;   /* keyboard pad word: HostKeyInput_Held(&g_keys) */
+static HostKeyInput g_keys;        /* per-keycode contributions (host_key_merge.h) */
+/* Cheat/menu key repeat latch, reset when the window opens. */
+static uint16_t g_cheat_held;
 static HostFramePacer g_pacer;
 /* Fast-forward: F6 or controller L3 toggles g_fast_forward; controller R3
  * fast-forwards while held.  g_ff_active is the effective state. */
@@ -184,7 +188,7 @@ static int monotonic_ns(uint64_t *out);
 static struct {
     int on, max, lines;
     uint64_t t0;
-    uint32_t vbl0, scan0, fmv0; int pres0;
+    uint32_t vbl0, scan0, fmv0; uint64_t pres0;
     uint32_t paced, blits, skipped;
     uint64_t blit_ns, blit_max;
     uint32_t n; uint64_t busy[FTRACE_SAMPLES];
@@ -207,9 +211,8 @@ static int ftrace_cmp(const void *a, const void *b)
 static void ftrace_sample(uint64_t now)
 {
     PeStrFeedStats fs;
-    int pres = 0;
+    uint64_t pres = HostFB_GetPresentCount();
     uint32_t vbl = PE_GPU_VSyncQuery(), scan = HostFB_ScanOutCount();
-    HostFB_GetState(NULL, NULL, &pres, NULL);
     PE_StrFeed_GetStats(&fs);
     if (g_ft.t0 && now - g_ft.t0 >= UINT64_C(1000000000) && g_ft.lines < g_ft.max) {
         double p50 = 0, p95 = 0, mx = 0;
@@ -219,9 +222,9 @@ static void ftrace_sample(uint64_t now)
             p95 = g_ft.busy[(g_ft.n * 95u) / 100u] / 1e6;
             mx = g_ft.busy[g_ft.n - 1] / 1e6;
         }
-        fprintf(stderr, "[FTRACE] %.3fs pres=%d vbl=%u paced=%u busy_ms p50=%.2f p95=%.2f max=%.2f "
+        fprintf(stderr, "[FTRACE] %.3fs pres=%llu vbl=%u paced=%u busy_ms p50=%.2f p95=%.2f max=%.2f "
                 "blits=%u skip=%u blit_ms=%.1f blit_max=%.2f scan=%u fmv=%u stream=%d aq=%d win=%dx%d\n",
-                (now - g_ft.t0) / 1e9, pres - g_ft.pres0, vbl - g_ft.vbl0, g_ft.paced, p50, p95, mx,
+                (now - g_ft.t0) / 1e9, (unsigned long long)(pres - g_ft.pres0), vbl - g_ft.vbl0, g_ft.paced, p50, p95, mx,
                 g_ft.blits, g_ft.skipped, g_ft.blit_ns / 1e6, g_ft.blit_max / 1e6,
                 scan - g_ft.scan0,
                 fs.frames_published >= g_ft.fmv0 ? fs.frames_published - g_ft.fmv0 : fs.frames_published, /* a new stream restarts the count */
@@ -467,6 +470,8 @@ int HostWindow_Open(const char *display, int width, int height,
     g_blit_dirty = 1;
 
     g_close_requested = 0;
+    g_cheat_held = 0;
+    HostKeyInput_Reset(&g_keys);
     g_sony_held = 0;
     memset(&g_pacer,0,sizeof(g_pacer));
     g_host_window_open = 1;
@@ -560,16 +565,20 @@ int HostWindow_Poll(void)
                 return 1;
             }
         } else if (ev.type == FocusOut) {
+            HostKeyInput_Reset(&g_keys);
             g_sony_held = 0;
             g_speed_key_held = 0;
         } else if (ev.type == KeyPress || ev.type == KeyRelease) {
             KeySym ks = XLookupKeysym(&ev.xkey, 0);
             uint16_t bit = 0;
+            /* A release clears this keycode's pad contribution before the cheat
+             * menu or hotkeys can consume it (host_key_merge.h). */
+            if (ev.type == KeyRelease)
+                g_sony_held = HostKeyInput_Release(&g_keys, ev.xkey.keycode);
             {
                 /* Cheat console (pe_plat/cheats.h): F1-F5, F7, F8; arrows and
                  * Enter only while its warp menu is open. */
                 PeCheatKey ck = PE_CHEAT_KEY_NONE;
-                static uint16_t cheat_held;
                 if (ks >= XK_F1 && ks <= XK_F8 && ks != XK_F6) {
                     static const PeCheatKey fk[8] = {PE_CHEAT_KEY_F1, PE_CHEAT_KEY_F2,
                         PE_CHEAT_KEY_F3, PE_CHEAT_KEY_F4, PE_CHEAT_KEY_F5, PE_CHEAT_KEY_NONE,
@@ -588,11 +597,11 @@ int HostWindow_Poll(void)
                             next.xkey.time==ev.xkey.time) continue;   /* auto-repeat */
                     }
                     if (ev.type == KeyPress) {
-                        int was = (cheat_held & bitk) != 0;
-                        cheat_held |= bitk;
+                        int was = (g_cheat_held & bitk) != 0;
+                        g_cheat_held |= bitk;
                         if (was && ck != PE_CHEAT_KEY_UP && ck != PE_CHEAT_KEY_DOWN) continue;
                     } else {
-                        cheat_held &= (uint16_t)~bitk;
+                        g_cheat_held &= (uint16_t)~bitk;
                     }
                     if (pe_plat_cheats_key(ck, ev.type == KeyPress)) continue;
                 }
@@ -641,12 +650,9 @@ int HostWindow_Poll(void)
                 bit = 0x0001u; /* Tab: Select */
             else if (ks == 'p' || ks == 'P')
                 bit = 0x0008u; /* Start */
-            if (bit != 0u) {
-                if (ev.type == KeyPress)
-                    g_sony_held |= bit;
-                else
-                    g_sony_held &= (uint16_t)~bit;
-            }
+            /* Several keys may share a button: it stays held while any of them
+             * is down, and one key's release clears only its own contribution. */
+            g_sony_held = HostKeyInput_Mapped(&g_keys, ev.xkey.keycode, bit, ev.type == KeyPress);
         } else if (ev.type == ClientMessage) {
             if ((Atom)ev.xclient.data[0] == g_wm_delete) { g_close_requested = 1; return 1; }
         }
@@ -768,6 +774,7 @@ void HostWindow_Close(void)
     if (g_xrender) { dlclose(g_xrender); g_xrender = NULL; }
     if (g_xlib) { dlclose(g_xlib); g_xlib = NULL; }
     g_host_window_open = 0;
+    HostKeyInput_Reset(&g_keys);
     g_sony_held = 0;
     HostPad_Close();
 }

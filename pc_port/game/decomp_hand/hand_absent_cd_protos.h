@@ -34,8 +34,6 @@ void func_8008214C(unsigned char a0, int a1);
 void func_80082444(unsigned char a0);
 int  func_8008284C(int a0, int a1, int a2);
 int  func_80082B08(void);
-void func_80082CF0(void);
-int  func_80082E00(pe_addr_t a0);
 int  func_800837C8(pe_addr_t a0, int a1);
 int  func_80083DF0(pe_addr_t a0);
 int  func_800840DC(pe_addr_t a0);

@@ -35,6 +35,12 @@
  *   cdgen30   libds text_360 0x8007E8F4 (pending-command dispatch) pe_plat_ds_gen30.c
  *   cdgen31   libds text_5F4 0x8007EB88 (command-queue push)   pe_plat_ds_gen31.c
  *   cdgen32   libcd StSetStream 0x8007C304 (stream setup)   pe_plat_cd_gen32.c
+ *   cdgen33   libds DsDataCallback 0x800824F0 / DsSystemStatus 0x8007F72C, libcd text_1688 0x8007C13C
+ *             pe_plat_cd_gen33.c
+ *   cdgen34   libpad PadStartCom 0x80082CF0 (communication start)  pe_plat_pad_gen34.c
+ *   cdgen38   libds DsGetDiskType 0x80082314                  pe_plat_ds_gen38.c
+ *   cdgen39   libds text_170 0x8007E704 (queue flush)          pe_plat_ds_gen39.c
+ *   cdgen39   libds text_3D0 0x8007E964 (command complete / error) pe_plat_ds_gen39.c
  *   retry     CD command retry (800800F4), pe_plat_cd_retry.c
  *   poll      CD read poll retail core (800811E4), pe_plat_cd_poll.c
  * Each build line links the checker with some native files and passes
@@ -105,8 +111,8 @@
  *     (cdgen24 vectors; step-table sentinels 0x80130E00 + 0x40 * k and the hook 0x80130DC0 reach PE_Card_ICall
  *      with one argument, compared by target and $a0; both may rewrite 0x8009B768 as coded in RETS (step24 /
  *      hook24 stubs); 0x800834E8 is compared by target only; the native is void, so no return is compared)
- *   cc -std=c99 -Wall -Wextra -Werror -DCHK_HAVE_CARD_GEN25 -Dfunc_80082E00=chk_card_sector -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/tools/pe_spu_caller_check.c pc_port/platform/pe_plat_card_gen25.c -o check
- *     (cdgen25 vectors; 0x80082E00 (hand port; -D double chk_card_sector, so this tree defines no func_80082E00) and 0x80083014 (pe_plat_pad_transfer_step) are
+ *   cc -std=c99 -Wall -Wextra -Werror -DCHK_HAVE_CARD_GEN25 -Dpe_plat_pad_sio_start=chk_card_sector -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/tools/pe_spu_caller_check.c pc_port/platform/pe_plat_card_gen25.c -o check
+ *     (cdgen25 vectors; 0x80082E00 (pe_plat_pad_sio_start since cdgen35, bound in pe_plat/pad.h; -D double chk_card_sector) and 0x80083014 (pe_plat_pad_transfer_step) are
  *      stubbed with the sequences and absolute memory writes coded in RETS (sector25 / xfer25 / hook25); the
  *      hook 0x80130DC0 reaches PE_Card_ICall with one argument)
  *   cc -std=c99 -Wall -Wextra -Werror -DCHK_HAVE_PAD_GEN26 -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/tools/pe_spu_caller_check.c pc_port/platform/pe_plat_pad_gen26.c -o check
@@ -130,7 +136,33 @@
  *     (cdgen31 vectors; copy8 0x80080998 (pe_plat_cd_copy8) is stubbed: recorded with dst, src; the native
  *      is void)
  *   cc -std=c99 -Wall -Wextra -Werror -DCHK_HAVE_CD_GEN32 -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/tools/pe_spu_caller_check.c pc_port/platform/pe_plat_cd_gen32.c -o check
+ *   cc -std=c99 -Wall -Wextra -Werror -DCHK_HAVE_PAD_GEN34 -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/tools/pe_spu_caller_check.c pc_port/platform/pe_plat_pad_gen34.c -o check
+ *     (cdgen34 vectors, libpad PadStartCom 0x80082CF0: the five callees are stubbed here, each making the absolute
+ *      write its RETS code selects; 0x8007E1E4 / 0x8007E1F4 reach PE_Decomp_BoundaryFrom with two arguments; the slot
+ *      word 0x8009B728 reaches PE_Card_ICall with one argument)
+ *   cc -std=c99 -Wall -Wextra -Werror -DCHK_HAVE_PAD_GEN35 -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/tools/pe_spu_caller_check.c pc_port/platform/pe_plat_pad_gen35.c -o check
+ *     (cdgen35 vectors, SIO0 start routine 0x80082E00: the slots 0x8009B744 / 0x8009B748 go through PE_Card_ICall
+ *      (sentinels 0x80130D40 / 0x80130D80 or their KUSEG aliases) and may rewrite one later-read word on their
+ *      m-th call (pe_cd_leaf_vectors.py _mut35; RETS code bits: 0-1 return, 2-4 kind, 5-8 value, 9-10 cell,
+ *      11-13 m); 0x80083578 takes no argument, 0x80084FC4 one.)
  *     (cdgen32 vectors; range setter 0x8007C544 is stubbed with three arguments; native is void)
+ *   cc -std=c99 -Wall -Wextra -Werror -DCHK_HAVE_CD_GEN33 -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/tools/pe_spu_caller_check.c pc_port/platform/pe_plat_cd_gen33.c -o check
+ *     (cdgen33 vectors; callees 0x80073CF4 (pe_plat_dma_callback), 0x8007F778 (pe_plat_cd_queue_len),
+ *      0x8007FBF0 (pe_plat_ds_status_lane) and 0x8007AAB4 (pe_plat_cd_acknowledge_host) are stubbed;
+ *      the acknowledge worker returns POS33[p] k times then FIN33[f] and on its first call writes the
+ *      register byte IDX33[w] through the pointer word 0x8009B27C, as pe_cd_leaf_vectors.py _ack33_model)
+ *   cc -std=c99 -Wall -Wextra -Werror -DCHK_HAVE_DS_GEN38 -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/tools/pe_spu_caller_check.c pc_port/platform/pe_plat_ds_gen38.c -o check
+ *     (cdgen38 vectors; callees 0x8007F0C8 (pe_plat_cd_command_sequence_host, record pointer frame-relative),
+ *      0x8007F72C (pe_plat_ds_system_status, coded sequence), 0x8007FBF0, 0x80080B44 (frame-relative record),
+ *      0x80081DF8 and 0x800822AC are stubbed; reads of the plain word 0x800B28F8 are replayed in order like
+ *      register reads (pe_cd_leaf_vectors.py MEMSEQ); the poll tick is a no-op, a stuck-wait stop fails the case)
+ *   cc -std=c99 -Wall -Wextra -Werror -DCHK_HAVE_DS_GEN39 -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/tools/pe_spu_caller_check.c pc_port/platform/pe_plat_ds_gen39.c -o check
+ *     (cdgen39 vectors; the queue push 0x8007EB88 (pe_plat_ds_text_5f4) is stubbed with three arguments and may rewrite
+ *      the count word 0x800A3608 on its call m (RETS code m | v << 4); callbacks go through PE_Cd_DispatchDataCallback,
+ *      compared as target, status, response)
+ *     (cdgen39 also: callees 0x8007E5C4 (pe_plat_ds_cq_pop; may rewrite the count word), 0x8007EB88
+ *      (pe_plat_ds_text_5f4), 0x8007FB44 (pe_plat_cd_try_issue_cmd), 0x8007FBF0 (two-value lane sequence) and
+ *      0x80080998 (pe_plat_cd_copy8) are stubbed; callbacks go through PE_Cd_DispatchDataCallback)
  *   ./check vectors.txt   (each line checks only entries it links; split mixed files first)
  * (-Wl,--unresolved-symbols=ignore-all only covers pe_plat_libc.c's
  * references unrelated to the swap provider.)
@@ -226,7 +258,12 @@ static uint32_t rq[8192][3], nrq, rq_pos;   /* fidma timeout: 3842 reads */
 static jmp_buf case_escape; static int case_escape_armed; static unsigned long runaway_reads;
 static int mmio_read(pe_addr_t a, unsigned n, uint32_t *v)
 {
+#ifdef CHK_HAVE_DS_GEN38
+    /* cdgen38: the plain word 0x800B28F8 is polled for an asynchronous event (MEMSEQ model); its reads replay in order */
+    if ((a >> 16) != 0x1F80u && a != 0x800B28F8u) return 0;
+#else
     if ((a >> 16) != 0x1F80u) return 0;
+#endif
     if (rq_pos >= nrq || rq[rq_pos][0] != a || rq[rq_pos][1] != n) {
         bad_read = 1; *v = 0;
         if (case_escape_armed && ++runaway_reads > 1000000ul) longjmp(case_escape, 1);
@@ -271,6 +308,10 @@ static const struct { uint32_t entry, callee[12]; } k_cdgen[] = {
     {0x800800F4u, {0x8007B558u, 0x8007B9ECu}},
     {0x800811E4u, {0x80073A44u, 0x8007F608u, 0x80081268u}},
     {0x8007C304u, {0x8007C544u}},
+    {0x8007E704u, {0x8007EB88u}},
+    {0x8007E964u, {0x8007E5C4u, 0x8007EB88u, 0x8007FB44u, 0x8007FBF0u, 0x80080998u}},
+    {0x80082314u, {0x8007F0C8u, 0x8007F72Cu, 0x8007FBF0u, 0x80080B44u, 0x80081DF8u, 0x800822ACu}},
+    {0x800824F0u, {0x80073CF4u}}, {0x8007F72Cu, {0x8007F778u, 0x8007FBF0u}}, {0x8007C13Cu, {0x8007AAB4u}},
     {0x8007EB88u, {0x80080998u}},
     {0x8007E8F4u, {0x8007FBF0u, 0x8007FB44u}},
     {0x800813E8u, {0x8007C564u, 0}}, {0x800822BCu, {0x800824C8u, 0x800824DCu}},
@@ -311,6 +352,8 @@ static const struct { uint32_t entry, callee[12]; } k_cdgen[] = {
                    0x800824DCu, 0x8007F778u, 0x80082204u, 0x8007EE84u}},
     {0x80084168u, {0x80130D00u, 0x801309C0u, 0x800832B4u, 0x80084FC4u, 0x800834E8u, 0x80130D40u,
                    0x80130D80u, 0x800830DCu, 0x80083578u, 0x80130DC0u}},
+    {0x80082E00u, {0x80083578u, 0x80084FC4u, 0x80130D40u, 0x80130D80u}},
+    {0x80082CF0u, {0x80072714u, 0x80072724u, 0x80073C84u, 0x8007E1E4u, 0x8007E1F4u, 0x80131240u, 0x80131280u}},
 };
 static uint32_t ret_of(uint32_t fn)
 {
@@ -496,7 +539,7 @@ int32_t pe_plat_cd_pos_to_int(pe_plat_guest_addr loc)
 uint32_t pe_plat_cd_int_to_pos(int32_t lba, pe_plat_guest_addr loc)
 {   /* one provider bound to two guest copies (0x8007A930, 0x80080B44); a loc
      * in the caller's frame is written frame-relative (cdgen16) */
-    uint32_t fn = cur_entry == 0x80081D18u ? 0x80080B44u : 0x8007A930u;
+    uint32_t fn = (cur_entry == 0x80081D18u || cur_entry == 0x80082314u) ? 0x80080B44u : 0x8007A930u;
     char p[24], t[64]; fmt_got_ptr(p, sizeof p, loc);
     snprintf(t, sizeof t, "%08X,%08X,%s", fn, (uint32_t)lba, p); note(t); return ret_of(fn); }
 void chk_st_cd_interrupt(void);
@@ -593,6 +636,108 @@ void pe_plat_ds_ready_callback(unsigned char intr, uint32_t result);
 #ifdef CHK_HAVE_CD_GEN29
 int pe_plat_cd_getsector2(uint32_t buffer, uint32_t words);
 #endif
+#ifdef CHK_HAVE_DS_GEN39
+void pe_plat_ds_text_3d0(uint32_t status, uint32_t response);
+/* 0x8007E5C4: may rewrite the count word 0x800A3608 (RETS code bit 0, value CW36[code >> 4 & 7]). */
+void pe_plat_ds_cq_pop(void)
+{
+    static const uint32_t cw[8] = {0u, 1u, 2u, 5u, 0x100u, 0xFFFFFFFFu, 0x80000000u, 3u};
+    uint32_t code = ret_of(0x8007E5C4u);
+    note("8007E5C4");
+    if (code & 1u) PE_StoreU32(0x800A3608u, cw[(code >> 4) & 7u]);
+}
+int pe_plat_cd_try_issue_cmd(uint32_t cmd, uint32_t data)
+{ char t[64]; snprintf(t, sizeof t, "8007FB44,%08X,%08X", cmd, data); note(t); return (int)ret_of(0x8007FB44u); }
+/* 0x8007FBF0: first read LV36[code & 15], later ones LV36[(code >> 4) & 15]. */
+int pe_plat_ds_status_lane(int idx)
+{
+    static const uint32_t lv[10] = {1u, 1u, 1u, 0u, 2u, 3u, 0xFFFFFFFFu, 0x101u, 0x10001u, 0x80000001u};
+    static unsigned last_case, calls;
+    uint32_t code = ret_of(0x8007FBF0u);
+    char t[48];
+    if (last_case != cur) { last_case = cur; calls = 0; }
+    calls++;
+    snprintf(t, sizeof t, "8007FBF0,%08X", (uint32_t)idx); note(t);
+    return (int)(calls == 1u ? lv[(code & 15u) % 10u] : lv[((code >> 4) & 15u) % 10u]);
+}
+#endif
+#if defined(CHK_HAVE_DS_GEN39) || defined(CHK_HAVE_DS_GEN39)
+void pe_plat_ds_text_170(uint32_t status, uint32_t response);
+/* 0x8007EB88 (pe_plat_ds_text_5f4): on call m of a case (RETS code m | v << 4; m == 0: never) it rewrites the count
+ * word 0x800A3608 = cnt35[v] (absolute; pe_cd_leaf_vectors.py _ds35_models). */
+void pe_plat_ds_text_5f4(uint32_t sequence, uint32_t status, uint32_t response)
+{
+    static const uint32_t cnt[8] = {0u, 1u, 2u, 3u, 5u, 0xFFFFFFFFu, 0x80000000u, 9u};
+    static unsigned last_case, calls;
+    uint32_t code = ret_of(0x8007EB88u), m = code & 15u, v = (code >> 4) & 15u;
+    char t[96];
+    if (last_case != cur) { last_case = cur; calls = 0; }
+    calls++;
+    snprintf(t, sizeof t, "8007EB88,%08X,%08X,%08X", sequence, status, response); note(t);
+    if (m && calls == m) PE_StoreU32(0x800A3608u, cnt[v & 7u]);
+}
+#endif
+#ifdef CHK_HAVE_DS_GEN38
+int pe_plat_ds_get_disk_type(void);
+/* 0x8007FBF0: first read LANE34[code & 15], every later one LANE34B[(code >> 4) & 15] (pe_cd_leaf_vectors.py _ds34_models). */
+int pe_plat_ds_status_lane(int idx)
+{
+    static const uint32_t l0[9] = {2u, 2u, 2u, 0u, 1u, 3u, 0x102u, 0x10002u, 0xFFFFFFFFu};
+    static const uint32_t l1[12] = {0x10u, 0x10u, 0u, 1u, 2u, 0x110u, 0x10010u, 0x1010u, 0x80000010u, 0x20u, 0xFFFFFFFFu, 0x100u};
+    static unsigned last_case, calls;
+    uint32_t code = ret_of(0x8007FBF0u);
+    char t[48];
+    if (last_case != cur) { last_case = cur; calls = 0; }
+    calls++;
+    snprintf(t, sizeof t, "8007FBF0,%08X", (uint32_t)idx); note(t);
+    return (int)(calls == 1u ? l0[(code & 15u) % 9u] : l1[((code >> 4) & 15u) % 12u]);
+}
+/* 0x8007F72C: coded sequence, code = m | idx_i << 4i (pe_cd_leaf_vectors.py _ds34_models). */
+int pe_plat_ds_system_status(void)
+{
+    static const uint32_t sv[16] = {0u, 2u, 4u, 0xFFFFFFFFu, 0x101u, 0x10001u, 0x80000000u, 5u, 3u, 1u,
+                                    0x103u, 0x10003u, 0x80000003u, 0x80000001u, 0x1000001u, 0x3000000u};
+    static unsigned last_case, calls;
+    uint32_t code = ret_of(0x8007F72Cu), m = code & 15u;
+    if (last_case != cur) { last_case = cur; calls = 0; }
+    calls++;
+    note("8007F72C");
+    return (int)sv[(code >> (4u * (calls < m ? calls : m))) & 15u];
+}
+int pe_plat_cd_command_sequence_host(uint32_t mode, uint32_t loc, int count, uint32_t extra, uint32_t callback)
+{
+    char p[24], t[128];
+    fmt_got_ptr(p, sizeof p, loc);
+    snprintf(t, sizeof t, "8007F0C8,%08X,%s,%08X,%08X,%08X", mode, p, (uint32_t)count, extra, callback);
+    note(t);
+    return (int)ret_of(0x8007F0C8u);
+}
+#endif
+#ifdef CHK_HAVE_CD_GEN33
+uint32_t pe_plat_ds_data_callback(uint32_t callback);
+int pe_plat_ds_system_status(void);
+void pe_plat_cd_intr_poll(void);
+int32_t pe_plat_cd_queue_len(void) { note("8007F778"); return (int32_t)ret_of(0x8007F778u); }
+int pe_plat_ds_status_lane(int idx)
+{ char t[48]; snprintf(t, sizeof t, "8007FBF0,%08X", (uint32_t)idx); note(t); return (int)ret_of(0x8007FBF0u); }
+/* 0x8007AAB4 (no argument): POS33[p] for the first k calls of a case, then
+ * FIN33[f]; on its first call it writes the register byte IDX33[w] through
+ * the pointer word 0x8009B27C (w == 8: none).  code = k | p << 4 | f << 8 | w << 12. */
+int pe_plat_cd_acknowledge_host(void)
+{
+    static const uint32_t pos[16] = {1u, 2u, 4u, 6u, 3u, 7u, 0x102u, 0x104u, 0x7FFFFFFFu, 0x100u, 0xFFFFFFFFu,
+                                     0x80000000u, 0x10000u, 0xFFu, 0x10002u, 8u};
+    static const uint32_t fin[8] = {0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u};
+    static const uint8_t idx[8] = {0, 1, 2, 3, 0x10, 0x21, 0xFF, 0x80};
+    static unsigned last_case, calls;
+    uint32_t code = ret_of(0x8007AAB4u), k = code & 15u, p = (code >> 4) & 15u, f = (code >> 8) & 15u, w = (code >> 12) & 15u;
+    if (last_case != cur) { last_case = cur; calls = 0; }
+    calls++;
+    note("8007AAB4");
+    if (calls == 1u && w < 8u) PE_StoreU8(PE_LoadU32(0x8009B27Cu), idx[w]);
+    return (int)(calls <= k ? pos[p & 15u] : fin[f & 7u]);
+}
+#endif
 #ifdef CHK_HAVE_CD_GEN32
 void pe_plat_cd_set_stream(uint32_t mode, int32_t start, int32_t end, uint32_t callback, uint32_t auxiliary);
 void pe_plat_cd_stream_set_range(uint32_t mode, uint32_t start, uint32_t end);
@@ -680,6 +825,88 @@ static void hook24(void)
     if (code & 1u) PE_StoreU32(0x8009B768u, idx24[(code >> 1) & 15u]);
 }
 #endif
+#ifdef CHK_HAVE_PAD_GEN35
+/* cdgen35 (pe_cd_leaf_vectors.py _sio35_slot / _mut35): the two slot
+ * sentinels return RV35[code & 3] and, on the slot's m-th call of a case,
+ * rewrite one word the routine reads later (absolute writes, through
+ * PE_Store* like the original's logged ones). */
+void pe_plat_card_sio_rx_wait(void) { note("80083578"); }
+static uint32_t rec35;   /* the case's record (the entry's argument) */
+static uint32_t slot35(uint32_t sent)
+{
+    uint32_t record = rec35;
+    static const uint32_t rv[4] = {0u, 1u, 0xFFFFFFFFu, 0x42u};
+    static const uint32_t rc[8] = {0u, 1u, 7u, 0xF0u, 0x100u, 0x12345678u, 0xFFFFFFFFu, 0x80000000u};
+    static const uint32_t cells[4] = {0x8009B778u, 0x8009B77Cu, 0x8009B780u, 0x8009B78Cu};
+    static const uint32_t wv[13] = {0xFFFFFFFFu, 0xFFFFFFFDu, 0u, 0u, 1u, 2u, 3u, 4u, 6u, 5u, 0x80000000u,
+                                    0xFFFFFFFBu, 0u};
+    static const uint32_t idx[16] = {0u, 0u, 0u, 1u, 1u, 0xFFFFFFFFu, 4u, 5u, 6u, 7u, 8u, 0xFFFFFFFEu,
+                                     0x40000000u, 0x40000001u, 0xC0000000u, 0u};
+    static const uint8_t b50[4] = {0, 1, 2, 0xFF}, b36[4] = {0, 1, 2, 0x80};
+    static unsigned last[2], n[2];
+    uint32_t code = ret_of(sent);
+    unsigned w = sent == 0x80130D80u, kind = (code >> 2) & 7u, vi = (code >> 5) & 15u, m = (code >> 11) & 7u;
+    if (last[w] != cur) { last[w] = cur; n[w] = 0; }
+    n[w]++;
+    if (n[w] == m && kind != 7u) {
+        switch (kind) {
+        case 0: PE_StoreU32(record + 0xCu, rc[vi & 7u]); break;
+        case 1: PE_StoreU32(cells[(code >> 9) & 3u], wv[vi % 13u]); break;
+        case 2: PE_StoreU32(0x8009B764u, idx[vi]); break;
+        case 3: PE_StoreU8(record + 0x50u, b50[vi & 3u]); break;
+        case 4: PE_StoreU8(record + 0x36u, b36[vi & 3u]); break;
+        case 5: {
+            static const uint32_t p3c[4] = {0x80101E10u, 0x80101E00u, 0x80101E01u, 0x80101E20u};
+            PE_StoreU32(record + 0x3Cu, p3c[vi & 3u]);
+            break; }
+        default: {
+            static const uint32_t ps[4] = {0x1F801070u, 0x80101F00u, 0x1F801070u, 0x80101F10u};
+            PE_StoreU32(0x8009B784u, ps[vi & 3u]);
+            break; }
+        }
+    }
+    return rv[code & 3u];
+}
+int pe_plat_pad_sio_start(uint32_t record);
+#endif
+#ifdef CHK_HAVE_PAD_GEN34
+/* cdgen34 (pe_cd_leaf_vectors.py _mut34 / _pad34_callee): every callee's RETS
+ * value is a code for one absolute write made on its call (a slot: its first
+ * or second call; a BIOS callee: its only call), through PE_Store* like the
+ * original's logged ones; the returned value is ignored by the routine. */
+static void write34(unsigned k, uint32_t sent, int is_slot)
+{
+    static const uint32_t ptrv[4] = {0x1F801070u, 0x80101F00u, 0x80101F40u, 0x80101F80u};
+    static const uint32_t argv[12] = {0u, 1u, 2u, 0x1000u, 0xFFFFFF10u, 0xFFFFFF0Fu, 0x7FFFFF10u, 0x80000000u,
+                                      0xFFFFFFFFu, 0x12345678u, 0xF0u, 0xEFu};
+    static const uint32_t maskv[12] = {0u, 1u, 2u, 0x80u, 0xFFFEu, 0xFFFFu, 0x10000u, 0xFFFFFFFEu, 0xFFFFFFFFu,
+                                       0x80000000u, 0x12345678u, 0x7FFFFFFFu};
+    static const uint32_t slotv[5] = {0u, 0x80131240u, 0x00131240u, 0x80131280u, 0x00131280u};
+    static const uint32_t cntv[4] = {0u, 1u, 0xFFFFFFFFu, 0x12345678u};
+    static const uint32_t b75c[4] = {0u, 1u, 0xFFFFFFFFu, 0x42u};
+    static unsigned last[8], n[8];
+    uint32_t code = ret_of(sent), kind = code & 7u, vi = (code >> 3) & 15u;
+    if (last[k] != cur) { last[k] = cur; n[k] = 0; }
+    n[k]++;
+    if (n[k] != (is_slot ? 1u + ((code >> 7) & 1u) : 1u)) return;
+    switch (kind) {
+    case 1: PE_StoreU32(0x8009B784u, ptrv[vi & 3u]); break;
+    case 2: PE_StoreU32(0x8009B758u, argv[vi % 12u]); break;
+    case 3: PE_StoreU32(0x8009B728u, slotv[vi % 5u]); break;
+    case 4: PE_StoreU32(ptrv[1u + (vi & 1u) + ((vi >> 1) & 1u)] + 4u, maskv[(vi * 5u + 1u) % 12u]); break;
+    case 5: PE_StoreU32(0x8009B75Cu, b75c[vi & 3u]); break;
+    case 6: PE_StoreU32(vi & 1u ? 0x800A5AC4u : 0x800A5AC0u, cntv[(vi >> 1) & 3u]); break;
+    default: break;
+    }
+}
+#ifndef CHK_HAVE_CARD_GEN13
+int pe_plat_bios_enter_critical(void) { note("80072714"); write34(0, 0x80072714u, 0); return 0; }
+void pe_plat_bios_exit_critical(void) { note("80072724"); write34(1, 0x80072724u, 0); }
+#endif
+uint32_t pe_plat_bios_change_clear_rcnt(uint32_t counter, uint32_t flag)
+{ char t[64]; snprintf(t, sizeof t, "80073C84,%08X,%08X", counter, flag); note(t); write34(2, 0x80073C84u, 0); return 0; }
+int pe_plat_pad_start_com(void);
+#endif
 uint32_t PE_Card_ICall(const char *slot, pe_addr_t fn, unsigned arity, uint32_t a0, uint32_t a1, uint32_t a2)
 {   /* recorded with the call's argument count (cdgen8: two, cdgen17: one) */
     char t[64]; (void)slot; (void)a2;
@@ -694,6 +921,14 @@ uint32_t PE_Card_ICall(const char *slot, pe_addr_t fn, unsigned arity, uint32_t 
 #endif
 #ifdef CHK_HAVE_PAD_GEN26
     if ((fn & 0x1FFFFFFFu) == 0x001310C0u) return state26(0x801310C0u, a0, 0);
+#endif
+#ifdef CHK_HAVE_PAD_GEN35
+    if ((fn & 0x1FFFFFFFu) == 0x00130D40u) return slot35(0x80130D40u);
+    if ((fn & 0x1FFFFFFFu) == 0x00130D80u) return slot35(0x80130D80u);
+#endif
+#ifdef CHK_HAVE_PAD_GEN34
+    if ((fn & 0x1FFFFFFFu) == 0x00131240u) { write34(5, 0x80131240u, 1); return 0; }
+    if ((fn & 0x1FFFFFFFu) == 0x00131280u) { write34(6, 0x80131280u, 1); return 0; }
 #endif
 #ifdef CHK_HAVE_PAD_GEN24
     if ((fn & 0x1FFFFFFFu) >= 0x00130E00u && (fn & 0x1FFFFFFFu) < 0x001310C0u && !(fn & 0x3Fu)) return step24();
@@ -798,7 +1033,7 @@ int pe_plat_gpu_2b04(int a0)
 { char t[64]; snprintf(t, sizeof t, "80077548,%08X", (uint32_t)a0); note(t); return (int)ret_of(0x80077548u); }
 #endif
 #endif
-#ifdef CHK_HAVE_DS_GEN10
+#if defined(CHK_HAVE_DS_GEN10) || defined(CHK_HAVE_DS_GEN38)
 /* cdgen10 callees: the port's printf (all seven argument words recorded;
  * the vectors keep only those the format consumes) and 0x800822AC. */
 int32_t PE_Printf_Guest(pe_addr_t fmt, uint32_t a1, uint32_t a2, uint32_t a3,
@@ -852,8 +1087,8 @@ int pe_plat_ds_ready(int arg)
   return (int32_t)ret_of(0x8007F608u); }
 #endif
 #endif
-#ifdef CHK_HAVE_CD_GEN29
-/* cdgen29: the port's CD register wrappers (pe_cdreg.c) decode CD / DMA3
+#if defined(CHK_HAVE_CD_GEN29) || defined(CHK_HAVE_CD_GEN33)
+/* cdgen29 / cdgen33: the port's CD register wrappers (pe_cdreg.c) decode CD / DMA3
  * addresses into the device model; here every access is the plain value
  * access, so register reads replay and register stores are logged. */
 uint8_t PE_CdLoadU8(pe_addr_t a) { return PE_LoadU8(a); }
@@ -862,20 +1097,20 @@ uint32_t PE_CdLoadU32(pe_addr_t a) { return PE_LoadU32(a); }
 void PE_CdStoreU32(pe_addr_t a, uint32_t v) { PE_StoreU32(a, v); }
 int PE_CdReg_DeviceEnabled(void) { return 0; }
 #endif
-#if defined(CHK_HAVE_CD_GEN29) || defined(CHK_HAVE_CARD_GEN21) || defined(CHK_HAVE_CARD_GEN22) || defined(CHK_HAVE_PAD_GEN23) || defined(CHK_HAVE_PAD_GEN24)
+#if defined(CHK_HAVE_CD_GEN29) || defined(CHK_HAVE_CD_GEN33) || defined(CHK_HAVE_DS_GEN38) || defined(CHK_HAVE_CARD_GEN21) || defined(CHK_HAVE_CARD_GEN22) || defined(CHK_HAVE_PAD_GEN23) || defined(CHK_HAVE_PAD_GEN24)
 /* cdgen21 / cdgen22 (and cdgen23 / cdgen24, whose callees are the waits): the port's poll tick (pe_plat_sio_tick.c) only
  * advances the host clock; the vectors have no counterpart, so it is a
  * no-op here. */
 void pe_plat_sio_poll_tick(void) { }
 #endif
-#if defined(CHK_HAVE_CD_INIT_STEP) || defined(CHK_HAVE_CD_COMPLETE) || defined(CHK_HAVE_CD_GEN29) || defined(CHK_HAVE_CARD_GEN22) || defined(CHK_HAVE_PAD_GEN23) || defined(CHK_HAVE_PAD_GEN24)
+#if defined(CHK_HAVE_CD_INIT_STEP) || defined(CHK_HAVE_CD_COMPLETE) || defined(CHK_HAVE_CD_GEN29) || defined(CHK_HAVE_CD_GEN33) || defined(CHK_HAVE_DS_GEN38) || defined(CHK_HAVE_CARD_GEN22) || defined(CHK_HAVE_PAD_GEN23) || defined(CHK_HAVE_PAD_GEN24)
 /* A stuck-wait stop (port contract): no vector exhausts a wait budget, so a
  * call fails the case. */
 void PE_Port_RequestStop(int reason);
 void PE_Port_RequestStop(int reason) { (void)reason; bad_read = 1; }
 #endif
-#if defined(CHK_HAVE_CARD_GEN22) || defined(CHK_HAVE_PAD_GEN23) || defined(CHK_HAVE_PAD_GEN24)
-/* cdgen22 / cdgen23 / cdgen24: the RCNT2 timeout start 0x80084FC4 (bound in pe_plat/pad.h). */
+#if defined(CHK_HAVE_CARD_GEN22) || defined(CHK_HAVE_PAD_GEN23) || defined(CHK_HAVE_PAD_GEN24) || defined(CHK_HAVE_PAD_GEN35)
+/* cdgen22 / cdgen23 / cdgen24 / cdgen35: the RCNT2 timeout start 0x80084FC4 (bound in pe_plat/pad.h). */
 void pe_plat_pad_rc2_wait_set(uint32_t limit)
 { char t[64]; snprintf(t, sizeof t, "80084FC4,%08X", limit); note(t); }
 #endif
@@ -909,7 +1144,7 @@ int chk_cd_read_poll(pe_addr_t fp)
     return (int)(calls <= k ? pos[((code >> 8) & 0xFu) % 3u] : fin[((code >> 12) & 0xFu) % 3u]);
 }
 #endif
-#if defined(CHK_HAVE_CARD_GEN13) || defined(CHK_HAVE_DS_GEN16) || defined(CHK_HAVE_API_GEN19)
+#if defined(CHK_HAVE_CARD_GEN13) || defined(CHK_HAVE_DS_GEN16) || defined(CHK_HAVE_API_GEN19) || defined(CHK_HAVE_PAD_GEN34)
 int PE_Decomp_BoundaryFrom(const char *caller, const char *symbol, unsigned vma, unsigned nargs,
                            uintptr_t a0, uintptr_t a1, uintptr_t a2, uintptr_t a3)
 {
@@ -927,6 +1162,10 @@ int PE_Decomp_BoundaryFrom(const char *caller, const char *symbol, unsigned vma,
             n += (unsigned)snprintf(t + n, sizeof t - n, ",%08X", (uint32_t)a[i]);
     }
     note(t);
+#ifdef CHK_HAVE_PAD_GEN34
+    if (vma == 0x8007E1E4u) write34(3, vma, 0);     /* cdgen34: the kernel queue calls' RETS codes */
+    if (vma == 0x8007E1F4u) write34(4, vma, 0);
+#endif
     return (int)ret_of(vma);
 }
 #endif
@@ -1114,6 +1353,20 @@ static int call(uint32_t entry, uint32_t *a, uint32_t *ret)
 #ifdef CHK_HAVE_CD_POLL
     case 0x800811E4u: *ret=(uint32_t)pe_plat_cd_read_poll(a[0]); return 1;
 #endif
+#ifdef CHK_HAVE_DS_GEN39
+    case 0x8007E964u: pe_plat_ds_text_3d0(a[0], a[1]); return 0;
+#endif
+#ifdef CHK_HAVE_DS_GEN39
+    case 0x8007E704u: pe_plat_ds_text_170(a[0], a[1]); return 0;
+#endif
+#ifdef CHK_HAVE_DS_GEN38
+    case 0x80082314u: *ret = (uint32_t)pe_plat_ds_get_disk_type(); return 1;
+#endif
+#ifdef CHK_HAVE_CD_GEN33
+    case 0x800824F0u: *ret = pe_plat_ds_data_callback(a[0]); return 1;
+    case 0x8007F72Cu: *ret = (uint32_t)pe_plat_ds_system_status(); return 1;
+    case 0x8007C13Cu: pe_plat_cd_intr_poll(); return 0;
+#endif
 #ifdef CHK_HAVE_CD_GEN32
     case 0x8007C304u: pe_plat_cd_set_stream(a[0], (int32_t)a[1], (int32_t)a[2], a[3], a[4]); return 0;
 #endif
@@ -1122,6 +1375,12 @@ static int call(uint32_t entry, uint32_t *a, uint32_t *ret)
 #endif
 #ifdef CHK_HAVE_PAD_GEN26
     case 0x80084C4Cu: pe_plat_pad_record_step(a[0]); return 0;
+#endif
+#ifdef CHK_HAVE_PAD_GEN34
+    case 0x80082CF0u: *ret = (uint32_t)pe_plat_pad_start_com(); return 1;
+#endif
+#ifdef CHK_HAVE_PAD_GEN35
+    case 0x80082E00u: rec35 = a[0]; *ret = (uint32_t)pe_plat_pad_sio_start(a[0]); return 1;
 #endif
 #ifdef CHK_HAVE_CARD_GEN25
     case 0x80082B70u: *ret = (uint32_t)pe_plat_card_timer_callback(); return 1;
@@ -1216,7 +1475,12 @@ int main(int c, char **v)
         for (k = (unsigned)li + 1; k < (unsigned)si; k++) {
             unsigned addr, size, val;
             if (!strcmp(tok[k], "-")) continue;
-            if (sscanf(tok[k], "%x:%u=%x", &addr, &size, &val) == 3 && (addr >> 16) == 0x1F80u) {
+            if (sscanf(tok[k], "%x:%u=%x", &addr, &size, &val) == 3 &&
+                ((addr >> 16) == 0x1F80u
+#ifdef CHK_HAVE_DS_GEN38
+                 || addr == 0x800B28F8u
+#endif
+                )) {
                 if (nrq < 8192) { rq[nrq][0] = addr; rq[nrq][1] = size; rq[nrq][2] = val; nrq++; }
                 continue;      /* register read: replayed in order, not memory */
             }
@@ -1354,12 +1618,25 @@ int main(int c, char **v)
                 else if ((fn & 0x1FFFFFFFu) == 0x00130A40u) snprintf(w, sizeof w, "%08X,%08X,%08X,%08X,%08X@%u", fn, x0, x1, x2, x3, cnt);
                 else if ((fn & 0x1FFFFFFFu) == 0x00130A80u || (fn & 0x1FFFFFFFu) == 0x00130C40u ||
                          (fn & 0x1FFFFFFFu) == 0x00130C80u || fn == 0x80084FE4u ||
-                         fn == 0x800834E8u || fn == 0x80083578u)   /* no argument: $a0 there is leftover */
+                         fn == 0x800834E8u || fn == 0x80083578u || fn == 0x8007AAB4u || fn == 0x8007F72Cu || fn == 0x8007E5C4u)   /* no argument: $a0 there is leftover */
                     snprintf(w, sizeof w, "%08X@%u", fn, cnt);
-                else if ((fn & 0x1FFFFFFFu) == 0x00130AC0u) snprintf(w, sizeof w, "%08X,%08X@%u", fn, x0, cnt);
+                else if ((fn & 0x1FFFFFFFu) == 0x00130AC0u || (fn & 0x1FFFFFFFu) == 0x00131240u ||
+                         (fn & 0x1FFFFFFFu) == 0x00131280u) snprintf(w, sizeof w, "%08X,%08X@%u", fn, x0, cnt);
+                else if (fn == 0x80073C84u || fn == 0x8007E1E4u || fn == 0x8007E1F4u) snprintf(w, sizeof w, "%08X,%08X,%08X@%u", fn, x0, x1, cnt);
                 else if (fn == 0x80071A04u) { char p[24]; fmt_want_ptr(p, sizeof p, x0); snprintf(w, sizeof w, "80071A04,%s,%08X,%08X@%u", p, x1, x2, cnt); }
+                else if (fn == 0x8007F0C8u && entry == 0x80082314u) {   /* cdgen38: the record is in the caller's frame */
+                    char p[24]; fmt_want_ptr(p, sizeof p, x1);
+                    snprintf(w, sizeof w, "8007F0C8,%08X,%s,%08X,%08X,%08X@%u", x0, p, x2, x3, x4, cnt);
+                }
                 else if (fn == 0x8007F0C8u) snprintf(w, sizeof w, "8007F0C8,%08X,%08X,%08X,%08X,%08X@%u", x0, x1, x2, x3, x4, cnt);
                 else if ((fn & 0x1FFFFFFFu) == 0x001309C0u || fn == 0x800832B4u) snprintf(w, sizeof w, "%08X,%08X,%08X@%u", fn, x0, x1, cnt);
+                else if ((fn & 0x1FFFFFFFu) == 0x00131140u || (fn & 0x1FFFFFFFu) == 0x00131180u)   /* cdgen33 callbacks: status, response */
+                    snprintf(w, sizeof w, "%08X,%08X,%08X@%u", fn, x0, x1, cnt);
+                else if (fn == 0x8007EB88u) snprintf(w, sizeof w, "%08X,%08X,%08X,%08X@%u", fn, x0, x1, x2, cnt);
+                else if ((fn & 0x1FFFFFFFu) == 0x00131200u || (fn & 0x1FFFFFFFu) == 0x00131240u ||
+                         (fn & 0x1FFFFFFFu) == 0x00131300u || (fn & 0x1FFFFFFFu) == 0x00131340u ||
+                         (fn & 0x1FFFFFFFu) == 0x00131380u || (fn & 0x1FFFFFFFu) == 0x001313C0u)   /* cdgen39 / cdgen39 callbacks: status, response */
+                    snprintf(w, sizeof w, "%08X,%08X,%08X@%u", fn, x0, x1, cnt);
                 else if (fn == 0x80130980u) snprintf(w, sizeof w, "80130980,%08X,%08X@%u", x0, x1, cnt);
                 else if (fn == 0x80076C34u) snprintf(w, sizeof w, "%08X,%08X,%08X,%08X,%08X@%u", fn, x0, x1, x2, x3, cnt);
                 else if (fn == 0x8007EE84u) snprintf(w, sizeof w, "%08X,%08X,%08X,%08X,%08X@%u", fn, x0, x1, x2, x3, cnt);

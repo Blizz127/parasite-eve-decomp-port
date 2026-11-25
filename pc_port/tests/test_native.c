@@ -18963,9 +18963,9 @@ static void test_native_only_boundary_stop(void) {
     PASS();
 }
 
-/* Native only: the 240 Hz AKAO tick is the native func_8008DB7C; the port
- * library contains no MIPS interpreter (the retail-code oracle is linked into
- * this test executable only and must not be reached by the driver clock). */
+/* The armed 240 Hz AKAO tick calls the native func_8008DB7C. The test-only
+ * retail-code oracle must not be reached by the driver clock. This test does
+ * not establish whole-engine native coverage. */
 #include "pe_audio_driver.h"
 extern int PE_Event_Open(uint32_t cls, uint32_t spec, uint32_t mode, pe_addr_t handler);
 extern int PE_Event_Enable(int handle);
@@ -27519,10 +27519,11 @@ static void test_6AD40_strict_completes_without_frontier(void)
      * first CD read issue (func_8006E6D4 services pending GPU DMA before the
      * host delivers the sectors — on hardware the 16-word block finishes in
      * microseconds, long before a sector arrives).  DICR is still 0 there,
-     * so no DMA2 IRQ flag is raised; psx-spx "DMA": DICR flags 24-30 are set
-     * on completion only while the channel's enable bit (16-22) is set, and
-     * enabling it later does not set the flag retroactively.  The old
-     * expectation (flag raised at DrawSync) encoded the host's late
+     * so no DMA2 IRQ flag is raised. The current model requires both the
+     * channel and master enables at completion; later enabling does not set
+     * the flag retroactively. Hardware behavior is not established by this
+     * fixture; reference versions state the master requirement differently.
+     * The old expectation (flag raised at DrawSync) encoded the host's late
      * completion, after the fixture's DICR enable. */
     ASSERT(!PE_GPU_DMA2Pending() && !PE_GPU_DMA2CompletionPending(),
            "seeded DMA was not completed at hardware time (before DICR enable)");
