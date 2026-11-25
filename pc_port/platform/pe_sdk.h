@@ -29,6 +29,7 @@
 #include "pe_plat/gte.h"
 #include "pe_plat/libc.h"
 #include "pe_plat/bios_file.h"
+#include "pe_plat/bios_card.h"
 #include "pe_plat/bios_string.h"
 #include "pe_plat/bios_rand.h"
 #include "pe_plat/bios_event.h"
@@ -161,11 +162,7 @@ void PE_GTE_WriteCtrl(uint32_t reg, uint32_t value);
 void PE_GTE_Command(uint32_t cmd);
 
 /* ── memory-card BIOS / libcard (pc_port/platform/pe_bios_card.c) ──── */
-int  func_8007DD44(uint32_t chan);                   /* A(ABh) _card_info */
-int  func_8007DD54(uint32_t chan);                   /* A(ACh) _card_load */
 int  func_8007DD74(pe_addr_t chan);                  /* _card_clear: _new_card + sector-3Fh write (pe_plat_card_clear.c) */
-void func_8007DDC4(pe_addr_t chan);                  /* B(50h) allow_new_card */
-int  func_8007DDB4(pe_addr_t chan, int sector, int src); /* B(4Eh) */
 int  func_80072734(pe_addr_t name, uint32_t mode);   /* B(32h) open */
 int  func_80072744(int fd, int32_t offset, int whence); /* B(33h) lseek */
 int  func_80072754(int fd, pe_addr_t dst, int32_t length); /* B(34h) read */

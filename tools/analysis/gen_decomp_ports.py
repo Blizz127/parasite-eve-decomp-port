@@ -1007,6 +1007,10 @@ PE_PLAT_REPLACED = {
     "func_800857E4": "pc_port/platform/pe_plat_bios_event.c",  # BIOS B(09h) CloseEvent
     "func_800857F4": "pc_port/platform/pe_plat_bios_event.c",  # BIOS B(0Dh) DisableEvent
     "func_80085804": "pc_port/platform/pe_plat_bios_event.c",  # BIOS B(20h) UnDeliverEvent
+    "func_8007DD44": "pc_port/platform/pe_plat_bios_card.c",  # BIOS A(ABh) _card_info
+    "func_8007DD54": "pc_port/platform/pe_plat_bios_card.c",  # BIOS A(ACh) _card_load
+    "func_8007DDB4": "pc_port/platform/pe_plat_bios_card.c",  # BIOS B(4Eh) _card_write
+    "func_8007DDC4": "pc_port/platform/pe_plat_bios_card.c",  # BIOS B(50h) _new_card
     "func_800719E4": "pc_port/platform/func_800719E4_port.c",  # BIOS B(38h)
     "func_800726C4": "pc_port/platform/pe_libetc.c",  # BIOS A(44h) FlushCache
     "func_80073C74": "pc_port/platform/pe_libetc.c",  # BIOS B(5Bh) ChangeClearPAD
@@ -1226,6 +1230,7 @@ PE_PLAT_HEADERS = {
                    "pc_port/platform/func_80071A24_port.c": "pc_port/include/pe_plat/bios_string.h",
                    "pc_port/platform/pe_bios_rand.c": "pc_port/include/pe_plat/bios_rand.h",
                    "pc_port/platform/pe_plat_bios_event.c": "pc_port/include/pe_plat/bios_event.h",
+                   "pc_port/platform/pe_plat_bios_card.c": "pc_port/include/pe_plat/bios_card.h",
                    "pc_port/platform/func_800719E4_port.c": "pc_port/include/pe_plat/bios_sys.h",
                    "pc_port/platform/pe_libetc.c": "pc_port/include/pe_plat/bios_sys.h",
                    "pc_port/platform/pe_plat_gpu_status.c": "pc_port/include/pe_plat/gpu_status.h",

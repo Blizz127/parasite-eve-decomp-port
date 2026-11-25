@@ -23,18 +23,6 @@ func	0x80075C94	pc_port/game/decomp/func_80075C94_port.c
 func	0x80077C84	pc_port/game/boot/func_80077C84_port.c
 func	0x8007A244	pc_port/game/boot/func_8007A214_port.c
 func	0x8007D778	pc_port/game/decomp/func_8007D778_port.c
-func	0x8007DD44	bin:parasite-eve-port	# clean-room host model of BIOS A(ABh) _card_info -> PE_Memcard_CardInfoResult + event delivery; retail stub is only `li t2,A0h; jr t2; li t1,ABh` (no Sony code/tables)
-func	0x8007DD44	bin:pe-native-tests	# clean-room host model of BIOS A(ABh) _card_info -> PE_Memcard_CardInfoResult + event delivery; retail stub is only `li t2,A0h; jr t2; li t1,ABh` (no Sony code/tables)
-func	0x8007DD44	pc_port/platform/pe_bios_card.c	# clean-room host model of BIOS A(ABh) _card_info -> PE_Memcard_CardInfoResult + event delivery; retail stub is only `li t2,A0h; jr t2; li t1,ABh` (no Sony code/tables)
-func	0x8007DD54	bin:parasite-eve-port	# clean-room host model of BIOS A(ACh) _card_load -> PE_Memcard_CardLoadResult + event delivery; retail stub is only `li t2,A0h; jr t2; li t1,ACh` (no Sony code/tables)
-func	0x8007DD54	bin:pe-native-tests	# clean-room host model of BIOS A(ACh) _card_load -> PE_Memcard_CardLoadResult + event delivery; retail stub is only `li t2,A0h; jr t2; li t1,ACh` (no Sony code/tables)
-func	0x8007DD54	pc_port/platform/pe_bios_card.c	# clean-room host model of BIOS A(ACh) _card_load -> PE_Memcard_CardLoadResult + event delivery; retail stub is only `li t2,A0h; jr t2; li t1,ACh` (no Sony code/tables)
-func	0x8007DDB4	bin:parasite-eve-port	# clean-room host model of BIOS B(4Eh) write_card_sector -> PE_Memcard_CardClearResult + event delivery; retail stub is only `li t2,B0h; jr t2; li t1,4Eh` (no Sony code/tables)
-func	0x8007DDB4	bin:pe-native-tests	# clean-room host model of BIOS B(4Eh) write_card_sector -> PE_Memcard_CardClearResult + event delivery; retail stub is only `li t2,B0h; jr t2; li t1,4Eh` (no Sony code/tables)
-func	0x8007DDB4	pc_port/platform/pe_bios_card.c	# clean-room host model of BIOS B(4Eh) write_card_sector -> PE_Memcard_CardClearResult + event delivery; retail stub is only `li t2,B0h; jr t2; li t1,4Eh` (no Sony code/tables)
-func	0x8007DDC4	bin:parasite-eve-port	# clean-room host model of BIOS B(50h) allow_new_card -> no-op; retail stub is only `li t2,B0h; jr t2; li t1,50h` (no Sony code/tables)
-func	0x8007DDC4	bin:pe-native-tests	# clean-room host model of BIOS B(50h) allow_new_card -> no-op; retail stub is only `li t2,B0h; jr t2; li t1,50h` (no Sony code/tables)
-func	0x8007DDC4	pc_port/platform/pe_bios_card.c	# clean-room host model of BIOS B(50h) allow_new_card -> no-op; retail stub is only `li t2,B0h; jr t2; li t1,50h` (no Sony code/tables)
 func	0x8007F7E8	pc_port/game/boot/cd_stream_port.c
 func	0x8007F88C	pc_port/game/boot/cd_stream_port.c
 func	0x80080778	pc_port/game/boot/cd_stream_port.c

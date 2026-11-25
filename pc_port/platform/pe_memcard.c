@@ -577,7 +577,7 @@ int PE_Memcard_Open(const char *name, uint32_t mode)
     for (int i = 0; i < MC_MAX_FDS; i++) if (!g_files[i].used) { slot = i; break; }
     if (slot < 0) return -1;
     first = find_file(p, rest);
-    if (mode & 0x200u) {                         /* FCREAT */
+    if (mode & 0x200u) {                         /* bit 9: create (psx-spx) */
         if (first >= 0) return -1;               /* already exists */
         if (!safe_directory_for_mutation(p)) { bad_directory(p); return -1; }
         uint8_t *snapshot;
