@@ -41,8 +41,7 @@
 
 int32_t pe_plat_gpu_timeout(void)
 {
-    int32_t now = (int32_t)func_80073A44(-1);
-    now = pe_plat_gpu_host_deadline_clock(now);   /* host: compare in the clock the deadline was seeded in */
+    int32_t now = (int32_t)pe_plat_gpu_host_vsync_query();   /* the original calls VSync(-1); see gpu_host.h */
     int32_t limit = (int32_t)PE_LoadU32(W_LIMIT);
     if (now <= limit) {
         int32_t count = (int32_t)PE_LoadU32(W_COUNT);

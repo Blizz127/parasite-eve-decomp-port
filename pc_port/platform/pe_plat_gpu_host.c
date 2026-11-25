@@ -16,32 +16,11 @@
 #define LIST_END      0xFFFFFFu
 #define NODE_WORDS_MAX 255u
 
-static uint64_t wait_events_seen;   /* DMA2 completions already accounted for by the deadline clock */
+uint32_t pe_plat_gpu_host_vsync_query(void) { return PE_GPU_VSyncQuery(); }
 
-static uint64_t dma_events(void)
-{
-    PeGpuState st;
-    PE_GPU_GetState(&st);
-    return st.dma_event_count;
-}
-
-void pe_plat_gpu_host_drawsync(int32_t mode)
-{
-    HostFB_DrawSync((int)mode);
-    wait_events_seen = dma_events();    /* progress is counted from DrawSync entry */
-}
+void pe_plat_gpu_host_drawsync(int32_t mode) { HostFB_DrawSync((int)mode); }
 
 void pe_plat_gpu_host_present_dispenv(uint32_t env) { HostFB_PresentDispEnv(env); }
-
-int32_t pe_plat_gpu_host_deadline_clock(int32_t now)
-{
-    /* The VSync(-1) call itself (and its host telemetry) already happened; it may be what completed the
-     * transfer (HostFB_VSync services the pending GPU DMA while a movie decode is in flight). */
-    uint64_t events = dma_events();
-    if (events == wait_events_seen) return now;      /* no progress: legacy comparison */
-    wait_events_seen = events;
-    return (int32_t)PE_LoadU32(0x800956ACu);         /* D_800956AC: the counter the deadline was seeded from */
-}
 
 int pe_plat_gpu_host_wait_tick(void)
 {

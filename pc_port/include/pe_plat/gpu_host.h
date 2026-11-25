@@ -13,16 +13,13 @@
 /* DrawSync entry: the host framebuffer's DrawSync telemetry (one per call). */
 void pe_plat_gpu_host_drawsync(int32_t mode);
 
-/* Clock of the timeout check's deadline test (0x80077404).  `now` is what VSync(-1) just returned.
- * The deadline word 0x80095888 is seeded as VBlank counter 0x800956AC + 240, so the check must read
- * the same counter.  That holds on hardware and with the CD device attached, but the host's device-less
- * VSync(-1) is a call count that runs ahead of the VBlank counter (tens of calls per frame in a movie
- * loop): the unadjusted comparison expires after ~10 frames of DrawSync waits whose DMA2 transfer the
- * host completes during the very poll, and the timeout check then resets the GPU path and drops the
- * queued image uploads.  A wait in which a DMA2 transfer completed since DrawSync entry / the previous
- * check made progress, so its deadline is judged on the VBlank counter; a wait with no progress keeps the
- * VSync(-1) value (a stuck GPU still expires at once).  Returns the value to compare. */
-int32_t pe_plat_gpu_host_deadline_clock(int32_t now);
+/* The clock of the GPU timeout check: what its VSync(-1) reads.  The deadline word it compares against is seeded
+ * by the host's seed function (func_800773D0) from the GPU model's VBlank counter (PE_GPU_VSyncQuery), so the
+ * check must read that same counter.  HostFB_VSync(-1) returns a different clock (the guest's counter with a CD
+ * device, else a call count) and, polled once per busy wait pass, made every check exceed the deadline: the
+ * timeout path then reset the GPU and dropped the queued uploads (route gate: the field background was never
+ * uploaded). */
+uint32_t pe_plat_gpu_host_vsync_query(void);
 
 /* One wait pass of the queue wait (after the timeout check): lets the host DMA2
  * transfer progress through the DMA IRQ checkpoint.  Returns 0 normally, 1 when

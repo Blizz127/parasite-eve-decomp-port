@@ -102,7 +102,6 @@ int PE_GuestCall(const char *site, pe_addr_t fn, unsigned arity, uintptr_t a0, u
 /* host-hook stubs (pe_plat/gpu_host.h): host state is not part of the vectors */
 #include "pe_plat/gpu_host.h"
 void pe_plat_gpu_host_drawsync(int32_t mode) { (void)mode; }
-int32_t pe_plat_gpu_host_deadline_clock(int32_t now) { return now; }
 int pe_plat_gpu_host_wait_tick(void) { return 0; }
 int pe_plat_gpu_host_dma_preflight(uint32_t packet) { (void)packet; return 1; }
 void pe_plat_gpu_host_dma_run(void) {}

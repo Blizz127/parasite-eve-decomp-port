@@ -183,7 +183,9 @@ int pe_plat_gpu_2700(int mode) { return (int)callee("G2700", 1, (uint32_t)mode, 
 /* host-hook stubs (pe_plat/gpu_host.h): host state is not part of the vectors */
 #include "pe_plat/gpu_host.h"
 void pe_plat_gpu_host_drawsync(int32_t mode) { (void)mode; }
-int32_t pe_plat_gpu_host_deadline_clock(int32_t now) { return now; }
+#ifdef CHK_SET_A
+uint32_t pe_plat_gpu_host_vsync_query(void) { return chk_vsync(-1); }   /* the original's VSync(-1) call */
+#endif
 int pe_plat_gpu_host_wait_tick(void) { return 0; }
 int pe_plat_gpu_host_dma_preflight(uint32_t packet) { (void)packet; return 1; }
 void pe_plat_gpu_host_dma_run(void) {}

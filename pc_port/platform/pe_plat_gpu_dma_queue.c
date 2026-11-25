@@ -123,12 +123,13 @@ int32_t pe_plat_gpu_dma_queue_run(int32_t mode)
                 q = PE_LoadU32(W_Q);
                 if (((r + 1u) & 0x3Fu) == q && PE_LoadU32(W_FLAG758) == 0u) {
                     uint32_t cbt = PE_LoadU32(P_CBTAB), cb;
-                    if (!pe_gpu_reg_ok(cbt + 4u, 4)) {
-                        /* Host: libetc jump table never set up (zero or canary in unit tests; retail would
-                         * fault): the shipped slot is the native DMA callback setter. */
+                    cb = pe_gpu_reg_ok(cbt + 4u, 4) ? PE_LoadU32(cbt + 4u) : 0u;
+                    if (cb == 0u) {
+                        /* Host: libetc jump table never set up, or its DMA-callback slot empty (zero / canary
+                         * in unit tests; retail would jump to 0): the shipped slot is the native DMA callback
+                         * setter. */
                         (void)func_80073CF4(2, 0);
                     } else {
-                        cb = PE_LoadU32(cbt + 4u);
                         if (!PE_GuestHook_Call("dmaq_callback", "func_80077294", cb, 1, 2, 0, 0, 0, &ret)) return 0;
                     }
                 }
