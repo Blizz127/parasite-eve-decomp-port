@@ -22,7 +22,6 @@ uint32_t HostFB_VSync(int mode) {
 }
 uint32_t PE_GPU_VSyncQuery(void) { event('Q');queries++;return (scenario==3 || scenario==5) && queries==2?1000u:10u; }
 unsigned short func_80073DE8(void) { event('R');return scenario==2 || scenario==4; }
-void PE_Cd_TimeoutRecover(void) { event('T');recoveries++; }
 int pe_plat_cd_acknowledge_host(void) { event('A');return acks++==0?6:0; }
 uint8_t PE_CdLoadU8(pe_addr_t a) { if(a!=0x1f801800u) abort();event('L');return 1; }
 void PE_CdStoreU8(pe_addr_t a,uint8_t v) { if(a!=0x1f801800u || v!=1) abort();event('S'); }

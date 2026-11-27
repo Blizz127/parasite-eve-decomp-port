@@ -19,6 +19,7 @@
  * is retained or written to guest state.
  */
 #include "pe_spu_dma.h"
+#include "pe_plat/spu_dma_check.h"
 #include "pe_plat_spu_dma_addrs.h"
 #include "pe_spu.h"
 #include "pe_plat/audio.h"
@@ -44,22 +45,6 @@ static int g_dma_read;
 static uint64_t g_order;
 static uint32_t g_dma4_madr, g_dma4_bcr, g_dma4_chcr;   /* DMA4 register file (PE_SpuDma_Dma4Load/Store) */
 
-static int RoundDmaSize(uint32_t requested_size, uint32_t *dma_size)
-{
-    uint64_t rounded;
-
-    if (!dma_size) return 0;
-    if (requested_size == 0) {
-        *dma_size = 0;
-        return 1;
-    }
-    rounded = ((uint64_t)requested_size +
-               (PE_SPU_DMA_BLOCK_SIZE - 1u)) &
-              ~(uint64_t)(PE_SPU_DMA_BLOCK_SIZE - 1u);
-    if (rounded > UINT32_MAX) return 0;
-    *dma_size = (uint32_t)rounded;
-    return 1;
-}
 
 void PE_SpuDma_Reset(void)
 {
@@ -117,22 +102,14 @@ int PE_SpuDma_RecordRequest(pe_addr_t source, uint32_t destination,
     /* `callback` is recorded only: an issue never reads the live callback slot D_8009B434; the completion handler
      * dispatches whatever the slot holds at that time. */
     f = dma_log();
-    if (!g_dma.irq_installed ||
-        g_dma.irq_handler != PE_SPU_DMA_IRQ_HANDLER ||
-        g_dma.pending ||
-        (source & 3u) != 0 ||
-        (destination & 7u) != 0 ||
-        requested_size > PE_SPU_DMA_MAX_REQUEST ||
-        !RoundDmaSize(requested_size, &dma_size) ||
-        !PE_RangeIsRam(source, dma_size) ||
-        destination >= PE_SPU_RAM_SIZE ||
-        dma_size > PE_SPU_RAM_SIZE) {
+    /* The acceptance rules and the 64-byte block rounding are the clean-room ladder of pe_plat2_spu_dma_check.c
+     * (batch 44a; derived from the spu_dma_hw.h contract, the cdgen48 black-box report and psx-spx). */
+    if (!PE_SpuDmaCheck_Request(g_dma.irq_installed, g_dma.irq_handler, g_dma.pending,
+                                source, destination, requested_size, read_direction, &dma_size)) {
         if (f && !read_direction) {
-            dma_size = 0;
-            (void)RoundDmaSize(requested_size, &dma_size);
             g_dma_issue_sum = 0;
-            fprintf(f, "BEGIN REJECT src=%08X dst=%05X req=%X size=%X cb=%08X irq=%d/%08X pending=%d sum=%08X\n",
-                    source, destination, requested_size, dma_size, callback,
+            fprintf(f, "BEGIN REJECT src=%08X dst=%05X req=%X cb=%08X irq=%d/%08X pending=%d sum=%08X\n",
+                    source, destination, requested_size, callback,
                     g_dma.irq_installed, g_dma.irq_handler, g_dma.pending, g_dma_issue_sum);
             fflush(f);
         }

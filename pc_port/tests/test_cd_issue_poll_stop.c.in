@@ -21,7 +21,6 @@ void PE_StrFeed_Reset(void) { }
 uint32_t HostFB_VSync(int m) { if(m!=-1) abort();return 10; }
 uint32_t PE_GPU_VSyncQuery(void) { return 10; }
 unsigned short func_80073DE8(void) { return 1; }
-void PE_Cd_TimeoutRecover(void) { abort(); }
 void Bootstrap_ReturnVoid1(const char *a,const char *b,uint32_t c) { (void)a;(void)b;(void)c;abort(); }
 void Bootstrap_ReturnVoid4Indirect(const char *a,const char *b,uintptr_t t,uintptr_t c,uintptr_t d,uintptr_t e,uintptr_t f)
 { (void)a;(void)b;(void)t;(void)c;(void)d;(void)e;(void)f;abort(); }

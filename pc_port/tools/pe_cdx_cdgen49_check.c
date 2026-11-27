@@ -103,7 +103,8 @@ void PE_Fill(pe_addr_t a, uint32_t len, uint8_t v) { uint32_t i; for (i = 0; i <
 
 /* weak: the hand definition was removed from pe_libcd.c (cdx-dsread); only the -DCDX49_GEN build links the generated TU */
 int func_8006E6D4(int, int, pe_addr_t, int) __attribute__((weak));
-void PE_Cd_TimeoutRecover(void);
+/* the former host timeout seam no longer exists in the tree; the timeout slice is a local no-op */
+__attribute__((unused)) static void PE_Cd_TimeoutRecover(void) {}
 static int call(uint32_t entry, const uint32_t *a, uint32_t *ret)
 {
     stopped = 0;

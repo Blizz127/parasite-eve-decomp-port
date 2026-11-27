@@ -182,6 +182,7 @@ set(PLATFORM_SRCS
     platform/pe_plat2_gpuq_host.c
     platform/pe_plat2_resetgraph_light.c
     platform/pe_spu_dma.c
+    platform/pe_plat2_spu_dma_check.c
     platform/pe_spu.c
     platform/pe_audio_driver.c
     platform/pe_libcard.c
@@ -189,7 +190,7 @@ set(PLATFORM_SRCS
     platform/pe_bios_card.c
     platform/pe_plat_bios_card.c
     platform/pe_cdreg.c
-    platform/pe_libcd.c
+    platform/pe_plat2_cd_state.c
     platform/pe_plat_cd.c
     platform/pe_plat2_cdsync.c
     platform/pe_plat_libc.c

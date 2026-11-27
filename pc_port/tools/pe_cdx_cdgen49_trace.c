@@ -1,13 +1,12 @@
 /* cdgen49 runtime trace logger (test-only, observes, never changes behaviour): linker-wrap logger for the live
- * symbols of platform/pe_libcd.c.  Link into the full runtime with
+ * symbols of platform/pe_plat2_cd_state.c.  Link into the full runtime with
  *   -Wl,--wrap=func_8006E6D4,--wrap=pe_plat_ds_system_status,--wrap=pe_plat_cd_queue_len,--wrap=pe_plat_cd_disc_type,
- *   --wrap=PE_Cd_TimeoutRecover,--wrap=PE_Cd_XaServiceAvailable,--wrap=PE_Cd_FilePresent,
+ *   --wrap=PE_Cd_XaServiceAvailable,--wrap=PE_Cd_FilePresent,
  *   --wrap=pe_plat_cd_store_setloc_hint,--wrap=PE_Cd_GetSetlocRaw   pe_cdx_cdgen49_trace.o
- * (--wrap rewrites references between object files only, so a call inside pe_libcd.c itself is not seen; every
+ * (--wrap rewrites references between object files only, so a call inside pe_plat2_cd_state.c itself is not seen; every
  * caller listed in the census is another object.)  Output file: env PE_CDX_TRACE49 (default ./pe_cdx_trace49.log).
  * One record per DISTINCT tuple, each ends with `| V <VBlank counter at first sight> | N <times seen>`:
  *   T 8006E6D4 a0 a1 a2 a3 | M flags=.. hw=.. s574=.. s578=.. b590=.. a3608=.. | G rdy=.. ql=.. dt=.. | R ret=.. flagsafter=..
- *   T TimeoutRecover | M b294=.. b295=.. b296=.. cb=.. ctx=.. tbl=.. | ...
  *   T XaServiceAvailable | R ret   T FilePresent name ptr | R ret   T SetlocHint raw   T GetSetlocRaw | R ret      */
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,7 +18,6 @@ int __real_func_8006E6D4(int, int, pe_addr_t, int);
 int __real_pe_plat_ds_system_status(void);
 int32_t __real_pe_plat_cd_queue_len(void);
 int32_t __real_pe_plat_cd_disc_type(void);
-void __real_PE_Cd_TimeoutRecover(void);
 int __real_PE_Cd_XaServiceAvailable(void);
 int __real_PE_Cd_FilePresent(pe_addr_t);
 void __real_pe_plat_cd_store_setloc_hint(uint32_t);
@@ -32,7 +30,6 @@ static int in6d4; static int g_rdy, g_ql, g_dt;
 
 static uint32_t rd32(uint32_t a) { uint32_t v = 0; memcpy(&v, PE_TranslateConst(a, 4), 4); return v; }
 static uint16_t rd16(uint32_t a) { uint16_t v = 0; memcpy(&v, PE_TranslateConst(a, 2), 2); return v; }
-static uint8_t rd8(uint32_t a) { return *(const uint8_t *)PE_TranslateConst(a, 1); }
 static void init(void)
 {
     const char *p = getenv("PE_CDX_TRACE49");
@@ -66,14 +63,6 @@ int __wrap_func_8006E6D4(int a, int b, pe_addr_t c, int d)
              (unsigned)r, rd32(0x800B0CD8u));
     note(0, k);
     return r;
-}
-void __wrap_PE_Cd_TimeoutRecover(void)
-{
-    char k[600]; uint32_t ctx = rd32(0x800A3480u);
-    snprintf(k, sizeof k, "T TimeoutRecover | M b294=%X b295=%X b296=%X b2AFD5=%X ctx=%X tbl=%X,%X", rd8(0x8009B294u), rd8(0x8009B295u), rd8(0x8009B296u),
-             rd8(0x8009AFD5u), ctx, rd32(0x8009B05Cu), rd32(0x8009AFDCu));
-    note(1, k);
-    __real_PE_Cd_TimeoutRecover();
 }
 int __wrap_PE_Cd_XaServiceAvailable(void) { char k[100]; int r = __real_PE_Cd_XaServiceAvailable(); snprintf(k, sizeof k, "T XaServiceAvailable | R ret=%X", (unsigned)r); note(2, k); return r; }
 int __wrap_PE_Cd_FilePresent(pe_addr_t n) { char k[100]; int r = __real_PE_Cd_FilePresent(n); snprintf(k, sizeof k, "T FilePresent %X | R ret=%X", (unsigned)n, (unsigned)r); note(3, k); return r; }

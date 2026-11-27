@@ -261,7 +261,7 @@ void func_8008CB54(uint32_t mode); /* SPU reverb mode transition */
 /* ── libcard (pc_port/platform/pe_libcard.c) ────────────────────────── */
 void func_800409B4(void);            /* game-class func_800409B4 (MemCard init manager; not libcard — see pe_libcard.c header) */
 
-/* ── libcd (pc_port/platform/pe_libcd.c) ────────────────────────────── */
+/* ── libcd (pc_port/platform/pe_plat2_cd_state.c) ────────────────────────────── */
 int  func_8007EC14(void);            /* CdInit */
 int  func_8007ED58(void);            /* Cd reset + state clear (returns 1) */
 int  func_8007FBF0(int idx);         /* CdStatus lane getter D_8009B574[idx] */
@@ -294,9 +294,9 @@ int func_80080DC4(int command,pe_addr_t param,pe_addr_t response);
 int func_8007BF44(unsigned int a0,unsigned int a1);
 int  func_80080D5C(int command, pe_addr_t param, pe_addr_t result);
 /* 1 when a CD provider serves XA-ADPCM streaming through the libcd queue
- * (Setfilter, ReadS in XA mode, GetlocP, Stop); see pe_libcd.c. */
+ * (Setfilter, ReadS in XA mode, GetlocP, Stop); see pe_plat2_cd_state.c. */
 int PE_Cd_XaServiceAvailable(void);
-/* 1 when the active disc has the file a guest name string names (pe_libcd.c). */
+/* 1 when the active disc has the file a guest name string names (pe_plat2_cd_state.c). */
 int PE_Cd_FilePresent(pe_addr_t guest_name);
 /* Mid-game register-level device attachment for a CD-XA consumer: the two
  * hooks host-mode DsInit skips, saved and restored (platform/pe_plat2_cdx_stream_seams.c). */

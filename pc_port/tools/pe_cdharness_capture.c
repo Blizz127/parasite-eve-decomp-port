@@ -203,20 +203,7 @@ void __wrap_pe_plat_cd_dma_issue_host(uint32_t a, uint32_t b, uint32_t c, uint32
     uint32_t v[7]; v[0] = a; v[1] = b; v[2] = c; v[3] = d; v[4] = e; v[5] = f; v[6] = g; enter(0x8007CEACu, 7, v);
     __real_pe_plat_cd_dma_issue_host(a, b, c, d, e, f, g); leave();
 }
-/* PE_Cd_TimeoutRecover is declared in no public header (the poll provider's timeout-recovery seam).  Forwarding wrap with six integer
- * arguments: ABI-safe on x86-64 for any integer/void-returning function of up to six integer arguments.  Token R = the seam was reached. */
-long __real_PE_Cd_TimeoutRecover(long a, long b, long c, long d, long e, long f);
-static unsigned long long recover_calls;
-long __wrap_PE_Cd_TimeoutRecover(long a, long b, long c, long d, long e, long f)
-{
-    if (!inited) init();
-    recover_calls++;
-    note_c("R", (uint32_t)a, (uint32_t)b, (uint32_t)c, (uint32_t)d, (uint32_t)e);
-    fprintf(stderr, "[CDHARNESS] PE_Cd_TimeoutRecover reached (call %llu) inside=%08X vb=%u\n", recover_calls,
-            depth >= 0 && depth < MAXD && out ? st[depth].entry : 0u, PE_GPU_VSyncQuery());
-    dump_stats();
-    return __real_PE_Cd_TimeoutRecover(a, b, c, d, e, f);
-}
+static unsigned long long recover_calls; /* retained for the report line; the seam is gone, always 0 */
 static int stop_lines;
 void __wrap_PE_Port_RequestStop(PEPortStopReason reason)
 {

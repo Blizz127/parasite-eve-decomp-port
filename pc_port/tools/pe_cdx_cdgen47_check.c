@@ -16,7 +16,6 @@
  *   PE_Cd_DispatchDataCallback(target, status, response) -> callee `target` (status, response), returns 1 (handled),
  *   HostFB_VSync(mode) / PE_GPU_VSyncQuery() -> retail VSync 0x80073A44 (mode / -1),
  *   pe_plat_ctl_callback_state -> 0x80073DE8,
- *   PE_Cd_TimeoutRecover: -DCDX47_RECOVER_FLUSH=1 maps it to the retail CD flush 0x8007B9EC (arity 0), default = host-only (counted),
  *   pe_plat_cd_stream_stop / pe_plat_cd_stream_auxiliary / PE_CdReg_ServiceDMA3 / PE_CdReg_DeviceEnabled: host-only (counted, DeviceEnabled = 1),
  *   PE_MDEC_GetState: zero state (-DCDX47_MDEC_DMA0_ACTIVE=1: dma0_active = 1).
  *   -DCDX47_MDEC_REPLAY=1 (stream only): PE_MDEC_GetState consumes the replayed 0x1F801098 register read and reports it as dma1_chcr,
@@ -46,7 +45,7 @@
  */
 /* -DCDX47_CDHOST=1: the clean-room replacements platform/pe_plat2_cdhost_<fn>.c (symbols pe_plat_cdhost_*, pe_plat/cdhost.h).
  * The entry names and the stand-ins for the entries that call each other are renamed, and the host seams the previous providers
- * needed (PE_Cd_TimeoutRecover, the two VSync seams, the stream stop/auxiliary hooks, PE_MDEC_GetState) are NOT defined: a replacement
+ * needed (the two VSync seams, the stream stop/auxiliary hooks, PE_MDEC_GetState) are NOT defined: a replacement
  * that still references one fails to link.  Retail callees are reached by their retail bindings only (pe_plat_hostfb_vsync = 0x80073A44,
  * pe_plat_cd_flush = 0x8007B9EC).  Host-only calls a replacement makes for the host model (clock tick, DMA3 service) are IGNOREd and counted. */
 #if CDX47_CDHOST
@@ -169,11 +168,6 @@ uint32_t PE_GPU_VSyncQuery(void) { host_only_calls++; return peek_ret(0x80073A44
 #endif
 int PE_Cd_DispatchDataCallback(pe_addr_t target, uint32_t status, pe_addr_t response)
 { (void)cdx_callee(target, 2, status, response, 0, 0, 0); return 1; }
-#if CDX47_RECOVER_FLUSH
-CALLEE(PE_Cd_TimeoutRecover, 0x8007B9ECu, 0)
-#else
-IGNORE(PE_Cd_TimeoutRecover)
-#endif
 #endif
 #endif
 #if CDX47_CMD

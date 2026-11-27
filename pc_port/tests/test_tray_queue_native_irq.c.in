@@ -34,7 +34,6 @@ int PE_Port_ShouldStop(void) { return stopped; }
 uint32_t HostFB_VSync(int mode) { if(mode!=-1) abort(); vsync_calls++; return 10; }
 uint32_t PE_GPU_VSyncQuery(void) { return 10; }
 unsigned short func_80073DE8(void) { return 1; }
-void PE_Cd_TimeoutRecover(void) { abort(); }
 
 int PE_Cd_DispatchDataCallback(pe_addr_t a,uint32_t s,pe_addr_t p) { (void)a;(void)s;(void)p;abort(); }
 void HostFB_DevicePoll(void) { abort(); }

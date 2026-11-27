@@ -21,7 +21,6 @@ uint32_t HostFB_VSync(int m) {
 }
 uint32_t PE_GPU_VSyncQuery(void) { queries++;return 10; }
 unsigned short func_80073DE8(void) { ready_calls++;return 0; }
-void PE_Cd_TimeoutRecover(void) { abort(); }
 int pe_plat_cd_acknowledge_host(void) { abort(); }
 uint8_t PE_CdLoadU8(pe_addr_t a) { (void)a;abort(); }
 void PE_CdStoreU8(pe_addr_t a,uint8_t v) { (void)a;(void)v;abort(); }
