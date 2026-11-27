@@ -15,7 +15,11 @@ static void test_DAY1_formatter_frame(void)
         PE_StoreU32(DAY1_formatter_frame_cases[n].stack+16u,DAY1_formatter_frame_cases[n].args[2]);
         uint32_t result=PE_FormatterFrame(DAY1_formatter_frame_cases[n].destination,0x80140000u,
             DAY1_formatter_frame_cases[n].args[0],DAY1_formatter_frame_cases[n].args[1],DAY1_formatter_frame_cases[n].stack,saved);
-        uint64_t hash=hit_camera_hash(DAY1_formatter_frame_ranges,2);
+        /* Observable region only (see pe_formatter_frame_oracle.py observable()): the buffers, the caller-visible words at and above caller sp,
+         * the flag words and the output bytes wherever the destination lies - never the callee's private frame below the caller's sp. */
+        const uint32_t observable[4][2]={{0x140000u,0x3000u},{DAY1_formatter_frame_cases[n].stack&0x1FFFFFu,0x40u},{0x94528u,12u},
+            {DAY1_formatter_frame_cases[n].destination&0x1FFFFFu,result+1u}};
+        uint64_t hash=hit_camera_hash(observable,4);
         if(hash!=DAY1_formatter_frame_cases[n].hash)fprintf(stderr,"formatter frame %u (%s): %016llX expected %016llX\n",n,DAY1_formatter_frame_cases[n].format,(unsigned long long)hash,(unsigned long long)DAY1_formatter_frame_cases[n].hash);
         ASSERT(hash==DAY1_formatter_frame_cases[n].hash,"formatter guest output/frame differs from original");
         if(DAY1_formatter_frame_cases[n].target) {

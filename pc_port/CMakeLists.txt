@@ -191,6 +191,7 @@ set(PLATFORM_SRCS
     platform/pe_plat_cd.c
     platform/pe_plat2_cdsync.c
     platform/pe_plat_libc.c
+    platform/pe_plat2_libc_format.c
     platform/pe_plat_hostfb_forward.c
     platform/pe_drive_tray.c
     platform/pe_disc.c
@@ -229,7 +230,6 @@ set(BOOTSTRAP_SRCS
 set(GAME_SRCS
     game/boot/func_8003E610_port.c
     game/boot/func_8003E680_port.c
-    game/boot/func_80071A84_port.c
     game/boot/func_80041108_port.c
     game/boot/func_800405A4_port.c
     game/boot/func_80015AF0_port.c

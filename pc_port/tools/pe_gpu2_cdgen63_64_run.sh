@@ -13,7 +13,17 @@ case $S in
   cdgen64) OBJS="pe_plat_resetgraph_light_host pe_plat_gpu_gen9"; SRC=pc_port/tools/pe_gpu2_cdgen64_check.c; declare -A VF=([stopped]=cdgen64s.txt [inline]=cdgen64i.txt) ;;
   *) echo "unknown set"; exit 2 ;;
 esac
-for f in $OBJS; do cc -c -std=gnu11 -O2 -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/platform/$f.c -o "$O/$f.o" || exit 1; done
+# provider source per object name (the object NAME is what the checker BUILD lines expect, whatever file defines it): the ResetGraph light provider is
+# pe_plat2_resetgraph_light.c since the clean-room rewrite (the symbol pe_plat_resetgraph_light_host is unchanged); the previous file name is the fallback;
+# G6_RGLIGHT_SRC=<path> overrides it (e.g. a rewrite not yet merged into this tree; G6_EXTRA_INC=<dir> adds an include directory for its new headers)
+for f in $OBJS; do
+  src=pc_port/platform/$f.c
+  if [ "$f" = pe_plat_resetgraph_light_host ]; then
+    if [ -n "${G6_RGLIGHT_SRC:-}" ]; then src=$G6_RGLIGHT_SRC
+    elif [ -f pc_port/platform/pe_plat2_resetgraph_light.c ]; then src=pc_port/platform/pe_plat2_resetgraph_light.c; fi
+  fi
+  cc -c -std=gnu11 -O2 ${G6_EXTRA_INC:+-I"$G6_EXTRA_INC"} -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap "$src" -o "$O/$f.o" || exit 1
+done
 for n in $(grep -o '^ \* BUILD-[A-Za-z0-9_-]*:' $SRC | sed 's/^ \* BUILD-//; s/:$//'); do
   vf="$V/${VF[$n]}"
   tac "$vf" > "$O/${n}_reversed.txt"

@@ -1,5 +1,5 @@
 /* Checker for the cdgen64 sets (pe_gpu2_vectors.py cdgen64s / cdgen64i): the ResetGraph light path, libgpu 0x80074A44 (mode & 7 in 1, 2, 4, 6, 7),
- * provider pc_port/platform/pe_plat_resetgraph_light_host.c (pe_plat_resetgraph_light_host(mode)).  The reset modes (mode & 7 = 0, 3, 5) belong to
+ * provider pc_port/platform/pe_plat2_resetgraph_light.c (formerly pe_plat_resetgraph_light_host.c; the exported function pe_plat_resetgraph_light_host(mode) and the object name the BUILD lines expect are unchanged).  The reset modes (mode & 7 = 0, 3, 5) belong to
  * the sibling provider pe_plat_gpu_resetgraph.c and are not in the vectors.  Contract: pe_gpu2_check_core.h.  Controls: GPU2_MUTANT=1 no-op entry,
  * =2 return bit flip, =3 store bit flip (cdx noop / retflip / storeflip), reversed order and the missing-provider link check by the run script.
  * Seams of the provider (nm -u): PE_Bios_Printf (the debug print the original makes through the log vector 0x80071A74), PE_GuestHook_Call / Refuse

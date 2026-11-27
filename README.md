@@ -194,14 +194,14 @@ Details and the full list of what was checked:
   opt-in cheats, and its tests.
   **Temporarily missing (2026-11-27, updated):** three provider files were
   removed from this tree because a whole-binary provenance sweep found they
-  still carried bodies translated from the original SDK code. Two of the three
-  parts are back as clean-room providers written from black-box vector sets and
+  still carried bodies translated from the original SDK code. All three parts
+  are now back as clean-room providers written from black-box vector sets and
   public documentation: `pc_port/platform/pe_plat2_press_dct.c` (the libpress
-  DecDCT helpers) and `pc_port/platform/pe_plat2_resetgraph_light.c` (the
-  ResetGraph light path). The translated interrupt tail in `pe_spu_dma.c` is
-  now delegated to the existing clean-room provider. The sprintf formatter
-  (`pc_port/game/boot/func_80071A84_port.c`) is still missing pending its
-  clean-room replacement. Until then this tree does not build the port.
+  DecDCT helpers), `pc_port/platform/pe_plat2_resetgraph_light.c` (the
+  ResetGraph light path) and `pc_port/platform/pe_plat2_libc_format.c` (the
+  sprintf formatter). The translated interrupt tail in `pe_spu_dma.c` is
+  delegated to the existing clean-room provider. This tree still does not
+  build the port.
 - `configs/`: splat and symbol configuration (addresses and names only).
 - `tools/`, `scripts/`, `dev/`: the analysis tools, including the retail-data
   and Psy-Q guards, the build scripts and the build container.

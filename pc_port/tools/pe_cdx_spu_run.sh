@@ -34,3 +34,7 @@ for f in cba8.txt cba8_sweep.txt imm.txt imm2.txt imm3.txt other_sweep.txt; do e
 echo "\$ build/check46cdxspu $X/sweep46.txt"; ./build/check46cdxspu $X/sweep46.txt 2>&1 | grep -E "^mode"
 echo "\$ build/check44reg $X/regonly400.txt"; ./build/check44reg $X/regonly400.txt 2>&1 | grep -E "^mode|^  [0-9A-F]{8} cases"
 # long: cba8_30k.txt cba8_sweep4k.txt (about 2 minutes each)
+# cdgen51 (SpuClearReverbWorkArea 0x8008D610, entry pe_plat_cdxspu_clear_work_area): C51_VEC = directory with clear.txt
+C51=${C51:?set C51 to the directory holding the vector sets}
+run cc $CF $CD $INC pc_port/tools/pe_cdx_cdgen51_cdxspu_check.c $O/pe_plat2_cdx_spu.c.o $O/pe_plat2_spu_a.c.o -o build/check51cdxspu
+for m in "" noop flip retflip storeflip poke0 same; do echo "\$ build/check51cdxspu clear.txt $m: $(CDX_CATEGORIES=1 ./build/check51cdxspu $C51/clear.txt $m 2>&1 | grep -E '^mode')"; done

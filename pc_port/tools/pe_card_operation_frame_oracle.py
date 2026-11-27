@@ -4,9 +4,9 @@ import hashlib,struct,sys
 from pe_battle_hud_oracle import ROOT,execute
 from pe_card_operation_oracle import fixture
 from pe_transition_loader_oracle import fnv
-RANGES=((0xA0ED4,0xA00),(0x92224,4),(0x92230,4),(0x160000,16),(0x9D154,16),(0x9EE70,96),(0x1FEA00,0x800))
+RANGES=((0xA0ED4,0xA00),(0x92224,4),(0x92230,4),(0x160000,16),(0x9D154,16),(0x9EE70,96))   # hashed, plus the caller-visible words at and above the dispatcher's sp ({stack,0x40}); the private frames below it (dispatcher and formatter spills / residue) are not observable
 STATIC=((0x10ED4,160),(0x1161C,220),(0x94528,12))
-STOPS={0x80042228,0x8004D5CC,0x800727B4,0x80072754,0x80072764,0x80072774,0x80072734,0x80072784,0x80072314,0x80072324}
+STOPS={0x80042228,0x8004D5CC,0x800727B4,0x80072754,0x80072764,0x80072774,0x80072734,0x80072784}
 def main():
  ex=(ROOT/'build/disc1.candidate.exe').read_bytes();assert hashlib.sha1(ex).hexdigest()=='452fb033f2eaa4b18aa20a5bca60b8125af3a37b'
  assert hashlib.sha256(ex[0x41108-0xF800:0x42020-0xF800]).hexdigest()=='a9033ae5110fc414ffe13fa229fc7ffe9bc17a9e563eae68fc8e49b712fd3c6a'
@@ -14,7 +14,7 @@ def main():
  for n in range(1280):
   r,index=fixture(ex,n%128+(n//128)*384)
   struct.pack_into('<I',r,0x92224,0x80010ED4)
-  r[0x9EE70:0x9EED0]=bytes(96);r[0x1FEA00:0x1FF200]=bytes(0x800)
+  r[0x9EE70:0x9EED0]=bytes(96);r[0x1FEA00:0x1FF200]=bytes(0x800)   # zeroed for determinism, not hashed
   stack=0x801FEE00 if n&128 else 0x801FF000
   entry=0x80040F80 if n>=1024 else 0x80041108
   argument=0x800A0ED4+index*0x418 if n>=1024 else index
@@ -34,7 +34,7 @@ def main():
    mask=7 if target in (0x80072754,0x80072764,0x80072324) else 3 if target in (0x80072734,0x800727B4) else 1
    args=[regs[4+i] if mask&(1<<i) else 0 for i in range(4)]
   if target==0x80042228:mask=0;args=[0]*4
-  h=fnv(b''.join(r[a:a+size] for a,size in RANGES));cases.append((entry,argument,stack,first,len(patches),target,mask,args,h))
+  h=fnv(b''.join(r[a:a+size] for a,size in RANGES+((stack&0x1FFFFF,0x40),)));cases.append((entry,argument,stack,first,len(patches),target,mask,args,h))
  assert {0x80041284,0x800416E0,0x80041840,0x80041910,0x800419DC,0x80041EA4,0x80072334,0x80041040,0x8004105C,0x800721A8}<=seen
  out=['/* Original dispatcher plus formatter; guest stack and first BIOS effects. */','static const uint32_t DAY1_card_operation_frame_ranges[][2]={']
  out += [f'{{0x{a:X}u,0x{size:X}u}},' for a,size in RANGES];out+=['};','static const uint32_t DAY1_card_operation_frame_common[][2]={']
@@ -45,5 +45,5 @@ def main():
  out.append('};');header='\n'.join(out)+'\n';p=ROOT/'pc_port/tests/retail_card_operation_frame_cases.h'
  if '--write-header' in sys.argv:p.write_text(header)
  else:assert p.read_text()==header
- print('PASS1280 original framed card dispatch/cleanup executions through first unresolved call')
+ print('PASS1280 original framed card dispatch/cleanup executions through first unresolved call (observable-region hashes; string BIOS routines inline)')
 if __name__=='__main__':main()

@@ -13,7 +13,13 @@ static void test_DAY1_card_operation_frame(void)
         if(DAY1_card_operation_frame_cases[n].entry==0x80040F80u)
             PE_CardCleanupFrame(DAY1_card_operation_frame_cases[n].argument,incoming[29],incoming);
         else PE_CardOperationFrame(DAY1_card_operation_frame_cases[n].argument,incoming[29],incoming);
-        uint64_t hash=hit_camera_hash(DAY1_card_operation_frame_ranges,sizeof(DAY1_card_operation_frame_ranges)/sizeof(DAY1_card_operation_frame_ranges[0]));
+        /* Observable region only: the fixed record / buffer ranges plus the caller-visible words at and above the dispatcher's sp; the private frames
+         * below it (dispatcher and formatter spills, stack residue) are not retail-observable behaviour. */
+        uint32_t observable[sizeof(DAY1_card_operation_frame_ranges)/sizeof(DAY1_card_operation_frame_ranges[0])+1][2];
+        const unsigned fixed=sizeof(DAY1_card_operation_frame_ranges)/sizeof(DAY1_card_operation_frame_ranges[0]);
+        for(unsigned i=0;i<fixed;i++){observable[i][0]=DAY1_card_operation_frame_ranges[i][0];observable[i][1]=DAY1_card_operation_frame_ranges[i][1];}
+        observable[fixed][0]=DAY1_card_operation_frame_cases[n].stack&0x1FFFFFu;observable[fixed][1]=0x40u;
+        uint64_t hash=hit_camera_hash(observable,fixed+1u);
         if(hash!=DAY1_card_operation_frame_cases[n].hash)fprintf(stderr,"card frame %u: %016llX expected %016llX\n",n,(unsigned long long)hash,(unsigned long long)DAY1_card_operation_frame_cases[n].hash);
         ASSERT(hash==DAY1_card_operation_frame_cases[n].hash,"card formatter/frame effects differ from original");
         if(DAY1_card_operation_frame_cases[n].target==0x80072314u) {

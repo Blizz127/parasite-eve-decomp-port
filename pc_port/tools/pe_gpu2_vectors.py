@@ -478,7 +478,7 @@ def gen_be3c(rng, k):
 
 
 # ============================================================ cdgen63: libpress DecDCTBufSize / DecDCTvlcSize / DecDCToutSync (overlay ovl_039F)
-# The three entries are hosted in pe_libpress.c.  The oracle runs the overlay bytes (ensure_overlay_blobs.py extracts the blob);
+# The three entries are hosted in pe_plat2_press_dct.c (formerly pe_libpress.c).  The oracle runs the overlay bytes (ensure_overlay_blobs.py extracts the blob);
 # DecDCToutSync's callees in the same overlay (func_8010C39C poll loop, func_8010C430 status read, func_8010C448 timeout path) run
 # INLINE so the hardware accesses they make are part of the event stream.  The 0x100000-poll timeout arm (func_8010C448) needs a million
 # register reads per case and is not sampled (documented in the report).
@@ -550,7 +550,8 @@ def gen_c078(rng, k):
 # write sequence and the state stores are part of the stream.
 INLINE_OF['func_80074A44@inline'] = (('func_80077144', False),)
 # the table slot 13 target is called with one argument (1); the log vector with the format and the mode
-ARITY_OF['func_80074A44'] = ARITY_OF['func_80074A44@inline'] = {0x80130340: 1, 0x80130200: 2}
+# the GPU reset (0x80077144, public prototype int pe_plat_gpu_2700(int mode)) takes one argument: the stopped shape records (1), the leftover argument registers are not significant
+ARITY_OF['func_80074A44'] = ARITY_OF['func_80074A44@inline'] = {0x80130340: 1, 0x80130200: 2, 0x80077144: 1}
 ALIAS['func_80074A44@inline'] = 'func_80074A44'
 LIGHT_LOW = (1, 2, 4, 6, 7)
 

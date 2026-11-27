@@ -58,9 +58,11 @@ def setup():
     return sp
 
 
-def run(base, sp, sysc, case, seed):
+def run(base, sp, sysc, case, seed, flagwords=None):
     dst, fmt, args, strs = case
     ram = bytearray(base)
+    if flagwords is not None:       # cdgen62b: the three default flag / width / precision words 0x80094528 / 2C / 30
+        struct.pack_into('<III', ram, 0x94528, *[x & M32 for x in flagwords])
     f = fmt.encode('latin-1') + b'\0'
     ram[FMT & 0x1FFFFF:(FMT & 0x1FFFFF) + len(f)] = f
     for addr, text in strs:
@@ -209,8 +211,65 @@ def cases(nrandom, seed):
     return out
 
 
+def cases_b(seed):
+    """cdgen62b: the three default words 0x80094528 (flags) / 0x8009452C (width) / 0x80094530 (precision) swept - the value sets the two suite tables
+    (DAY1_formatter_frame, DAY1_card_operation_frame) seed: (0,0,0), (0,12,3), (0x2000,12,3) - plus every single flag bit, edge widths / precisions
+    and random words - over synthetic formats that use the conversions the tables use (integers, %c, %p, %s with the string in the data buffer,
+    `*` width / precision, length modifiers h l L, %n / %hn / %hhn storing the count through a pointer into the data buffer, the destination, the
+    caller's home area), the data buffer 0x80142000 the tables seed, destinations at odd alignments and a destination inside the formatter's own frame
+    window, and an unsupported conversion.  Returns [(class, case, flagwords)]."""
+    rng = random.Random(seed)
+    sets = [(0, 0, 0), (0, 12, 3), (0x2000, 12, 3), (0, 0, 3), (0, 12, 0), (0x2000, 0, 0)]
+    sets += [(1 << k, 0, 0) for k in range(16)] + [(1 << k, 12, 3) for k in (0, 1, 2, 3, 4, 5, 8, 12, 13, 15)]
+    sets += [(M32, 0, 0), (M32, M32, M32), (0, M32, 0), (0, 0, M32), (0, 40, 0), (0, 0, 40), (0, 0x7FFFFFFF, 0), (0, 0, 0x7FFFFFFF), (0x10, 5, 5), (4, 5, 5)]
+    for _ in range(30):
+        sets.append((rng.getrandbits(32) & rng.getrandbits(32), rng.choice((0, 1, 3, 12, 40, M32, rng.getrandbits(8))), rng.choice((0, 1, 3, 12, 40, M32, rng.getrandbits(8)))))
+    DATA = 0x80142000
+    stack_home = 0x801FF00C
+    fmts = [('%d', 'int'), ('%i', 'int'), ('%u', 'int'), ('%o', 'int'), ('%x', 'int'), ('%X', 'int'), ('%p', 'ptr'), ('%hd', 'int'), ('%hu', 'int'),
+            ('%ld', 'int'), ('%Ld', 'int'), ('%+08d', 'int'), ('%#08x', 'int'), ('%.0d', 'int'), ('%#.0o', 'int'), ('%-12d|', 'int'), ('% 6d', 'int'),
+            ('%*d', 'star'), ('%.*u', 'prec'), ('%%:%c', 'chr'), ('%c%c', 'chr2'), ('%#s', 'str'), ('%#.2s', 'str'), ('%s', 'str'), ('%.4s', 'str'), ('%*s', 'starstr'),
+            ('A%nB', 'n'), ('A%hnB', 'n'), ('A%hhnB', 'n'), ('xy%d0:ABCDE0000000%c%c', 'mix'), ('zz%ld0:', 'int'), ('A%qB', 'int'), ('plain', 'none'), ('', 'none')]
+    out = []
+    for i, fw in enumerate(sets):
+        for fmt, kind in fmts:
+            if (i + len(fmt)) % 3 == 2 and i >= 6:       # thin the full cross product: the first six sets (the table values) run every format
+                continue
+            val = rng.choice(INTS)
+            strs = [(DATA, '\x03abcXYZ'), (STRS[0], 'synthetic')]
+            dst = DSTS[0]
+            if kind in ('int', 'ptr'):
+                args = [val, 0x30, 0x41]
+            elif kind == 'star':
+                args = [rng.choice((8, 0xFFFFFFF8, 0)), val]
+            elif kind == 'prec':
+                args = [rng.choice((4, 0xFFFFFFFC, 0)), val]
+            elif kind == 'chr':
+                args = [rng.choice((0x41, 0, 0xFF))]
+            elif kind == 'chr2':
+                args = [0x41, 0x7A]
+            elif kind == 'str':
+                args = [DATA]
+            elif kind == 'starstr':
+                args = [8, DATA]
+            elif kind == 'n':
+                target = rng.choice((DATA + 0x20, stack_home, DSTS[0] + 0x80, 0x80143000 - 0x10))
+                args = [target, 0]
+            elif kind == 'mix':
+                args = [val, 0x41, 0x42]
+            else:
+                args = []
+            out.append(('flags', (dst, fmt, args, strs), fw))
+            if i < 6 and fmt in ('%d', '%u', '%x', '%s', '%c%c', 'A%nB'):      # the table variants: odd destinations, destination inside the frame window
+                for d in (0x80142001, 0x80142002, 0x801FEF90):
+                    out.append(('dest', (d, fmt, args, strs), fw))
+    return out
+
+
 def main():
     argv = sys.argv[1:]
+    if '--set' in argv and argv[argv.index('--set') + 1] == 'b':
+        return main_b(argv)
     nrandom, seed = 700, 1
     for flag in ('--random', '--seed'):
         if flag in argv:
@@ -248,6 +307,34 @@ def main():
     from collections import Counter
     print('format.txt cases=%d tried=%d tsv_rows=%d tsv_output_agrees=%d own_written_loads_excluded=%d mixed=%d classes=%s %s' % (
         len(lines), len(allc), tsv_total, tsv_agree, sum(m.OWNLOAD.values()), sum(m.MIXEDLOAD.values()),
+        ','.join('%s:%d' % kv for kv in sorted(Counter(classes).items())), ' '.join('%s=%d' % kv for kv in sorted(STATS.items()))))
+
+
+def main_b(argv):
+    seed = 1
+    if '--seed' in argv:
+        seed = int(argv[argv.index('--seed') + 1])
+    outdir = [x for x in argv if not x.startswith('--') and x != 'b' and not x.isdigit()][0]
+    os.makedirs(outdir, exist_ok=True)
+    exe = (v.ROOT / 'build/disc1.candidate.exe').read_bytes()
+    base = bytes(v.fixture(exe, 0, 0, 0))
+    sp = setup()
+    sysc = m.syscall_pcs(base, ENTRY)
+    c._check_callees_complete(base, ENTRY, (), inline=sp['inline'] + (0x80072314, 0x80072324))
+    allc = cases_b(seed)
+    lines, classes = [], []
+    for i, (cls, case, fw) in enumerate(allc):
+        r = run(base, sp, sysc, case, 62500 + i, fw)
+        if r is None:
+            STATS['dropped-class:' + cls] = STATS.get('dropped-class:' + cls, 0) + 1
+            continue
+        lines.append(r[0])
+        classes.append(cls)
+    open(os.path.join(outdir, 'format_b.txt'), 'w').write('\n'.join(lines) + '\n')
+    open(os.path.join(outdir, 'format_b.txt.classes'), 'w').write(''.join('%d %s\n' % (i + 1, t) for i, t in enumerate(classes)))
+    from collections import Counter
+    print('format_b.txt cases=%d tried=%d own_written_loads_excluded=%d mixed=%d classes=%s %s' % (
+        len(lines), len(allc), sum(m.OWNLOAD.values()), sum(m.MIXEDLOAD.values()),
         ','.join('%s:%d' % kv for kv in sorted(Counter(classes).items())), ' '.join('%s=%d' % kv for kv in sorted(STATS.items()))))
 
 

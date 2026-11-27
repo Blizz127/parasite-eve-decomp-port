@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Compare native ResetGraph light dispatch with the original executor."""
+"""Compare native ResetGraph light dispatch with the original executor.
+--library: a shared library exporting pe_plat_resetgraph_light_host(int) built from pc_port/platform/pe_plat2_resetgraph_light.c (formerly pe_plat_resetgraph_light_host.c;
+the exported symbol is unchanged) with the host seams wired to set_callbacks(load, hook)."""
 import argparse, ctypes, hashlib, pathlib, random, struct
 parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--exe',required=True,type=pathlib.Path)

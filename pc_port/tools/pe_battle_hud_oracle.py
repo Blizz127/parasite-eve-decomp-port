@@ -355,6 +355,14 @@ def execute(ram, entry, args=(), *, stop_at=(), initial_regs=None, initial_cop_c
                 assert start+size<=len(ram)
                 ram[start:start+size]=bytes(size)
                 r[2]=r[4]
+            elif r[9] == 0x1B:
+                # BIOS A(1Bh) strlen(a0): the formatter's %s length (reached through the libc veneer 0x80072314).
+                start=r[4]&0x1FFFFF
+                r[2]=ram.index(0,start)-start
+            elif r[9] == 0x2E:
+                # BIOS A(2Eh) memchr(a0, a1, a2): the formatter's precision-limited %s scan (veneer 0x80072324).
+                start=r[4]&0x1FFFFF;count=min(r[6],len(ram)-start);at=bytes(ram[start:start+count]).find(bytes((r[5]&255,)))
+                r[2]=0 if at<0 else (r[4]+at)&0xFFFFFFFF
             elif r[9] == 0x30: bios_seed=r[4]
             elif r[9] == 0x2F:
                 bios_seed=(bios_seed*0x41C64E6D+0x3039)&0xFFFFFFFF
