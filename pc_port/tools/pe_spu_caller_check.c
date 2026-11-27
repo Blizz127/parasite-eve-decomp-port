@@ -1202,7 +1202,7 @@ int pe_plat_bios_enter_critical(void) { note("80072714"); return (int)ret_of(0x8
 void pe_plat_bios_exit_critical(void) { note("80072724"); }
 void pe_plat_bios_change_clear_pad(uint32_t flag)
 { char t[64]; snprintf(t, sizeof t, "80073C74,%08X", flag); note(t); }
-int32_t pe_plat_pad_initialized(void) { note("8007DEB0"); return (int32_t)ret_of(0x8007DEB0u); }
+int32_t pe_plat_ctl_pad_initialized(void) { note("8007DEB0"); return (int32_t)ret_of(0x8007DEB0u); }
 #ifndef CHK_HAVE_CARD_GEN15
 void pe_plat_card_copy_patch(void) { note("8007E4E0"); }
 #endif

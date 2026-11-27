@@ -8,9 +8,12 @@
  */
 
 #include "pe_guestcode.h"
+#include "pe_bios_string.h"
 #include "psx_compat.h"
 #include "pe_port_compat.h"
 #include "host_framebuffer.h"
+#include "pe_plat/timing.h"
+#include "host_audio.h"
 #include "host_vram.h"
 #include "game_port.h"
 #include "stub_registry.h"
@@ -18,6 +21,7 @@
 #include "pe_guest_image.h"
 #include "test_retail_fixups.h"
 #include "pe_memcard.h"
+#include "pe_plat/bios_card.h"
 /* Stripped retail-oracle headers (RETAILFIX tables used across test files). */
 #include "retail_actor_flag_vm_cases.h"
 #include "retail_music_consumer_cases.h"
@@ -105,6 +109,7 @@
 #include "pe_spu_dma.h"
 #include "pe_plat_spu_dma_addrs.h"
 #include "pe_gpu.h"
+#include "pe_gte_commands.h"
 #include "pe_cdreg.h"
 #include "pe_irq.h"
 #include "pe_irq_delivery.h"
@@ -116,6 +121,7 @@
 #include <signal.h>
 #include <stddef.h>
 #include <unistd.h>
+#include <sys/resource.h>
 #include <sys/wait.h>
 
 extern int func_8006EC08(void);
@@ -164,6 +170,10 @@ static int RetailDisc1FixtureConfigured(void)
 } while(0)
 #define PASS() do { tests_passed++; printf("PASS\n"); } while(0)
 #define FAIL(msg) do { tests_failed++; printf("FAIL: %s\n", msg); } while(0)
+/* Tests of providers quarantined on 2026-10-29 (Devbox ce47093540d8): their
+ * contracts are unbound until a clean-room rewrite; bodies kept for it. */
+#define QUARANTINED_SKIP() do { tests_skipped++; \
+    printf("SKIP (quarantined SDK adapter, Devbox ce47093540d8)\n"); return; } while(0)
 #define ASSERT(cond, msg) do { if (!(cond)) { FAIL(msg); return; } } while(0)
 
 /* Bootstrap-policy initial value for D_80011614 (pe_globals.c) */
@@ -552,6 +562,7 @@ static void FT1_SeedOtcJtb(void)
     DAY1_SeedClearDispatch();
     PE_StoreU32(0x80095744u, 0x80095704u);
     PE_StoreU32(0x80095730u, 0x80076354u); /* jtb[11]: OTC1 worker */
+    PE_StoreU32(0x8009571Cu, 0x80076B98u); /* jtb[6]: chain-walk worker */
     /* OT[0]/OT[1] at the retail arena addresses 6E9A0 publishes
      * (0x80120D08 + 0x1C98 / + 0x5C98), so the clear has a real table. */
     PE_StoreU32(0x800B0E38u, 0x801229A0u);
@@ -563,6 +574,11 @@ static void B54KR_SeedGpuStatic(void)
     DAY1_SeedDisplayDispatch();
     DAY1_SeedClearDispatch();
     PE_StoreU32(0x80095744u, 0x80095704u);
+    /* ResetGraph light path uses jtb[13] and these retail MMIO pointers. */
+    PE_StoreU32(0x80095738u, 0x80077144u);
+    PE_StoreU32(0x80095860u, 0x1F8010A8u);
+    PE_StoreU32(0x80095870u, 0x1F8010F0u);
+    PE_StoreU32(0x80095854u, 0x1F801814u);
     PE_StoreU32(0x8009570Cu, 0x80076C34u); /* target at jtb + 8 */
     PE_StoreU32(0x80095718u, 0x80076B58u); /* worker at jtb + 0x14 */
     PE_StoreU32(0x8009571Cu, 0x80076B98u); /* worker at jtb + 0x18 */
@@ -874,6 +890,30 @@ static void test_B54KR_gpu_move_rejections_are_mutation_free(void)
     ASSERT(after.move_count == before.move_count && after.dma2_active &&
            after.dma2_event_token == before.dma2_event_token,
            "busy rejection changed DMA or move state");
+    PASS();
+}
+
+static void test_GPU_moveimage_null_rect_safe(void)
+{
+    PeGpuState state;
+    pe_addr_t fmt;
+    uint32_t args[4];
+    TEST_RETAIL_DISC1("GPU_moveimage_null_rect_safe"); TEST_RETAIL_FIXUPS(RETAILFIX_dispenv);
+    ResetTestState();
+    B54KR_SeedGpuStatic();
+    PE_StoreU8(0x8009574Eu, 2u);
+    PE_StoreU32(0x800957ECu, 0x11223344u);
+    PE_StoreU32(0x800957F0u, 0x55667788u);
+    PE_StoreU32(0x800957F4u, 0x99AABBCCu);
+    PE_Bios_PrintfLogReset();
+    ASSERT(func_8007512C(NULL, 9, 10) == -1 && !PE_Port_ShouldStop(),
+           "null MoveImage rectangle was not refused safely");
+    PE_GPU_GetState(&state);
+    ASSERT(state.move_count == 0u && PE_Bios_PrintfLog(&fmt, args) == 0u &&
+           PE_LoadU32(0x800957ECu) == 0x11223344u &&
+           PE_LoadU32(0x800957F0u) == 0x55667788u &&
+           PE_LoadU32(0x800957F4u) == 0x99AABBCCu,
+           "null rectangle reached diagnostics or changed GPU packet state");
     PASS();
 }
 
@@ -1229,6 +1269,46 @@ static void test_B54KR_801909B4_title_input_pump_with_pad(void)
     PASS();
 }
 
+extern int PE_GPU_WaitTimedOut(uint32_t now, uint32_t deadline, uint32_t polls);
+static void test_GPU_wait_timeout_counter(void)
+{
+    TEST("GPU_wait_timeout_counter");
+    ResetTestState();
+    PE_StoreU32(0x8009588Cu, 17u);
+    ASSERT(PE_GPU_WaitTimedOut(10u, 9u, 17u) && PE_LoadU32(0x8009588Cu) == 17u,
+           "expired deadline modified the poll counter");
+    PE_StoreU32(0x8009588Cu, 0xF0000u);
+    ASSERT(!PE_GPU_WaitTimedOut(10u, 10u, 0xF0000u) &&
+           PE_LoadU32(0x8009588Cu) == 0xF0001u,
+           "threshold poll did not increment and continue");
+    ASSERT(PE_GPU_WaitTimedOut(10u, 10u, 0xF0001u) &&
+           PE_LoadU32(0x8009588Cu) == 0xF0002u,
+           "count timeout did not increment before stopping");
+    PASS();
+}
+
+static void test_cd_command_stop_before_poll(void)
+{
+    TEST("cd_command_stop_before_poll");
+    ResetTestState();
+    PE_StoreU32(0x800A3478u, 0x12345678u);
+    PE_StoreU32(0x800A347Cu, 0x87654321u);
+    PE_Port_RequestStop(PE_PORT_STOP_UNRESOLVED_BOUNDARY);
+    ASSERT(func_8007B558(1u, 0u, 0u, 0u) == -1 && PE_Port_ShouldStop() &&
+           PE_LoadU32(0x800A3478u) == 0x12345678u &&
+           PE_LoadU32(0x800A347Cu) == 0x87654321u,
+           "stopped command continued into CD polling");
+    ASSERT(func_8007B558(1u, 0u, 0u, 0u) == -1 &&
+           PE_LoadU32(0x800A3478u) == 0x12345678u &&
+           PE_LoadU32(0x800A347Cu) == 0x87654321u,
+           "a pre-existing stop allowed another CD poll");
+    ASSERT(func_8007B010(9u, 0u) == 0 &&
+           PE_LoadU32(0x800A3478u) == 0x12345678u &&
+           PE_LoadU32(0x800A347Cu) == 0x87654321u,
+           "status poll changed its deadline or counter after a stop");
+    PASS();
+}
+
 static void test_B54KS_drawsync_idle_and_poll_mode(void)
 {
     int vsync, drawsync, presented, mask;
@@ -1456,6 +1536,42 @@ static void test_B54KU_gpu_draw_mode_command_state(void)
     PE_GPU_GetState(&state);
     ASSERT(state.draw_mode == 0xE1000FFFu && state.draw_mode_count == 2u,
            "rejected draw mode mutated hardware state");
+    PASS();
+}
+
+static void test_GPU_drawprim_guest_packet_validation(void)
+{
+    const uint32_t packet = 0x80140000u;
+    const uint32_t command = 0xE1000018u;
+    PeGpuState state;
+    int vsync, drawsync, presented, mask;
+    TEST_RETAIL_DISC1("GPU_drawprim_guest_packet_validation"); TEST_RETAIL_FIXUPS(RETAILFIX_dispenv);
+    ResetTestState();
+    HostFB_Init();
+    B54KR_SeedGpuStatic();
+    PE_StoreU32(packet, 0x01000000u);
+    PE_StoreU32(packet + 4u, command);
+    ASSERT(func_80075358(packet) == 0 && !PE_Port_ShouldStop(),
+           "guest DrawPrim packet failed");
+    PE_GPU_GetState(&state);
+    ASSERT(state.draw_mode == command && state.draw_mode_count == 1u &&
+           state.gp0_state == PE_GPU_GP0_IDLE && state.gp1_dma_direction == 0u,
+           "guest packet did not reach real GPU command path");
+    HostFB_GetState(&vsync, &drawsync, &presented, &mask);
+    ASSERT(drawsync == 1 && presented == 0, "guest packet sync differs");
+    PE_Port_RunControlReset();
+    ASSERT(func_80075358(0x80200000u) == -1 &&
+           PE_Port_GetStopReason() == PE_PORT_STOP_UNRESOLVED_BOUNDARY,
+           "invalid guest header did not stop");
+    PE_Port_RunControlReset();
+    PE_StoreU32(0x801FFFFCu, 0x01000000u);
+    ASSERT(func_80075358(0x801FFFFCu) == -1 &&
+           PE_Port_GetStopReason() == PE_PORT_STOP_UNRESOLVED_BOUNDARY,
+           "guest payload beyond RAM did not stop");
+    PE_GPU_GetState(&state);
+    HostFB_GetState(&vsync, &drawsync, &presented, &mask);
+    ASSERT(state.draw_mode_count == 1u && drawsync == 1,
+           "invalid packet reached GPU or synchronization");
     PASS();
 }
 
@@ -1853,6 +1969,10 @@ static void test_MV1D_c89c_bound(void)
     PASS();
 }
 
+/* MV1D_c89c_table / _main / _resume were retired when row 0x8010C89C moved to the clean-room adapter: they pinned the hand
+ * port's footprints for hand-crafted VLC table contents (model-derived, state words past 0x8011EBA0), a table-driven behaviour
+ * the pure decoder does not have.  Real-table behaviour is covered by PRESS_c89c_replay (1394 bounded/resume steps + 253 real
+ * playback calls), PRESS_vlc_adapter and the credits retail-RAM test. */
 static void test_MV1D_c89c_pad3ff(void)
 {
     TEST("MV1D_c89c_pad3ff");
@@ -1868,82 +1988,6 @@ static void test_MV1D_c89c_pad3ff(void)
            PE_LoadU32(MV1D_A) == 0u &&
            PE_LoadU16(MV1D_A + 2u) == 0u,
            "MV1D_PAD3FF footprint differs");
-    PASS();
-}
-
-static void test_MV1D_c89c_table(void)
-{
-    TEST("MV1D_c89c_table");
-    ResetTestState();
-    PE_StoreU32(MV1D_EB8C, 0u);
-    PE_StoreU32(MV1D_S, 0u);
-    PE_StoreU16(MV1D_S + 4u, 0u);
-    PE_StoreU16(MV1D_S + 6u, 3u);
-    PE_StoreU16(MV1D_S + 8u, 0x0100u);
-    PE_StoreU16(MV1D_S + 10u, 0u);
-    PE_StoreU16(MV1D_S + 12u, 0x00BBu);
-    PE_StoreU16(MV1D_T + 0x404u, 16u);
-    PE_StoreU16(MV1D_T + 0x406u, 8u);
-    ASSERT(func_8010C89C(MV1D_S, MV1D_A, MV1D_T, 0u) == 1 &&
-           PE_LoadU32(MV1D_EB90) == MV1D_S + 14u &&
-           PE_LoadU32(MV1D_EB90 + 4u) == MV1D_A + 6u &&
-           PE_LoadU32(MV1D_EB90 + 8u) == 0xBB00u &&
-           PE_LoadU32(MV1D_EB90 + 12u) == 8u &&
-           PE_LoadU32(MV1D_EB90 + 20u) == 2u &&
-           PE_LoadU32(MV1D_EB90 + 24u) == 0xFFFFFF01u &&
-           PE_LoadU32(MV1D_EBB4) == MV1D_A + 4u &&
-           PE_LoadU16(MV1D_A + 4u) == 4u,
-           "MV1D_TABLE footprint differs");
-    PASS();
-}
-
-static void test_MV1D_c89c_main(void)
-{
-    int i;
-    TEST("MV1D_c89c_main");
-    ResetTestState();
-    PE_StoreU32(MV1D_EB8C, 3u);
-    for (i = 0; i < 12; i++)
-        PE_StoreU8(MV1D_S + (uint32_t)i, 0u);
-    PE_StoreU32(MV1D_T + 0x800u, 0xFE000003u);
-    PE_StoreU32(MV1D_T + 0x804u, 0u);
-    ASSERT(func_8010C89C(MV1D_S, MV1D_A, MV1D_T, 0u) == 1 &&
-           PE_LoadU32(MV1D_EB90) == MV1D_S + 14u &&
-           PE_LoadU32(MV1D_EB90 + 4u) == MV1D_A + 10u &&
-           PE_LoadU32(MV1D_EB90 + 8u) == 0u &&
-           PE_LoadU32(MV1D_EB90 + 12u) == 7u &&
-           PE_LoadU32(MV1D_EB90 + 20u) == 0u &&
-           PE_LoadU32(MV1D_EBB4) == MV1D_A + 4u &&
-           PE_LoadU32(MV1D_A) == 0u &&
-           PE_LoadU16(MV1D_A + 4u) == 0u &&
-           PE_LoadU16(MV1D_A + 6u) == 0xFE00u &&
-           PE_LoadU16(MV1D_A + 8u) == 0u,
-           "MV1D_MAIN footprint differs");
-    PASS();
-}
-
-static void test_MV1D_c89c_resume(void)
-{
-    TEST("MV1D_c89c_resume");
-    ResetTestState();
-    PE_StoreU32(MV1D_EB8C, 0u);
-    PE_StoreU32(MV1D_S, 0u);
-    PE_StoreU16(MV1D_S + 4u, 0u);
-    PE_StoreU16(MV1D_S + 6u, 0u);
-    PE_StoreU16(MV1D_S + 8u, 0u);
-    PE_StoreU16(MV1D_S + 10u, 0u);
-    PE_StoreU16(MV1D_S + 12u, 0x1234u);
-    PE_StoreU32(MV1D_T + 0x800u, 0xFE000000u);
-    PE_StoreU32(MV1D_T + 0x804u, 0u);
-    ASSERT(func_8010C89C(MV1D_S, MV1D_A, MV1D_T, 0u) == 1,
-           "MV1D_RESUME part 1 differs");
-    ASSERT(func_8010C89C(0u, 0u, MV1D_T, 0u) == 1 &&
-           PE_LoadU32(MV1D_EB90) == MV1D_S + 14u &&
-           PE_LoadU32(MV1D_EB90 + 4u) == MV1D_A + 10u &&
-           PE_LoadU32(MV1D_EB90 + 8u) == 0x12340u &&
-           PE_LoadU32(MV1D_EB90 + 12u) == 4u &&
-           PE_LoadU32(MV1D_EB90 + 20u) == 0u,
-           "MV1D_RESUME part 2 footprint differs");
     PASS();
 }
 
@@ -2189,7 +2233,7 @@ static void test_B54KY_saved_bit_zero_skips_disc_prefix(void)
     HostFB_Init();
     B54KQ_SeedOverlayPrefix(0x4Du);
     PE_StoreU8(0x801D0E18u, 0xA6u);
-    PE_StoreU32(0x8009B6D4u, 0xA5A55A5Au);
+    PE_StoreU32(0x8009B6ACu, 0xA5A55A5Au);
     PE_StoreU8(0x800B0DBFu, 0x5Au);
     PE_StoreU32(0x801D11ACu, 0xA5A55A5Au);
 
@@ -2205,7 +2249,7 @@ static void test_B54KY_saved_bit_zero_skips_disc_prefix(void)
                "func_801909B4_title_loop_3EB04"),
            "saved-bit-zero arm did not reach exact 0x801911F8 cut");
     ASSERT(PE_LoadU8(0x801D0E18u) == 0xA6u &&
-           PE_LoadU32(0x8009B6D4u) == 0xA5A55A5Au &&
+           PE_LoadU32(0x8009B6ACu) == 0xA5A55A5Au &&
            (PE_LoadU32(0x800B0CD8u) & 0x200u) == 0u,
            "saved-bit-zero arm entered the disc prefix");
     func_801918F8(0, 0);
@@ -7565,10 +7609,10 @@ static void test_BTL6_3B97C_empty_gate(void) {
     PE_StoreU32(dest, obj);
     PE_StoreU16(dest + 0xBAu, 1u);
     PE_StoreU8(obj + 2u, 0u);
-    func_8003B97C_empty_cut(dest, 0x800BEA40u);
+    func_8003B97C(dest, 0x800BEA40u);
     ASSERT((PE_LoadU8(0x800B0CD8u + 0x0Eu) & 3u) == 0u, "no andi 0xFC");
     PE_StoreU16(dest + 0xBAu, 0u);
-    func_8003B97C_empty_cut(dest, 0x800BEA40u);
+    func_8003B97C(dest, 0x800BEA40u);
     ASSERT(PE_LoadU16(dest + 0xBAu) == 0u, "BA0 returns");
     PASS();
 }
@@ -7617,7 +7661,7 @@ static void test_BTL6_3B97C_lighting_2bone(void) {
     PE_StoreU16(bea40 + 2u, 4096u);
     PE_StoreU16(bea40 + 8u, (uint16_t)-4096);
 
-    func_8003B97C_lighting_cut(dest, bea40);
+    func_8003B97C(dest, bea40);
     /* Live LCM/BK are 0 → NCCT FIFO is 0. rec0 skipped. */
     ASSERT(PE_LoadU32(0x800B1638u + 4u) == 0u, "B1638 idx1 RGB0");
     ASSERT(PE_LoadU32(0x800A6360u + 4u) == 0u, "A6360 idx1 RGB0");
@@ -7648,7 +7692,7 @@ static void test_BTL6_3B97C_lighting_2bone(void) {
         pe_btl6_store_identity_matrix(lcm);
         PE_GTE_LoadLCM(lcm);
     }
-    func_8003B97C_lighting_cut(dest, bea40);
+    func_8003B97C(dest, bea40);
     /* LLM=I, V=(0,4096,0) → IR=(0,4096,0); LCM=I; G=0x80*4096>>8=2048;
      * FIFO G=2048/16=0x80 → word 0x00008000. */
     ASSERT(PE_LoadU32(0x800B1638u) == 0x00008000u, "NCCT G=0x80");
@@ -7656,6 +7700,8 @@ static void test_BTL6_3B97C_lighting_2bone(void) {
     ASSERT((PE_LoadU8(0x800B0CD8u + 0x0Eu) & 3u) == 0u, "no andi 0xFC");
     PASS();
 }
+
+#include "test_lighting_native.h"
 
 static void test_BTL6_3BCE0_zero_counts_and_one_packet(void) {
     pe_addr_t dest = 0x80130000u;
@@ -8410,7 +8456,13 @@ static void test_BTL11_35558_walk_35E04(void) {
     D_8009D1A0 = 0u;
     func_8003F074_pool_cut();
     PE_StoreU32(0x800915E4u, 0x80035E04u);
-    PE_StoreU32(hdr + 8u + 4u, 0x80035E04u);
+    /* A real stream: since b350a5f05 an unported opcode read from a code
+     * address stops the VM walk.  Op 2 (func_800172E0, one immediate)
+     * only sets the task wait counter and yields; no actor flags. */
+    PE_StoreU32(0x800910A8u, 0x800172E0u);
+    PE_StoreU32(0x80122000u, 0x00002002u);
+    PE_StoreU32(0x80122004u, 100u);
+    PE_StoreU32(hdr + 8u + 4u, 0x80122000u);
     PE_StoreU32(0x800B161Cu, hdr);
     PE_StoreU8(desc, 1u);
     PE_StoreU8(desc + 1u, 4u);
@@ -8816,6 +8868,10 @@ static void test_BTL16_12850_alu_ops(void) {
     ASSERT(PE_LoadU32(imm + 16u) == 0x20000u, "1.0*2.0");
     ASSERT(func_8003708C(0x10000u, 0x20000u) == 0x20000u, "3708C");
     ASSERT(func_800370A8(0x20000u, 0x10000u) == 0x20000u, "370A8");
+    PE_StoreU32(imm, 0x17u);
+    PE_StoreU32(imm + 8u, 0x80000000u);
+    ASSERT(func_80012850(args) == 1, "neg v0=1");
+    ASSERT(PE_LoadU32(imm + 16u) == 0x80000000u, "neg wraps INT32_MIN");
     ASSERT(PE_LoadU32(0x8009D28Cu) == 0u, "mode stays 0");
     PASS();
 }
@@ -11606,6 +11662,7 @@ static void test_BTL59_17A50_and_3F3C4_pad(void) {
     ASSERT(PE_LoadU32(0x8009D1F4u) == 0u, "no invented edge");
 
     ResetTestState();
+    FT1_SeedOtcJtb();
     HostFB_Init();
     func_8003E974();
     D_8009D1A0 = 0u;
@@ -11798,6 +11855,18 @@ static void test_BTL63_6B4F8_m0367i_load(void) {
     PE_StoreU32(0x8009570Cu, 0x80076C34u);
     PE_StoreU32(0x80095724u, 0x80076664u);
     ASSERT(func_8006B4F8_dest_load_cut(0xA80663C8u) == 1, "load");
+    /* 6B7B0..6B820 belongs to the loader, before its publishers/sound tail. */
+    {
+        pe_addr_t header = dest2 + (PE_LoadU32(dest2 + 4u) & 0x3FFFFFu);
+        uint32_t rows = PE_LoadU32(header + 0x0Cu);
+        ASSERT(PE_LoadU8(0x800B0CE2u) == PE_LoadU8(header + 1u), "loader CE2");
+        ASSERT(PE_LoadU8(0x800B0CE0u) == PE_LoadU8(header + 3u), "loader overlay+8");
+        for (uint32_t n = 0; n < (rows >> 22); n++) {
+            pe_addr_t row = dest2 + (rows & 0x3FFFFFu) + n * 12u;
+            ASSERT(PE_LoadU32(0x800B0E70u + PE_LoadU8(row + 7u) * 4u) ==
+                   dest2 + (PE_LoadU32(row + 4u) & 0xFFFFFFu), "loader header table");
+        }
+    }
     ASSERT(PE_LoadU32(dest0) == 0x1008Cu, "chunk0 w0");
     ASSERT(PE_LoadU32(dest1) == 0x54908u, "chunk1 w0");
     ASSERT(PE_LoadU32(dest2) == 0x26BD8u, "chunk2 w0");
@@ -12441,6 +12510,11 @@ static void test_BTL79_70e54_resetgraph1(void) {
     ResetTestState();
     HostFB_Init();
     btl69_plant_rsin0();
+    PE_StoreU32(0x80095744u, 0x80095704u);
+    PE_StoreU32(0x80095738u, 0x80077144u); /* ResetGraph light target */
+    PE_StoreU32(0x80095860u, 0x1F8010A8u);
+    PE_StoreU32(0x80095870u, 0x1F8010F0u);
+    PE_StoreU32(0x80095854u, 0x1F801814u);
     PE_StoreU32(0x800B0CD8u, 0x40000000u);
     PE_StoreU8(0x8009574Cu, 0xAAu);
     Test_SeedDigitalController();
@@ -12448,6 +12522,30 @@ static void test_BTL79_70e54_resetgraph1(void) {
     ASSERT(PE_LoadU8(0x8009574Cu) == 0xAAu, "mode1 skips reset");
     ASSERT(func_80074A44(1) == 0, "light v0");
     ASSERT(PE_LoadU32(0x8009D28Cu) == 0u, "mode stays 0");
+    PASS();
+}
+
+static void test_FLD1_3F3C4_exit_reloads_dest(void) {
+    /* A real field exit with D280 unchanged (m0259i: same room re-entered
+     * after the disc swap) must not leave the host load gate set: retail's
+     * next 3F074 loads D280 again. */
+    TEST("FLD1_3F3C4_exit_reloads_dest");
+    ResetTestState();
+    HostFB_Init();
+    D_8009D280 = 0xA80454C8u;
+    D_8009D1A0 = 1u;                        /* skip update/draw */
+    PE_StoreU32(0x800B0CD8u, 0x40000100u);  /* skip 6A0E8 */
+    Test_SeedDigitalController();
+    func_8003F3C4();
+    ASSERT(PE_Field_PassContinues == 1, "pass continues");
+    ASSERT(PE_Field_LoadedDestForTest() == 0xA80454C8u, "gate holds inside the loop");
+    D_8009D1A0 = 0x2001u;                   /* bit 13 + overlay bit 11 exit */
+    PE_StoreU32(0x800B0CD8u, 0x40000900u);
+    Test_SeedDigitalController();
+    func_8003F3C4();
+    ASSERT(PE_Field_PassContinues == 0, "real exit");
+    ASSERT(D_8009D280 == 0xA80454C8u, "same dest");
+    ASSERT(PE_Field_LoadedDestForTest() == 0u, "exit forgets the loaded dest");
     PASS();
 }
 
@@ -15423,51 +15521,34 @@ static void test_BTL123_persist4a_ge40_skips_type2(void)
 static void pe_btl124_plant_exe_tables(void)
 {
     /* EXE .rodata charset (0x800930B4, 32 bytes) and its u16 offset table
-     * (0x800930D8, 32 entries): copied from the user's disc, never embedded.
+     * (0x800930D8..0x80093164): copied from the user's disc, never embedded.
+     * Room-entry 6BD68 also indexes bank+0x2B, beyond the old 32-entry slice.
      * Callers open Disc 1 right after this and fail loudly without it. */
     (void)PE_TestRetail_LoadExeRange(0x800930B4u, 32u);
-    (void)PE_TestRetail_LoadExeRange(0x800930D8u, 64u);
+    (void)PE_TestRetail_LoadExeRange(0x800930D8u, 0x8Cu);
     PE_StoreU32(0x80093378u + 4u * 8u, 0x266Au);
     PE_StoreU32(0x80093378u + 4u * 8u + 4u, 0x0600A921u);
 }
 
-static void pe_btl124_plant_vm_table(void)
+static int pe_btl124_plant_vm_table(void)
 {
-    static const unsigned int ops[][2] = {
-        { 0x00u, 0x80017294u }, { 0x01u, 0x800172BCu },
-        { 0x02u, 0x800172E0u }, { 0x03u, 0x80017C54u },
-        { 0x04u, 0x80017988u }, { 0x05u, 0x8001731Cu },
-        { 0x08u, 0x8001735Cu }, { 0x09u, 0x80012850u },
-        { 0x0Au, 0x800173F4u }, { 0x0Bu, 0x80012C20u },
-        { 0x0Du, 0x80017410u }, { 0x12u, 0x800131E8u },
-        { 0x14u, 0x80017588u }, { 0x1Au, 0x800176FCu },
-        { 0x1Cu, 0x80017764u }, { 0x1Du, 0x80017E20u },
-        { 0x1Eu, 0x80019658u }, { 0x1Fu, 0x800177ACu },
-        { 0x20u, 0x800172FCu }, { 0x22u, 0x800177C8u },
-        { 0x2Eu, 0x80017AE8u }, { 0x2Fu, 0x80017B34u },
-        { 0x30u, 0x80017B74u }, { 0x3Fu, 0x80017D5Cu },
-        { 0x40u, 0x80017D7Cu }, { 0xABu, 0x80019638u },
-        { 0x4Bu, 0x80013C34u }, { 0x4Eu, 0x80017EC4u },
-        { 0x55u, 0x800144FCu }, { 0x5Eu, 0x80014694u },
-        { 0x65u, 0x8001856Cu }, { 0x6Fu, 0x80018954u },
-        { 0x79u, 0x80018BECu }, { 0x82u, 0x80018E58u },
-        { 0x84u, 0x80018E84u }, { 0x86u, 0x80018EE0u },
-        { 0x88u, 0x80018F54u }, { 0x89u, 0x80017FF0u },
-        { 0x8Bu, 0x80018080u }, { 0x94u, 0x80019154u },
-        { 0x9Bu, 0x80015240u }, { 0x9Cu, 0x80019410u },
-        { 0xAAu, 0x80019618u }, { 0xC7u, 0x80019BE4u },
-        { 0xCEu, 0x800181CCu }, { 0xDCu, 0x8001A1F0u },
-        { 0xE1u, 0x8001A374u }, { 0xEAu, 0x80015DACu },
-        { 0xEDu, 0x80016910u },
-    };
-    unsigned int t;
-    unsigned int i;
-
+    /* Load 256 words at the dispatch base from the authenticated executable
+     * rather than a partial hand-seeded subset that can stop valid scripts. */
+    if (PE_TestRetail_LoadExeRange(0x800910A0u, 0x400u) != 0)
+        return -1;
     PE_StoreU32(0x800915DCu, 0x80035C84u);
-    for (t = 1u; t < 10u; t++)
+    for (unsigned int t = 1u; t < 10u; t++)
         PE_StoreU32(0x800915DCu + t * 8u, 0x80035E04u);
-    for (i = 0; i < (unsigned int)(sizeof(ops) / sizeof(ops[0])); i++)
-        PE_StoreU32(0x800910A0u + ops[i][0] * 4u, ops[i][1]);
+    return 0;
+}
+
+/* Field flag bit 1 at 0x800B0CD8, set by retail field code
+ * (func_8003F3C4, 0x3F6EC..0x3F738: B0CD8 |= 2).  With no player actor
+ * (D_8009D254 == 0), func_8006C5BC state 13 completes only when it is set;
+ * since 51db61c28 a cap-exhausted poll stops instead of falling through. */
+static void pe_test_field_flag_ready(void)
+{
+    PE_StoreU32(0x800B0CD8u, PE_LoadU32(0x800B0CD8u) | 2u);
 }
 
 static PE_Disc *pe_btl124_open_m0005i(char *err, size_t err_size)
@@ -15478,9 +15559,13 @@ static PE_Disc *pe_btl124_open_m0005i(char *err, size_t err_size)
     pe_addr_t dest2 = 0x801A0000u;
     pe_addr_t dest_wb = 0x801D0000u;
 
-    pe_btl124_plant_exe_tables();
-    pe_btl124_plant_vm_table();
     err[0] = 0;
+    func_8006A8D4();   /* retail boot weapon arena (src/func_8006A8D4.c) */
+    pe_btl124_plant_exe_tables();
+    if (pe_btl124_plant_vm_table() != 0) {
+        snprintf(err, err_size, "retail VM dispatch table unavailable");
+        return NULL;
+    }
     disc = BTL6_OpenDisc1(err, err_size);
     if (disc == NULL)
         return NULL;
@@ -15496,6 +15581,7 @@ static PE_Disc *pe_btl124_open_m0005i(char *err, size_t err_size)
     PE_StoreU32(0x80095724u, 0x80076664u);
     D_8009D1A0 = 0u;
     D_8009D280 = 0xA80002C8u;
+    pe_test_field_flag_ready();
     if (func_8003F074_dest_ready_cut(0xA80002C8u) != 1) {
         snprintf(err, err_size, "dest-ready");
         PE_Disc_SetActive(NULL);
@@ -15536,12 +15622,17 @@ static void test_BTL124_m0005i_type1_ticks_type2(void)
 
     TEST_RETAIL_DISC1("BTL124_m0005i_type1_ticks_type2");
     ResetTestState();
+    /* Supply the real boot weapon arena for this fixture only. */
+    func_8006A8D4();
     disc = pe_btl124_open_m0005i(err, sizeof(err));
     ASSERT(disc != NULL, err[0] ? err : "open m0005i");
     ASSERT(PE_LoadU8(0x800B0CE2u) == 10u, "dest CE2=10");
     clip15 = PE_LoadU32(0x800B0E98u + 0x15u * 4u);
     ASSERT(clip15 != 0u, "Writer B CE2=10 cmd 0x15");
-    ASSERT(PE_LoadU8(clip15 + 2u) == 1u, "CE2=10 0x15 frames 1");
+    ASSERT(clip15 == PE_LoadU32(0x800B0CD8u + 0x158u) + 0xEF28u &&
+           PE_LoadU8(clip15 + 2u) == 34u, "slot-0 weapon package clip 0x15");
+    ASSERT(PE_LoadU8(0x800B0CD8u + 0xEEu) == 13u &&
+           PE_LoadU32(0x8009D254u) == 0u, "weapon poll remains incomplete");
     ASSERT(pe_btl124_find_type(1u, &type1), "125E0 type 1");
     ASSERT(pe_btl124_find_type(6u, NULL), "125E0 type 6");
     ASSERT(pe_btl124_find_type(2u, NULL) == 0, "type 2 not planted");
@@ -15598,8 +15689,8 @@ static void test_BTL125_type6_waits_scratch0_bit2(void)
     ASSERT(saw2, "type 2 spawned");
     ASSERT(PE_LoadU32(type2) == 0u, "no body yet");
     task = PE_LoadU32(type2 + 0xA8u);
-    ASSERT(task != 0u, "type-2 task");
-    ASSERT((PE_LoadU16(task + 8u) & 0x10u) != 0u, "type-2 0x20 park");
+    /* Real VM table (b5b10d794): type 2 completes via 0x20 and is retired. */
+    ASSERT(task == 0u, "type-2 completed task retired");
     ASSERT((PE_LoadU32(0x800B6A80u) & 4u) == 0u, "scratch[0]&4 still clear");
     ASSERT(pe_btl124_find_type(6u, &type6), "type 6");
     task = PE_LoadU32(type6 + 0xA8u);
@@ -15669,8 +15760,8 @@ static void test_BTL126_type2_mailbox_not_20(void)
     ASSERT(PE_LoadU32(type2 + 0x19Cu) == t2base + 0xA8u, "type-2 +0x19C is 0x1F");
     ASSERT((PE_LoadU32(t2base + 0xA8u) & 0x1FFFu) == 0x1Fu, "mailbox op 0x1F");
     task = PE_LoadU32(type2 + 0xA8u);
-    ASSERT(task != 0u, "type-2 task");
-    ASSERT((PE_LoadU16(task + 8u) & 0x10u) != 0u, "0x20 still parked");
+    /* Real VM table (b5b10d794): type 2 completes via 0x20 and is retired. */
+    ASSERT(task == 0u, "type-2 completed task retired");
     ASSERT(PE_LoadU32(type6 + 0x19Cu) == t6base + 0xD08u, "type-6 mailbox +0xD08");
     ASSERT((PE_LoadU32(0x800B6A80u) & 4u) == 0u, "no first-visit bit 2");
     ASSERT(PE_LoadU8(0x8009CDB4u) == 0u, "no planted 0x7D mailbox");
@@ -15832,7 +15923,6 @@ static void test_BTL128_first_visit_task_map(void)
     pe_addr_t type2;
     pe_addr_t type6;
     pe_addr_t task;
-    pe_addr_t mail;
     int i;
 
     TEST_RETAIL_DISC1("BTL128_first_visit_task_map");
@@ -15852,6 +15942,7 @@ static void test_BTL128_first_visit_task_map(void)
         (void)pe_btl124_find_type(2u, &type2);
     }
 
+    ASSERT(!PE_Port_ShouldStop(), "VM stopped during first visit");
     ASSERT(pe_btl124_find_type(1u, &type1), "type 1");
     ASSERT(pe_btl124_find_type(6u, &type6), "type 6");
     ASSERT(type0 != 0u, "type-1 0x08 spawned type 0");
@@ -15867,18 +15958,14 @@ static void test_BTL128_first_visit_task_map(void)
     ASSERT((PE_LoadU32(0x800B6A80u) & 4u) == 0u, "scratch[0]&4 still clear");
 
     task = PE_LoadU32(type1 + 0xA8u);
-    ASSERT(task != 0u, "type-1 task");
-    ASSERT((PE_LoadU16(task + 8u) & 0x10u) != 0u, "type-1 parked after 0xFF");
+    ASSERT(task == 0u, "type-1 completed task retired");
     ASSERT(PE_LoadU32(type1 + 0x19Cu) == t1base + 0x200u, "type-1 mailbox +0x200");
 
     ASSERT(PE_LoadU32(type0 + 0x19Cu) == t0base + 0x618u, "type-0 mailbox +0x618");
-    mail = PE_LoadU32(type0 + 0xA8u);
-    ASSERT(mail != 0u, "type-0 task");
-    ASSERT((PE_LoadU16(mail + 8u) & 0x10u) != 0u, "type-0 0x20 park");
+    ASSERT(PE_LoadU32(type0 + 0xA8u) == 0u, "type-0 completed task retired");
 
     task = PE_LoadU32(type2 + 0xA8u);
-    ASSERT(task != 0u, "type-2 task");
-    ASSERT((PE_LoadU16(task + 8u) & 0x10u) != 0u, "type-2 0x20 park");
+    ASSERT(task == 0u, "type-2 completed task retired");
     ASSERT(PE_LoadU32(type2 + 0x19Cu) == t2base + 0xA8u, "type-2 mailbox +0xA8");
     ASSERT(PE_LoadU32(type2) == 0u, "no body");
 
@@ -15916,6 +16003,7 @@ static void test_BTL129_first_visit_1a0_map(void)
         func_80035558_walk_cut();
         func_80068CE0();
     }
+    ASSERT(!PE_Port_ShouldStop(), "VM stopped during first visit");
     ASSERT(pe_btl124_find_type(0u, &type0), "type 0");
     ASSERT(pe_btl124_find_type(2u, &type2), "type 2");
     ASSERT(pe_btl124_find_type(3u, &type3), "type 3");
@@ -16125,21 +16213,17 @@ static void test_BTL91_144fc_55_park(void) {
     PASS();
 }
 
-static void test_BTL90_m0367i_dest_ready(void) {
+/* Shared real-disc m0367i fixture: production-order room entry up to and
+ * including func_8003F074_dest_ready_cut (EE=13 still pending, D254==0). */
+static PE_Disc *btl90_enter_m0367i_ex(char *err, size_t err_size, int run_stream) {
     PE_Disc *disc;
-    char err[256];
     pe_addr_t dest0 = 0x80120000u;
     pe_addr_t dest1 = 0x80140000u;
     pe_addr_t dest2 = 0x801A0000u;
     pe_addr_t dest_wb = 0x801D0000u;
-    pe_addr_t actor;
-    pe_addr_t task;
-    pe_addr_t script;
-    pe_addr_t clip15;
-    pe_addr_t clip09;
-
-    TEST_RETAIL_DISC1("BTL90_m0367i_dest_ready");
     ResetTestState();
+    /* Boot owns the separate weapon-package arena used by 6C5BC. */
+    func_8006A8D4();
     {
         static const unsigned char charset[] =
             "0123456789abcdefghiklmnoprstuvwy";
@@ -16150,6 +16234,7 @@ static void test_BTL90_m0367i_dest_ready(void) {
     }
     PE_StoreU32(0x80093378u + 366u * 8u, 0x15050u);
     PE_StoreU32(0x80093378u + 366u * 8u + 4u, 0x04E0AA21u);
+    (void)PE_TestRetail_LoadExeRange(0x800930D8u, 0x8Cu);
     PE_StoreU16(0x800930D8u + 18u * 2u, 288u);
     PE_StoreU16(0x800930D8u + 19u * 2u, 316u);
     PE_StoreU8(0x800B0CD8u + 0x0Bu, 14u);
@@ -16161,8 +16246,8 @@ static void test_BTL90_m0367i_dest_ready(void) {
     PE_StoreU32(0x800910A0u + 0x02u * 4u, 0x800172E0u);
 
     err[0] = 0;
-    disc = BTL6_OpenDisc1(err, sizeof(err));
-    ASSERT(disc != NULL, err[0] ? err : "PE_Disc_Open failed");
+    disc = BTL6_OpenDisc1(err, err_size);
+    if (disc == NULL) return NULL;
     func_8007ED58();
     PE_Disc_SetActive(disc);
     PE_StoreU32(0x800B0DD8u, 1013u);
@@ -16173,12 +16258,66 @@ static void test_BTL90_m0367i_dest_ready(void) {
     PE_StoreU32(0x80095744u, 0x80095704u);
     PE_StoreU32(0x8009570Cu, 0x80076C34u);
     PE_StoreU32(0x80095724u, 0x80076664u);
+    if (run_stream) {
+        /* Production main loop (src/func_8001220C.c) runs the field stream
+         * func_8006AD40 (overlay flag bit 0 armed) before dispatching the
+         * room token.  It reads the common F0/E0/3126 archives into
+         * +0x14C/+0x16C/+0x188 and publishes overlay+0x11C (key 0xC4B5BA04),
+         * then resets the overlay selector bytes, which room entry re-seeds. */
+        PE_StoreU32(0x800B0CD8u, PE_LoadU32(0x800B0CD8u) | 1u);
+        /* The GPU jump table (D_80095744 root, ResetGraph register pointers)
+         * is static EXE data; load it instead of the partial hand seeds. */
+        if (PE_TestRetail_LoadExeRange(0x80095700u, 0x180u) != 0) {
+            snprintf(err, err_size, "GPU table EXE range unavailable");
+            PE_Disc_SetActive(NULL);
+            PE_Disc_Close(disc);
+            return NULL;
+        }
+        HostFB_Init();
+        g_bootstrap_disc = 1;
+        (void)func_8006AD40();
+        if (PE_Port_ShouldStop()) {
+            snprintf(err, err_size, "6AD40 stream stop=%s",
+                     PE_Port_StopReasonName(PE_Port_GetStopReason()));
+            PE_Disc_SetActive(NULL);
+            PE_Disc_Close(disc);
+            return NULL;
+        }
+        PE_StoreU8(0x800B0CD8u + 0x0Bu, 14u);
+        PE_StoreU8(0x800B0CD8u + 0x0Cu, 0u);
+    }
     D_8009D1A0 = 0x40u;
     D_8009D280 = 0xA80663C8u;
     PE_StoreU32(0x8009CDA4u,123u);
     PE_StoreU16(0x800942ECu,0xABCDu);
     PE_StoreU32(0x8009D2E8u,0xCu);
-    ASSERT(func_8003F074_dest_ready_cut(0xA80663C8u) == 1, "dest-ready");
+    pe_test_field_flag_ready();
+    if (func_8003F074_dest_ready_cut(0xA80663C8u) != 1) {
+        PE_Disc_SetActive(NULL);
+        PE_Disc_Close(disc);
+        return NULL;
+    }
+    return disc;
+}
+
+static PE_Disc *btl90_enter_m0367i(char *err, size_t err_size) {
+    return btl90_enter_m0367i_ex(err, err_size, 0);
+}
+
+static void test_BTL90_m0367i_dest_ready(void) {
+    PE_Disc *disc;
+    char err[256];
+    pe_addr_t dest2 = 0x801A0000u;
+    pe_addr_t actor;
+    pe_addr_t task;
+    pe_addr_t script;
+    pe_addr_t clip15;
+    pe_addr_t clip09;
+
+    TEST_RETAIL_DISC1("BTL90_m0367i_dest_ready");
+    err[0] = 0;
+    disc = btl90_enter_m0367i(err, sizeof(err));
+    ASSERT(disc != NULL, err[0] ? err : "dest-ready");
     /* Original 3F28C..3F2E4 must also run through the live loader path. */
     ASSERT(PE_LoadU32(0x8009CDA4u)==0u,"room frame counter reset");
     ASSERT(PE_LoadU16(0x800942ECu)==0u,"effect floor height reset");
@@ -16195,7 +16334,15 @@ static void test_BTL90_m0367i_dest_ready(void) {
     ASSERT(PE_LoadU8(clip09 + 2u) == 1u, "type2 0x09 frames");
     clip15 = PE_LoadU32(0x800B0E98u + 0x15u * 4u);
     ASSERT(clip15 != 0u, "Writer B CE2=10 0x15");
-    ASSERT(PE_LoadU8(clip15 + 2u) == 1u, "0x15 frames 1 not 34");
+    /* 6BECC first publishes the CE2=10 room bank (one frame), then
+     * 6C5BC publishes slot-0 weapon package index 22 over the same row.
+     * Its PE.IMG directory selects offset 0xEF28, containing 34 frames.
+     * D254 is absent in this fixture, so EE=13 remains busy at the cap;
+     * the clip check does not claim complete weapon/model initialization. */
+    ASSERT(clip15 == PE_LoadU32(0x800B0CD8u + 0x158u) + 0xEF28u &&
+           PE_LoadU8(clip15 + 2u) == 34u, "slot-0 weapon package clip 0x15");
+    ASSERT(PE_LoadU8(0x800B0CD8u + 0xEEu) == 13u &&
+           PE_LoadU32(0x8009D254u) == 0u, "weapon model poll remains incomplete");
     actor = PE_LoadU32(0x8009D20Cu);
     ASSERT(PE_LoadU8(actor + 0x0Cu) == 1u, "type1");
     ASSERT(PE_LoadU8(actor + 0x0Du) == 0u, "id0");
@@ -16213,6 +16360,180 @@ static void test_BTL90_m0367i_dest_ready(void) {
     ASSERT(PE_LoadU32(task) == script + 0x2Cu, "PC after +0x20/0x02");
     ASSERT(PE_LoadU32(actor + 0x1B0u) == 0u, "still no type1 clip");
     ASSERT(PE_LoadU32(0x8009D28Cu) == 0u, "mode stays 0 after yield");
+    PE_Disc_SetActive(NULL);
+    PE_Disc_Close(disc);
+    PASS();
+}
+
+/* BTL90 weapon-package destination provenance (sw-btl90-20261125).
+ * overlay+0x158 is D_800B0E30, written only by boot's func_8006A8D4
+ * (src/func_8006A8D4.c: D_800B0E30 = cursor).  Without that production
+ * initializer the destination is 0 and func_8006E6D4 rejects the 32-sector
+ * read (PE_RangeIsRam(0,65536) false) -- the room-poll-diagnosis-20261028
+ * shape; with it the 64 KiB package window is guest RAM. */
+static void test_BTL90_weapon_dest_boot_provenance(void) {
+    pe_addr_t dest;
+
+    TEST("BTL90_weapon_dest_boot_provenance");
+    ResetTestState();
+    ASSERT(PE_LoadU32(0x800B0CD8u + 0x158u) == 0u, "uninitialized before boot");
+    ASSERT(!PE_RangeIsRam(PE_LoadU32(0x800B0CD8u + 0x158u), 65536u),
+           "dest 0 is not a valid 32-sector read target");
+    func_8006A8D4();
+    dest = PE_LoadU32(0x800B0CD8u + 0x158u);
+    ASSERT(dest == PE_LoadU32(0x800B0E30u), "+0x158 is D_800B0E30");
+    ASSERT(dest >= 0x80000000u && dest < 0x80200000u, "KSEG0 RAM dest");
+    ASSERT(PE_RangeIsRam(dest, 65536u), "32-sector window is RAM");
+    PASS();
+}
+
+/* BTL90 EE=13 completion (sw-3d050-20261125).  At room entry the weapon
+ * poll leaves EE=13 pending because the type-0 player actor D_8009D254 does
+ * not exist yet (src/func_8006C5BC.c case 0xD).  Production builds the player
+ * through func_80035038 (func_800125E0 / field script) and the per-tick
+ * func_80035558 loop re-runs func_8006C5BC at 0x80035B24, which then runs the
+ * func_8003D050 binder on the weapon package that the EE=4/5 CD read placed in
+ * the D_800B0E30 window.  No CPU boundary / refusal / shim is allowed. */
+static void test_BTL90_weapon_ee13_completes_after_player(void) {
+    PE_Disc *disc;
+    char err[256];
+    pe_addr_t ov = 0x800B0CD8u;
+    pe_addr_t dest, desc = 0x801F0000u, player, model, prim;
+    unsigned int nparts;
+    unsigned int i, nz = 0u, tick;
+
+    TEST_RETAIL_DISC1("BTL90_weapon_ee13_completes_after_player");
+    err[0] = 0;
+    disc = btl90_enter_m0367i(err, sizeof(err));
+    ASSERT(disc != NULL, err[0] ? err : "dest-ready");
+    /* The shared fixture seeds a four-entry VM table; later ticks need the
+     * authenticated retail dispatch table (as the BTL124 fixture does). */
+    ASSERT(pe_btl124_plant_vm_table() == 0, "retail VM table");
+    ASSERT(PE_LoadU8(ov + 0xEEu) == 13u, "EE=13 pending at room entry");
+    ASSERT(PE_LoadU32(0x8009D254u) == 0u, "no player yet");
+    dest = PE_LoadU32(ov + 0x158u);
+    ASSERT(dest == PE_LoadU32(0x800B0E30u) && PE_RangeIsRam(dest, 65536u),
+           "weapon window is boot-arena RAM");
+    for (i = 0; i < 0x2000u; i++)
+        nz += PE_LoadU8(dest + i) != 0u;
+    ASSERT(nz > 0x100u, "weapon package sector data present in D_800B0E30");
+
+    /* Weapon-package branch of case 0xD (D_8009D1A0 bit 1): the model comes
+     * from the package record at hdr+0xC, i.e. from the sector data the EE=4
+     * read placed in D_800B0E30.  (With bit 1 clear the binder takes
+     * overlay+0x11C, which only the func_8006AD40 field stream publishes;
+     * that stream is not part of this fixture.)  CAVEAT: this flag write is a
+     * fixture RAM write that selects the branch; the field-mode branch is NOT
+     * covered by this test. */
+    D_8009D1A0 |= 2u;
+    /* Negative control: without the player the poll must stay busy at EE=13
+     * across ticks (retail case 0xD returns while D_8009D254 == 0). */
+    for (tick = 0; tick < 3u; tick++) {
+        func_80035558_walk_cut();
+        snprintf(err, sizeof(err), "pre-player tick %u stop=%s", tick,
+                 PE_Port_StopReasonName(PE_Port_GetStopReason()));
+        ASSERT(!PE_Port_ShouldStop(), err);
+    }
+    ASSERT(PE_LoadU8(ov + 0xEEu) == 13u && PE_LoadU32(ov + 0x14u) == 0u,
+           "EE=13 stays pending and unbound without a player");
+    /* Later tick: the player constructor (desc type 0 / id 0). */
+    PE_StoreU8(desc, 0u);
+    PE_StoreU8(desc + 1u, 0u);
+    player = func_80035038(desc, 0u, 1u);
+    ASSERT(!PE_Port_ShouldStop(), "player spawn stopped");
+    ASSERT(player != 0u && PE_LoadU32(0x8009D254u) == player, "player is D254");
+
+    for (tick = 0; tick < 8u && PE_LoadU8(ov + 0xEEu) == 13u; tick++) {
+        func_80035558_walk_cut();
+        snprintf(err, sizeof(err), "tick %u stop=%s", tick,
+                 PE_Port_StopReasonName(PE_Port_GetStopReason()));
+        ASSERT(!PE_Port_ShouldStop(), err);
+    }
+    ASSERT(PE_LoadU8(ov + 0xEEu) == 0u, "EE=13 completed (state cleared)");
+    ASSERT((PE_LoadU8(ov + 0x0Eu) & 3u) == 0u, "status low bits cleared");
+    model = PE_LoadU32(ov + 0x14u);
+    ASSERT(model >= dest && model < dest + 65536u,
+           "binder bound a model inside the weapon window");
+    ASSERT(PE_LoadU8(model + 2u) != 0u && PE_LoadU16(model + 6u) != 0u,
+           "bound model has parts and vertices from disc data");
+    nparts = PE_LoadU8(model + 2u);
+    ASSERT(PE_LoadU32(ov + 0x18u) == model + 0x1Cu, "part table at model+0x1C");
+    ASSERT(PE_LoadU32(ov + 0x1Cu) == model + 0x1Cu + nparts * 12u,
+           "vertex table follows parts");
+    ASSERT(PE_LoadU16(ov + 0xBAu + 0x14u) == 1u, "packet build flag");
+    prim = PE_LoadU32(ov + 0x14u + 0x54u);
+    ASSERT(prim == PE_LoadU32(ov + 0x15Cu), "prim base is weapon storage");
+    ASSERT(PE_LoadU8(prim + 7u) != 0u && PE_LoadU8(prim + 3u) != 0u,
+           "GPU packet headers written");
+    ASSERT(PE_LoadU8(ov + 0x9Eu) == 0x18u, "EE=13 body reached 6698C/3D834 stage");
+    ASSERT(PE_LoadU32(ov + 0x38u) == player + 0x1B4u, "overlay ties to player model");
+    PE_Disc_SetActive(NULL);
+    PE_Disc_Close(disc);
+    PASS();
+}
+
+/* Field-mode EE=13 (sw-3d050 task 2): same flow as the test above but the
+ * fixture first runs the production field stream func_8006AD40 so that
+ * overlay+0x11C holds the real model from the F0 archive, and NO branch
+ * selecting write is made (D_8009D1A0 bit 1 stays clear: case 0xD binds
+ * overlay+0x11C). */
+static void test_BTL90_field_ee13_real_model(void) {
+    PE_Disc *disc;
+    char err[256];
+    pe_addr_t ov = 0x800B0CD8u;
+    pe_addr_t dest, desc = 0x801F0000u, player, model, prim, f0, expect;
+    unsigned int tick, nparts;
+
+    TEST_RETAIL_DISC1("BTL90_field_ee13_real_model");
+    err[0] = 0;
+    disc = btl90_enter_m0367i_ex(err, sizeof(err), 1);
+    ASSERT(disc != NULL, err[0] ? err : "stream+dest-ready");
+    ASSERT(pe_btl124_plant_vm_table() == 0, "retail VM table");
+    ASSERT(PE_LoadU8(ov + 0xEEu) == 13u, "EE=13 pending at room entry");
+    ASSERT(PE_LoadU32(0x8009D254u) == 0u, "no player yet");
+    ASSERT((D_8009D1A0 & 2u) == 0u, "field mode (no branch-forcing write)");
+    f0 = PE_LoadU32(ov + 0x14Cu);
+    expect = PE_LoadU32(ov + 0x11Cu);
+    ASSERT(expect >= f0 && expect < f0 + 0x1800u,
+           "6AD40 published +0x11C inside the F0 archive window");
+    dest = PE_LoadU32(ov + 0x158u);
+    ASSERT(PE_RangeIsRam(dest, 65536u), "weapon window is RAM");
+    for (tick = 0; tick < 3u; tick++) {
+        func_80035558_walk_cut();
+        snprintf(err, sizeof(err), "pre-player tick %u stop=%s", tick,
+                 PE_Port_StopReasonName(PE_Port_GetStopReason()));
+        ASSERT(!PE_Port_ShouldStop(), err);
+    }
+    ASSERT(PE_LoadU8(ov + 0xEEu) == 13u && PE_LoadU32(ov + 0x14u) == 0u,
+           "EE=13 stays pending and unbound without a player");
+    PE_StoreU8(desc, 0u);
+    PE_StoreU8(desc + 1u, 0u);
+    player = func_80035038(desc, 0u, 1u);
+    ASSERT(!PE_Port_ShouldStop(), "player spawn stopped");
+    ASSERT(player != 0u && PE_LoadU32(0x8009D254u) == player, "player is D254");
+    for (tick = 0; tick < 8u && PE_LoadU8(ov + 0xEEu) == 13u; tick++) {
+        func_80035558_walk_cut();
+        snprintf(err, sizeof(err), "tick %u stop=%s", tick,
+                 PE_Port_StopReasonName(PE_Port_GetStopReason()));
+        ASSERT(!PE_Port_ShouldStop(), err);
+    }
+    ASSERT(PE_LoadU8(ov + 0xEEu) == 0u, "EE=13 completed (state cleared)");
+    ASSERT((PE_LoadU8(ov + 0x0Eu) & 3u) == 0u, "status low bits cleared");
+    model = PE_LoadU32(ov + 0x14u);
+    ASSERT(model == expect, "binder bound the F0-archive model (+0x11C)");
+    ASSERT(PE_LoadU8(model + 2u) != 0u && PE_LoadU16(model + 6u) != 0u,
+           "bound model has parts and vertices from disc data");
+    nparts = PE_LoadU8(model + 2u);
+    ASSERT(PE_LoadU32(ov + 0x18u) == model + 0x1Cu, "part table at model+0x1C");
+    ASSERT(PE_LoadU32(ov + 0x1Cu) == model + 0x1Cu + nparts * 12u,
+           "vertex table follows parts");
+    ASSERT(PE_LoadU16(ov + 0xBAu + 0x14u) == 1u, "packet build flag");
+    prim = PE_LoadU32(ov + 0x14u + 0x54u);
+    ASSERT(prim == PE_LoadU32(ov + 0x15Cu), "prim base is weapon storage");
+    ASSERT(PE_LoadU8(prim + 7u) != 0u && PE_LoadU8(prim + 3u) != 0u,
+           "GPU packet headers written");
+    ASSERT(PE_LoadU8(ov + 0x9Eu) == 0x18u, "EE=13 body reached 6698C/3D834 stage");
+    ASSERT(PE_LoadU32(ov + 0x38u) == player + 0x1B4u, "overlay ties to player model");
     PE_Disc_SetActive(NULL);
     PE_Disc_Close(disc);
     PASS();
@@ -16269,6 +16590,7 @@ static PE_Disc *btl94_setup_m0367i(char *err, size_t err_size)
         PE_StoreU8(0x800930B4u + i, charset[i]);
     PE_StoreU32(0x80093378u + 366u * 8u, 0x15050u);
     PE_StoreU32(0x80093378u + 366u * 8u + 4u, 0x04E0AA21u);
+    (void)PE_TestRetail_LoadExeRange(0x800930D8u, 0x8Cu);
     PE_StoreU16(0x800930D8u + 18u * 2u, 288u);
     PE_StoreU16(0x800930D8u + 19u * 2u, 316u);
     PE_StoreU8(0x800B0CD8u + 0x0Bu, 14u);
@@ -16279,6 +16601,7 @@ static PE_Disc *btl94_setup_m0367i(char *err, size_t err_size)
         PE_StoreU32(0x800910A0u + ops[i][0] * 4u, ops[i][1]);
 
     err[0] = 0;
+    func_8006A8D4();   /* retail boot weapon arena (src/func_8006A8D4.c) */
     disc = BTL6_OpenDisc1(err, err_size);
     if (disc == NULL)
         return NULL;
@@ -16331,6 +16654,7 @@ static void test_BTL94_m0367i_persist09_gate(void) {
     disc = btl94_setup_m0367i(err, sizeof(err));
     ASSERT(disc != NULL, err[0] ? err : "PE_Disc_Open failed");
     ASSERT(PE_LoadU32(0x800A77F0u + 0x4Au * 4u) == 0u, "persist[0x4A] closed");
+    pe_test_field_flag_ready();
     ASSERT(func_8003F074_dest_ready_cut(0xA80663C8u) == 1, "dest-ready closed");
     ASSERT(PE_LoadU32(0x8009D1FCu) == 0x801A0000u + 0x1C6D8u, "1A918 D1FC");
     ASSERT(PE_LoadU16(PE_LoadU32(0x8009D1FCu) + 2u) == 1u, "ntbl=1");
@@ -16354,6 +16678,7 @@ static void test_BTL94_m0367i_persist09_gate(void) {
     btl94_persist_store(0x4Au, 0x26u);
     ASSERT(PE_LoadU32(0x800A77F0u + 0x4Au * 4u) == 0x26u, "Watch 0x0A");
     ASSERT(PE_LoadU32(0x800A77F0u + 4u) == 5u, "Watch persist[1]");
+    pe_test_field_flag_ready();
     ASSERT(func_8003F074_dest_ready_cut(0xA80663C8u) == 1, "dest-ready open");
     script = dest2 + 0x1B454u;
     type2_script = dest2 + 0x1C230u;
@@ -19293,7 +19618,8 @@ static void test_B54KAD_fmv2_filename_threshold(void)
            PE_CdLoadU8(0x1F801800u) == 3u &&
            PE_CdLoadU8(0x1F801801u) == 0u &&
            PE_CdLoadU8(0x1F801802u) == 0u &&
-           PE_CdLoadU8(0x1F801803u) == 0x20u &&
+           (PE_CdReg_ReadU32(PE_CDREG_BASE) >> 24) == 0x20u &&
+           (PE_CdLoadU8(0x1F801803u) & 7u) == 0u &&
            PE_CdLoadU32(0x1F801020u) == 0x1325u &&
            !PE_Port_ShouldStop() &&
            PE_LoadU8(0x801D146Cu) == 1u &&
@@ -19343,7 +19669,8 @@ static void test_B54KAE_movie_state_setup(void)
            PE_CdLoadU8(0x1F801800u) == 3u &&
            PE_CdLoadU8(0x1F801801u) == 0u &&
            PE_CdLoadU8(0x1F801802u) == 0u &&
-           PE_CdLoadU8(0x1F801803u) == 0x20u &&
+           (PE_CdReg_ReadU32(PE_CDREG_BASE) >> 24) == 0x20u &&
+           (PE_CdLoadU8(0x1F801803u) & 7u) == 0u &&
            PE_CdLoadU32(0x1F801020u) == 0x1325u &&
            !PE_Port_ShouldStop() &&
            PE_LoadU16(0x800B0DBCu) == 1u &&
@@ -19410,6 +19737,8 @@ static void test_B54KAG_mdec_table_upload(void)
 {
     PeMdecState mdec;
     uint32_t i;
+    pe_addr_t bad_fmt = 0u;
+    uint32_t bad_args[4] = {0u, 0u, 0u, 0u};
 
     TEST("B54KAG_mdec_table_upload");
     ResetTestState();
@@ -19441,23 +19770,30 @@ static void test_B54KAG_mdec_table_upload(void)
                B54K_MdecFnv1a64(0x8010DA94u, 128u),
            "table command, range, or payload fingerprint differs");
     ASSERT(mdec.command_last_write == 0x60000000u &&
-           mdec.dma0_madr == 0x8010DA94u &&
+           mdec.dma0_madr == 0x0010DA94u &&
            mdec.dma0_bcr == 0x00010020u &&
            mdec.dma0_chcr == 0x01000201u &&
            mdec.dma1_chcr == 0u && PE_GPU_ReadDPCR() == 0x333333BBu,
            "final MDEC/DMA register state differs");
 
+    /* Invalid mode: the original prints its bad-option message through the
+     * libapi printf (format 0x8010BCFC, the mode as the argument) and returns
+     * without touching the MDEC or the DMA control word (clean-room core
+     * vectors, docs/evidence/native-mdec-core-cdgen40-20261125).  The former
+     * hand port stopped at a named boundary here; the native follows the
+     * original, so this leg asserts print-and-return, mutation-free. */
     ResetTestState();
     PE_GPU_WriteDPCR(0x12345678u);
+    PE_Bios_PrintfLogReset();
     func_8010BE3C(2);
     PE_MDEC_GetState(&mdec);
-    ASSERT(CountOrderLog("func_8010C0FC_bad_mode") == 1 &&
-           g_bootstrap_arg_call_count == 1 &&
-           g_bootstrap_arg_calls[0].arg0 == 2u &&
-           PE_Port_GetStopReason() == PE_PORT_STOP_UNRESOLVED_BOUNDARY &&
+    ASSERT(!PE_Port_ShouldStop() &&
+           PE_Bios_PrintfLog(&bad_fmt, bad_args) == 1u &&
+           bad_fmt == 0x8010BCFCu && bad_args[0] == 2u &&
            mdec.reset_count == 0u && mdec.upload_count == 0u &&
+           mdec.control_write_count == 0u &&
            PE_GPU_ReadDPCR() == 0x12345678u,
-           "invalid mode was not mutation-free at its named boundary");
+           "invalid mode did not print-and-return mutation-free");
     PASS();
 }
 
@@ -19472,7 +19808,8 @@ static void test_B54KAH_dec_dct_out_callback_registration(void)
            PE_LoadU32(PE_DMA_CallbackSlotAddress(2u)) == 0u,
            "reset did not leave the DMA callback table clear");
 
-    func_8010C0D8(0x80191DC8u);
+    ASSERT(func_8010C0D8(0x80191DC8u) == 0u,
+           "DecDCToutCallback did not return the previous empty callback");
     ASSERT(!PE_Port_ShouldStop() &&
            PE_LoadU32(PE_DMA_CallbackSlotAddress(0u)) == 0u &&
            PE_LoadU32(PE_DMA_CallbackSlotAddress(1u)) == 0x80191DC8u &&
@@ -19480,6 +19817,9 @@ static void test_B54KAH_dec_dct_out_callback_registration(void)
            "DecDCToutCallback did not change only DMA callback slot 1");
     ASSERT(PE_GPU_ReadDICR() == 0x00820000u,
            "DecDCToutCallback channel-1 DICR enable differs");
+    ASSERT(func_8010C0D8(0x801214D4u) == 0x80191DC8u &&
+           func_8010C0D8(0x80191DC8u) == 0x801214D4u,
+           "DecDCToutCallback did not return the previous handler");
     ASSERT(CountOrderLog("func_80074520_dma_indirect_call") == 0,
            "callback registration fabricated DMA delivery");
     PASS();
@@ -19573,6 +19913,12 @@ static void test_B54KAJ_stream_control_initializer(void)
            PE_LoadU32(0x800B6918u) == 4u &&
            PE_LoadU32(0x800C0DBCu) == 5u,
            "stream option did not retain only mode bit zero");
+    (void)PE_GuestCall("stream range setter", 0x8007C544u, 3u,
+                       0xFEDCBA98u, 0x80000000u, 0xFFFFFFFFu, 0u);
+    ASSERT(!PE_Port_ShouldStop() && PE_LoadU32(0x800C0DC0u) == 0xFEDCBA98u &&
+           PE_LoadU32(0x800B6918u) == 0x80000000u &&
+           PE_LoadU32(0x800C0DBCu) == 0xFFFFFFFFu,
+           "stream range setter guest binding or word values differ");
     PASS();
 }
 
@@ -19626,21 +19972,38 @@ static void test_B54KAM_read_registration_prefix(void)
     ResetTestState();
     PE_StoreU32(0x800A8020u, 0xA5A5A5A5u);
     PE_StoreU32(0x800B8AB4u, 0x12345678u);
-    /* Zeroed CdlLOC reads LBA -150: the queue issue fails, the previous
-     * callbacks are restored (824F0(old B8AB4), 824C8(0)), and the port
-     * returns 0 with no boundary — the exact retail restore arm. */
+    ASSERT(PE_LoadU32(PE_DMA_CallbackSlotAddress(3u)) == 0u,
+           "reset state must start with an empty DMA3 slot");
+    /* Zeroed CdlLOC reads LBA -150: the queue issue fails and the port
+     * returns 0 with no boundary.  Retail restores BOTH saved callbacks
+     * (0x8008139C 824F0($s1), 0x800813A4 824C8($s0)): $s1 is 824F0's
+     * return (move in the delay slot of jal 824C8) and $s0 is 824C8's
+     * return (move in the delay slot of jal 7F0C8).  Restoring the empty
+     * DMA3 slot clears its DICR enable bit again. */
     ASSERT(func_80081314(loc, 0x1E0u) == 0 &&
            !PE_Port_ShouldStop() &&
            CountOrderLog("func_80081314_func_8007F0C8_cut") == 0 &&
            CountOrderLog("func_8007F0C8_completion_selector") == 0,
            "failed issue must take the silent restore arm");
     ASSERT(PE_LoadU32(0x800A8020u) == 0u &&
-           PE_LoadU32(PE_DMA_CallbackSlotAddress(3u)) == 0x12345678u &&
-           PE_LoadU32(0x800B8AB4u) == 0u &&
-           PE_GPU_ReadDICR() == 0x00880000u,
-           "mode branch or callback registrations differ");
+           PE_LoadU32(PE_DMA_CallbackSlotAddress(3u)) == 0u &&
+           PE_LoadU32(0x800B8AB4u) == 0x12345678u &&
+           PE_GPU_ReadDICR() == 0x00800000u,
+           "mode branch or callback restores differ");
     ASSERT(CountOrderLog("func_80074520_dma_indirect_call") == 0,
            "callback registration fabricated DMA delivery");
+
+    /* A live DMA3 handler must come back unchanged; it must not be
+     * replaced by the saved B8AB4 value. */
+    ResetTestState();
+    (void)func_80073CF4(3u, 0x80123450u);
+    PE_StoreU32(0x800B8AB4u, 0x12345678u);
+    ASSERT(func_80081314(loc, 0x1E0u) == 0 && !PE_Port_ShouldStop(),
+           "failed issue with a live DMA3 handler must take the restore arm");
+    ASSERT(PE_LoadU32(PE_DMA_CallbackSlotAddress(3u)) == 0x80123450u &&
+           PE_LoadU32(0x800B8AB4u) == 0x12345678u &&
+           PE_GPU_ReadDICR() == 0x00880000u,
+           "failed issue must restore the saved DMA3 and B8AB4 handlers");
 
     ResetTestState();
     PE_StoreU32(0x800A8020u, 0u);
@@ -19874,24 +20237,72 @@ static void test_cdpos_to_int_vectors(void) {
 
 /* ── provider: func_80082314 PVD verify ──────────────────────────────── */
 
-static void test_pvd_verify_no_disc(void) {
-    TEST("pvd_verify_no_disc");
+/* DsGetDiskType is now the clean-room native (pe_plat_ds_gen34.c): it follows
+ * the retail flow (status poll, DsPacket 0x20 verify command, wait for the
+ * command-complete callback to write 0x800B28F8).  These tests therefore run
+ * it through the attached CD device model like the credits XA test. */
+static PE_Disc *pvd_d1;
+static int PvdDeviceUp(const char *what, PE_Disc *active)
+{
+    unsigned tick;
+    char err[256];
+    err[0] = 0;
     ResetTestState();
-    func_8007ED58();
-    ASSERT(func_80082314() == 2, "no disc must yield result word 2");
-    ASSERT(PE_LoadU32(0x800B28F8u) == 2, "D_800B28F8 must carry 2");
+    PE_CdReg_Reset();
+    pvd_d1 = BTL6_OpenDisc1(err, sizeof(err));
+    if (!pvd_d1) { fprintf(stderr, "PvdDeviceUp(%s): %s\n", what, err); return 0; }
+    PE_Disc_SetActive(pvd_d1);
+    if (PE_GuestImage_LoadExe(pvd_d1, err, sizeof(err)) != 0 || PE_Globals_AdoptRetailImage() != 0) {
+        fprintf(stderr, "PvdDeviceUp(%s): retail image\n", what); return 0;
+    }
+    HostFB_Init(); PE_GPU_Init(); PE_Callback_Init();
+    PE_Disc_SetActive(active ? active : pvd_d1);   /* CdInit needs a disc; "no disc" is detached below */
+    if (!(PE_CdReg_EnableDevice(7u) && func_8007EC14() == 1 && !PE_Port_ShouldStop())) {
+        fprintf(stderr, "PvdDeviceUp(%s): CdInit failed\n", what);
+        return 0;
+    }
+    for (tick = 0u; tick < 20u && PE_LoadU32(0x8009B574u) != 1u && !PE_Port_ShouldStop(); tick++)
+        HostFB_VSync(0);
+    if (!active) PE_Disc_SetActive(NULL);
+    return PE_LoadU32(0x8009B574u) == 1u;
+}
+static void PvdDeviceDown(void)
+{
+    PE_CdReg_Reset();
+    PE_Disc_SetActive(NULL);
+    if (pvd_d1) PE_Disc_Close(pvd_d1);
+    pvd_d1 = NULL;
+}
+
+static void test_pvd_verify_no_disc(void) {
+    int r;
+    TEST("pvd_verify_no_disc");
+    TEST_RETAIL_DISC1("pvd_verify_no_disc");
+    ASSERT(PvdDeviceUp("no disc", NULL), "device up");
+    /* The device model never answers the verify command with no disc, so the
+     * native's command-complete wait ends only through its host contract:
+     * the stuck-wait budget requests a stop and the word is returned as
+     * loaded (0).  Retail's shell-open error callback is not modelled. */
+    r = func_80082314();
+    ASSERT(r == 0 && PE_Port_ShouldStop(), "no disc: bounded wait ends in a stop request, word 0");
+    ASSERT(PE_LoadU32(0x800B28F8u) == 0, "D_800B28F8 stays 0");
+    PvdDeviceDown();
+    ResetTestState();
     PASS();
 }
 
 static void test_pvd_verify_with_disc(void) {
-    TEST("pvd_verify_with_disc");
     DiscFixture fx;
-    ResetTestState();
-    func_8007ED58();
-    ASSERT(FxBuild(&fx, 0), "fixture build failed");
-    PE_Disc_SetActive(fx.disc);
-    ASSERT(func_80082314() == 4, "valid disc must yield result word 4");
+    int r;
+    TEST("pvd_verify_with_disc");
+    TEST_RETAIL_DISC1("pvd_verify_with_disc");
+    ASSERT(FxBuild(&fx, 0), "fixture build failed");   /* unused: the real disc 1 is the valid disc here */
+    ASSERT(PvdDeviceUp("with disc", NULL), "device up");
+    PE_Disc_SetActive(pvd_d1);
+    r = func_80082314();
+    ASSERT(r == 4, "valid disc must yield result word 4");
     ASSERT(PE_LoadU32(0x800B28F8u) == 4, "D_800B28F8 must carry 4");
+    PvdDeviceDown();
     FxFree(&fx);
     PASS();
 }
@@ -19906,14 +20317,16 @@ static void test_pvd_verify_lane_shortcut(void) {
 }
 
 static void test_pvd_verify_wrong_disc(void) {
-    TEST("pvd_verify_wrong_disc");
     DiscFixture fx;
-    ResetTestState();
-    func_8007ED58();
+    int r;
+    TEST("pvd_verify_wrong_disc");
+    TEST_RETAIL_DISC1("pvd_verify_wrong_disc");
     ASSERT(FxBuild(&fx, 0), "fixture build failed");
     fx.img[16 * 2352 + 24 + 3] = 'X';
-    PE_Disc_SetActive(fx.disc);
-    ASSERT(func_80082314() == 2, "wrong disc must yield result word 2");
+    ASSERT(PvdDeviceUp("wrong disc", fx.disc), "device up");
+    r = func_80082314();
+    ASSERT(r == 2, "wrong disc must yield result word 2");
+    PvdDeviceDown();
     FxFree(&fx);
     PASS();
 }
@@ -20038,7 +20451,8 @@ static void test_read_happy_guest_bytes(void) {
            "sectors-pending must be 0 after sync read");
     ASSERT(PE_LoadU32(0x8009B6B0u) == D_80011614, "dest register wrong");
     ASSERT(PE_LoadU32(0x8009B6ACu) == 0x200u, "mode register wrong");
-    ASSERT(PE_LoadU32(0x8009B6D4u) == 1, "read-active flag wrong");
+    ASSERT(PE_LoadU32(0x8009B6CCu) == 0u && PE_LoadU32(0x8009B6D4u) == 0u,
+           "completed read: DsRead busy word clear, 0x8009B6D4 untouched");
     FxFree(&fx);
     PASS();
 }
@@ -20164,6 +20578,42 @@ static void test_poll_after_read(void) {
     PASS();
 }
 
+static void test_poll_host_counter_does_not_advance(void) {
+    TEST("poll_host_counter_does_not_advance");
+    int before, after;
+    ResetTestState(); HostFB_Init();
+    HostFB_GetState(&before, NULL, NULL, NULL);
+    PE_StoreU32(0x8009B6C4u, (uint32_t)before);
+    PE_StoreU32(0x8009B6B4u, 3u);
+    PE_StoreU32(0x8009B6CCu, 1u);
+    ASSERT(func_800811E4(0x801FFEE0u)==3, "host pending status changed");
+    HostFB_GetState(&after, NULL, NULL, NULL);
+    ASSERT(before==after && PE_LoadU32(0x8009B6CCu)==1u,
+           "host query advanced time or aborted a fresh read");
+    PASS();
+}
+
+static void test_poll_host_deadline_boundary(void) {
+    TEST("poll_host_deadline_boundary");
+    int now;
+    ResetTestState(); HostFB_Init();
+    HostFB_GetState(&now, NULL, NULL, NULL);
+    PE_StoreU32(0x8009B6B4u, 2u);
+    PE_StoreU32(0x8009B6CCu, 1u);
+    PE_StoreU32(0x8009B6B8u, 0xAABBCCDDu);
+    PE_StoreU32(0x8009B6C0u, 0x11111111u);
+    PE_StoreU32(0x8009B6C4u, (uint32_t)now-1200u);
+    ASSERT(func_800811E4(0)==2 && PE_LoadU32(0x8009B6CCu)==1u,
+           "equal wrapped deadline timed out early");
+    PE_StoreU32(0x8009B6C4u, (uint32_t)now-1201u);
+    ASSERT(func_800811E4(0)==-1 && PE_LoadU32(0x8009B6CCu)==0u,
+           "expired host deadline did not clear active read");
+    ASSERT(PE_LoadU32(0x8009B6B4u)==2u && PE_LoadU32(0x8009B6B8u)==0xAABBCCDDu &&
+           PE_LoadU32(0x8009B6C0u)==0x11111111u,
+           "local host abort changed unrelated status/callback state");
+    PASS();
+}
+
 static void test_poll_timeout(void) {
     TEST("poll_timeout");
     int vs;
@@ -20182,40 +20632,97 @@ static void test_poll_timeout(void) {
 
 /* ── func_800698D4 full sequence ─────────────────────────────────────── */
 
+/* func_800698D4 mounts through DsGetDiskType (func_80082314), which is the
+ * clean-room native following the retail command flow; these run it on the
+ * attached CD device model with the real disc 1 (see PvdDeviceUp above). */
+/* The first mount (func_800698D4, reached from the boot func_8001220C) attaches the CD device model itself
+ * (real hardware has the drive present before the first mount), so DsGetDiskType, the clean-room native following
+ * the retail command flow, completes natively on disc 1; the model is detached again afterwards (the credits
+ * path attaches it separately). */
 static void test_698D4_real_disc_sequence(void) {
+    PE_Disc *d1;
+    char err[256];
     TEST("698D4_real_disc_sequence");
-    DiscFixture fx;
+    TEST_RETAIL_DISC1("698D4_real_disc_sequence");
     ResetTestState();
-    func_8007ED58();
-    ASSERT(FxBuild(&fx, 0), "fixture build failed");
-    PE_Disc_SetActive(fx.disc);
-    ASSERT(func_800698D4() == 0, "mount must succeed (0) with a valid disc");
+    PE_CdReg_Reset();
+    HostFB_Init();
+    err[0] = 0;
+    d1 = BTL6_OpenDisc1(err, sizeof(err));
+    ASSERT(d1 != NULL, err[0] ? err : "PE_Disc_Open failed");
+    PE_Disc_SetActive(d1);
+    ASSERT(PE_GuestImage_LoadExe(d1, err, sizeof(err)) == 0, err);
+    ASSERT(PE_Globals_AdoptRetailImage() == 0, "retail startup globals");
+    PE_Port_SetSkipMovie(1);
+    PE_Port_SetFrameLimit(12);
+    ASSERT(!PE_CdReg_DeviceEnabled(), "no device before the boot");
+    func_8001220C();
     ASSERT(D_800B0DCD == 1, "only bit 1 may be set (FMV2 absent, like Disc 1)");
-    ASSERT(D_800B0DD8 == FX_PEIMG_LBA, "D_800B0DD8 must carry the PE.IMG LBA");
-    FxFree(&fx);
+    ASSERT(D_800B0DD8 == 0x3F5u, "D_800B0DD8 must carry the PE.IMG LBA (0x3F5 on disc 1, observed)");
+    ASSERT(PE_LoadU32(0x800B28F8u) == 4u, "DsGetDiskType result word 4 (valid disc): the first mount completed natively");
+    ASSERT(!PE_CdReg_DeviceEnabled(), "the device model is detached after the mount");
+    PE_CdReg_Reset();
+    PE_Disc_SetActive(NULL);
+    PE_Disc_Close(d1);
     PASS();
 }
 
-static void test_698D4_second_disc_bits(void) {
-    TEST("698D4_second_disc_bits");
-    DiscFixture fx;
+/* The quiet device window (the first mount runs inside it): the drive advances but the VBlank count, the libetc
+ * VBlank counter D_800956AC and the VSync call / scanline counters stay where they were; ending the window
+ * restores them and normal VSync waits advance the clock again.  The end-to-end mount is the sequence test above
+ * and the route audio baseline. */
+static void test_698D4_quiet_window_takes_no_emulated_time(void) {
+    PE_Disc *d1;
+    char err[256];
+    PeCdAttach att;
+    int vs0, ds0, pr0, mk0, vs1, ds1, pr1, mk1, i;
+    uint32_t vb0, cnt0, vt0;
+    TEST("698D4_quiet_window_takes_no_emulated_time");
+    TEST_RETAIL_DISC1("698D4_quiet_window_takes_no_emulated_time");
     ResetTestState();
+    PE_CdReg_Reset();
+    HostFB_Init();
+    err[0] = 0;
+    d1 = BTL6_OpenDisc1(err, sizeof(err));
+    ASSERT(d1 != NULL, err[0] ? err : "PE_Disc_Open failed");
+    PE_Disc_SetActive(d1);
+    ASSERT(PE_GuestImage_LoadExe(d1, err, sizeof(err)) == 0, err);
+    ASSERT(PE_Globals_AdoptRetailImage() == 0, "retail startup globals");
     func_8007ED58();
-    ASSERT(FxBuild(&fx, 1), "fixture build failed");
-    PE_Disc_SetActive(fx.disc);
-    ASSERT(func_800698D4() == 0, "mount must succeed with the FMV2 fixture");
-    ASSERT(D_800B0DCD == 3, "both bits must be set when both IDFs exist");
-    ASSERT(D_800B0DD8 == FX_PEIMG_LBA, "D_800B0DD8 must carry the PE.IMG LBA");
-    FxFree(&fx);
+    ASSERT(PE_Cd_AttachDevice(&att), "device attached");
+    HostFB_GetState(&vs0, &ds0, &pr0, &mk0);
+    vb0 = pe_plat_timing_vblank_count();
+    cnt0 = PE_LoadU32(0x800956ACu);
+    vt0 = HostFB_VSyncTimer();
+    HostFB_DeviceQuietBegin();
+    for (i = 0; i < 3; i++) (void)HostFB_VSync(0);
+    (void)HostFB_VSync(-1);
+    for (i = 0; i < 200; i++) HostFB_DevicePoll();
+    HostFB_DeviceQuietEnd();
+    HostFB_GetState(&vs1, &ds1, &pr1, &mk1);
+    ASSERT(pe_plat_timing_vblank_count() == vb0, "no VBlank edge inside the window");
+    ASSERT(PE_LoadU32(0x800956ACu) == cnt0, "D_800956AC unchanged");
+    ASSERT(vs1 == vs0 && ds1 == ds0 && pr1 == pr0, "VSync / DrawSync / present counters restored");
+    ASSERT(HostFB_VSyncTimer() == vt0, "the VSync scanline timer is restored");
+    (void)HostFB_VSync(0);
+    ASSERT(pe_plat_timing_vblank_count() == vb0 + 1u, "a normal VSync(0) advances one VBlank again");
+    PE_Cd_DetachDevice(&att);
+    PE_CdReg_Reset();
+    PE_Disc_SetActive(NULL);
+    PE_Disc_Close(d1);
     PASS();
 }
 
+/* No disc image: no device either, so the native's stuck-wait stop is the named no-device case. */
 static void test_698D4_no_disc(void) {
+    int r;
     TEST("698D4_no_disc");
     ResetTestState();
     func_8007ED58();
-    ASSERT(func_800698D4() == -1, "no disc must return -1 (PVD verify fails)");
+    r = func_800698D4();
+    ASSERT(r == -1 && PE_Port_ShouldStop(), "no disc: PVD verify fails (-1) through the named stuck-wait stop");
     ASSERT(D_800B0DCD == 0, "no bits may be set without a disc");
+    ResetTestState();
     PASS();
 }
 
@@ -20493,13 +21000,16 @@ static void test_CDQ1_81314_full(void) {
     ASSERT(CountOrderLog("func_8007B9EC") == 0 &&
            PE_Port_GetStopReason() == PE_PORT_STOP_NONE,
            "issue must end at the selector boundary");
-    /* zero-issue arm restores the previous callbacks and returns 0 */
+    /* zero-issue arm restores both saved callbacks and returns 0 */
     ResetTestState();
     func_8007ED58();
+    (void)func_80073CF4(3u, 0x80123450u);
     PE_StoreU32(0x800B8AB4u, 0x22222222u);
     ASSERT(func_80081314(0x801FFF00u, 0x1E0u) == 0,
            "failed issue must return 0");
-    ASSERT(PE_LoadU32(0x800B8AB4u) == 0u, "restore store differs");
+    ASSERT(PE_LoadU32(0x800B8AB4u) == 0x22222222u &&
+           PE_LoadU32(PE_DMA_CallbackSlotAddress(3u)) == 0x80123450u,
+           "restore stores differ");
     PASS();
 }
 
@@ -20701,21 +21211,26 @@ static void test_B558_7b9ec_transcribe(void)
     ASSERT(PE_LoadU8(0x8009B295u) == 0u, "B295 latch differs");
     ASSERT(PE_LoadU8(0x8009B294u) == 2u, "B294 latch differs");
     ASSERT(PE_CdReg_ReadU8(0x1F801800u) == 0u, "REG0 tag must clear");
-    ASSERT(PE_CdReg_ReadU8(0x1F801803u) == 0u, "REG3 tag must clear");
+    ASSERT((PE_CdReg_ReadU8(0x1F801803u) & 7u) == 0u, "REG3 tag must clear");
     ASSERT(PE_CdReg_ReadU32(0x1F801020u) == 0x1325u, "mailbox v0 differs");
-    /* Set tag: honest hardware-wait stop, never a spin. */
+    /* A real pending tag now acknowledges through the register owner. */
     ResetTestState();
     B558_PlantPointers();
-    PE_CdReg_WriteU8(0x1F801803u, 7u);
+    ASSERT(PE_CdReg_PushResponse(7u, NULL, 0u), "pending IRQ ingress");
     func_8007B9EC();
-    ASSERT(CountOrderLog("func_8007B9EC_hw_poll") == 1 &&
-           PE_Port_GetStopReason() == PE_PORT_STOP_UNRESOLVED_BOUNDARY,
-           "set tag must record the hw-poll boundary");
+    PE_CdReg_WriteU8(0x1F801800u,1u);
+    ASSERT(!PE_Port_ShouldStop() && !(PE_CdReg_ReadU8(0x1F801803u)&7u) &&
+           PE_LoadU8(0x8009B294u)==2u && !PE_LoadU8(0x8009B295u) &&
+           !PE_LoadU8(0x8009B296u) && PE_CdReg_ReadU32(0x1F801020u)==0x1325u,
+           "pending tag must acknowledge and complete the flush");
     PASS();
 }
 
 static void test_B558_7aab4_idle(void)
 {
+    pe_addr_t fmt; uint32_t args[4];
+    static const char first[] = "E\n", second[] = "cmd=%s %02x:%02x\n", name[] = "cmd";
+    static const char unknown[] = "unknown tag ", tagfmt[] = "tag=%d\n";
     TEST("B558_7aab4_idle");
     ResetTestState();
     B558_PlantPointers();
@@ -20723,6 +21238,84 @@ static void test_B558_7aab4_idle(void)
     ASSERT(!g_stub_order_count && !PE_Port_ShouldStop() &&
            PE_CdReg_ReadU8(0x1F801800u)==1u,
            "idle acknowledge must select bank1 without a boundary");
+    ResetTestState();
+    B558_PlantPointers();
+    PE_CdReg_WriteU8(0x1F801800u,0u);
+    PE_Port_RequestStop(PE_PORT_STOP_UNRESOLVED_BOUNDARY);
+    ASSERT(func_8007AAB4()==0 && PE_CdReg_ReadU8(0x1F801800u)==0u,
+           "stopped interrupt poll touched the CD register");
+    ResetTestState();
+    B558_PlantPointers();
+    for (unsigned i=0;i<sizeof first;i++) PE_StoreU8(0x80011B44u+i,first[i]);
+    for (unsigned i=0;i<sizeof second;i++) PE_StoreU8(0x80011B50u+i,second[i]);
+    for (unsigned i=0;i<sizeof name;i++) PE_StoreU8(0x80150000u+i,name[i]);
+    PE_StoreU32(0x8009AFDCu+9u*4u,0x80150000u);
+    PE_StoreU8(0x8009AFD5u,9u);
+    PE_StoreU32(0x8009AFC0u,1u);
+    PE_StoreU32(0x80011B8Cu+4u*4u,0x8007AF5Cu);
+    ASSERT(PE_CdReg_PushResponse(5u, NULL, 0u), "pending IRQ ingress");
+    PE_Bios_PrintfLogReset();
+    ASSERT(func_8007AAB4()==6 && !PE_Port_ShouldStop() &&
+           PE_Bios_PrintfLog(&fmt,args)==2u && fmt==0x80011B50u &&
+           args[0]==0x80150000u && args[1]==0u && args[2]==0u &&
+           PE_LoadU8(0x8009B294u)==5u && PE_LoadU8(0x8009B295u)==5u,
+           "CD error diagnostic or interrupt status differs");
+    ResetTestState();
+    B558_PlantPointers();
+    for (unsigned i=0;i<sizeof unknown;i++) PE_StoreU8(0x80011B6Cu+i,unknown[i]);
+    for (unsigned i=0;i<sizeof tagfmt;i++) PE_StoreU8(0x80011B80u+i,tagfmt[i]);
+    ASSERT(PE_CdReg_PushResponse(7u, NULL, 0u), "pending IRQ ingress");
+    PE_Bios_PrintfLogReset();
+    ASSERT(func_8007AAB4()==0 && !PE_Port_ShouldStop() &&
+           PE_Bios_PrintfLog(&fmt,args)==1u && fmt==0x80011B80u && args[0]==7u,
+           "unknown CD tag did not print and return normally");
+    for (unsigned i=0;i<3u;i++) {
+        static const pe_addr_t entries[] = {0x8007A4D0u,0x8007A60Cu,0x8007A740u};
+        ResetTestState();
+        B558_PlantPointers();
+        PE_StoreU32(0x8009AFB4u,0x81234567u);
+        PE_StoreU8(0x8009AFC4u,0x10u);
+        PE_StoreU16(0x800945E6u,1u);
+        ASSERT(PE_CdReg_PushResponse(2u, NULL, 0u), "pending IRQ ingress");
+        PE_StoreU32(0x80011B8Cu+4u,0x80012222u);
+        ASSERT(PE_GuestCall("CD control",entries[i],3u,4u,0u,0u,0u)==0 &&
+               PE_Port_ShouldStop() && PE_LoadU32(0x8009AFB4u)==0x81234567u &&
+               CountOrderLog("func_8007AAB4_jump_table")==1,
+               "unknown CD jump failed to stop and restore the callback");
+    }
+    PASS();
+}
+
+extern void PE_Cd_TimeoutRecover(void);
+static void test_cd_timeout_native_recovery(void)
+{
+    static const char prefix[]="time ", format[]="s=%s,%s,%s,%s\n";
+    static const char *const names[]={"ctx","cmd","sync","ready"};
+    pe_addr_t fmt; uint32_t args[4];
+    TEST("cd_timeout_native_recovery");
+    ResetTestState();
+    B558_PlantPointers();
+    for (unsigned i=0;i<sizeof prefix;i++) PE_StoreU8(0x80011B18u+i,prefix[i]);
+    for (unsigned i=0;i<sizeof format;i++) PE_StoreU8(0x80011B28u+i,format[i]);
+    for (unsigned n=0;n<4u;n++) {
+        pe_addr_t addr=0x80150000u+n*32u;
+        for (unsigned i=0;i<=strlen(names[n]);i++) PE_StoreU8(addr+i,names[n][i]);
+    }
+    PE_StoreU32(0x800A3480u,0x80150000u);
+    PE_StoreU8(0x8009AFD5u,9u);
+    PE_StoreU32(0x8009AFDCu+9u*4u,0x80150020u);
+    PE_StoreU32(0x8009B05Cu+2u*4u,0x80150040u);
+    PE_StoreU32(0x8009B05Cu+3u*4u,0x80150060u);
+    PE_StoreU8(0x8009B294u,2u); PE_StoreU8(0x8009B295u,3u);
+    PE_StoreU8(0x8009B296u,0xFFu);
+    PE_Bios_PrintfLogReset();
+    PE_Cd_TimeoutRecover();
+    ASSERT(!PE_Port_ShouldStop() && PE_Bios_PrintfLog(&fmt,args)==1u &&
+           fmt==0x80011B28u && args[0]==0x80150000u && args[1]==0x80150020u &&
+           args[2]==0x80150040u && args[3]==0x80150060u &&
+           PE_LoadU8(0x8009B294u)==2u && PE_LoadU8(0x8009B295u)==0u &&
+           PE_LoadU8(0x8009B296u)==0u && PE_CdReg_ReadU32(0x1F801020u)==0x1325u,
+           "CD timeout diagnostic arguments or latch recovery differ");
     PASS();
 }
 
@@ -20761,6 +21354,58 @@ static void test_B558_7b010_status_arms(void)
     PASS();
 }
 
+static void test_cd_control_native_adapters(void)
+{
+    static const pe_addr_t entries[] = {0x8007A4D0u, 0x8007A60Cu, 0x8007A740u};
+    TEST("cd_control_native_adapters");
+    for (unsigned i = 0; i < 3u; i++) {
+        ResetTestState();
+        B558_PlantPointers();
+        PE_StoreU32(0x8009AFB4u, 0x81234567u);
+        PE_StoreU32(0x8009AFC0u, 0u);
+        PE_StoreU8(0x8009AFC4u, 0x10u);
+        PE_StoreU16(0x800945E6u, 1u);
+        ASSERT(PE_CdReg_PushResponse(2u, NULL, 0u), "pending IRQ ingress");
+        PE_StoreU32(0x80011B8Cu + 4u, 0x80012222u);
+        ASSERT(PE_GuestCall("CD control", entries[i], 3u, 4u, 0u, 0u, 0u) == 0 &&
+               PE_Port_ShouldStop() && PE_LoadU32(0x8009AFB4u) == 0x81234567u &&
+               CountOrderLog("func_8007AAB4_jump_table") == 1,
+               "CD control retried or failed to restore callback after stop");
+    }
+    ResetTestState();
+    B558_PlantPointers();
+    PE_StoreU32(0x8009AFB4u, 0x81234567u);
+    PE_StoreU16(0x800945E6u, 0u);
+    PE_StoreU8(0x8009B294u, 2u);
+    ASSERT(PE_GuestCall("CD control async", 0x8007A60Cu, 2u, 9u, B558_D, 0u, 0u) == 1 &&
+           !PE_Port_ShouldStop() && PE_LoadU32(0x8009AFB4u) == 0x81234567u &&
+           PE_LoadU8(0x8009AFD5u) == 9u,
+           "asynchronous command did not complete the normal issue path");
+    PASS();
+}
+
+static int CD_StopInCommandWait(void)
+{
+    return PE_LoadU32(0x800A3480u) == 0x80011BCCu;
+}
+
+static void test_cd_command_wait_stop(void)
+{
+    TEST("cd_command_wait_stop");
+    ResetTestState();
+    B558_PlantPointers();
+    PE_StoreU16(0x800945E6u,0u);
+    PE_StoreU8(0x8009B294u,2u);
+    PE_Port_SetQuitPoll(CD_StopInCommandWait);
+    (void)func_8007B558(9u,B558_D,0u,0u);
+    PE_Port_SetQuitPoll(NULL);
+    ASSERT(PE_Port_GetStopReason()==PE_PORT_STOP_HOST_QUIT &&
+           PE_LoadU32(0x800A3478u)==PE_GPU_VSyncQuery()+0x3C0u &&
+           PE_LoadU32(0x800A347Cu)==0u,
+           "CD command wait did not stop before its first poll");
+    PASS();
+}
+
 static void test_B558_7b558_b5bc_gate(void)
 {
     TEST("B558_7b558_b5bc_gate");
@@ -20779,31 +21424,73 @@ static void test_B558_7b558_b5bc_gate(void)
     PASS();
 }
 
+static void B558_SeedPrintf(void)
+{
+    static const char first[] = "C:%s\n", second[] = "E:%s\n", name[] = "cmd";
+    for (unsigned i = 0; i < sizeof first; i++) PE_StoreU8(0x80011BB4u + i, first[i]);
+    for (unsigned i = 0; i < sizeof second; i++) PE_StoreU8(0x80011BBCu + i, second[i]);
+    for (unsigned i = 0; i < sizeof name; i++) PE_StoreU8(0x80150000u + i, name[i]);
+    PE_StoreU32(0x8009AFDCu + 9u * 4u, 0x80150000u);
+    PE_Bios_PrintfLogReset();
+}
+
 static void test_B558_7b558_print_then_minus2(void)
 {
+    pe_addr_t fmt; uint32_t args[4];
     TEST("B558_7b558_print_then_minus2");
     ResetTestState();
     B558_PlantPointers();
+    B558_SeedPrintf();
     PE_StoreU32(0x8009AFC0u, 5u); /* entry print fires */
     PE_StoreU32(0x8009B1FCu + (0x09u * 4u), 7u); /* table set */
-    PE_StoreU32(0x8009AFDCu + (0x09u * 4u), 0xA5A5A5A5u);
-    ASSERT(func_8007B558(0x09u, 0u, 0u, 0u) == -2,
-           "print path must still return -2");
-    ASSERT(CountOrderLog("func_80071A74") == 2 &&
-           PE_Port_GetStopReason() == PE_PORT_STOP_UNRESOLVED_BOUNDARY,
-           "both prints must record the boundary");
-    ASSERT(g_bootstrap_arg4_call_count == 2, "two indirect calls differ");
-    ASSERT(strcmp(g_bootstrap_arg4_calls[0].symbol, "func_80071A74") == 0 &&
-           g_bootstrap_arg4_calls[0].target == 0x80071A74u &&
-           g_bootstrap_arg4_calls[0].arg0 == 0x80011BB4u &&
-           g_bootstrap_arg4_calls[0].arg1 == 0xA5A5A5A5u &&
-           g_bootstrap_arg4_calls[0].arg2 == 0u &&
-           g_bootstrap_arg4_calls[0].arg3 == 0u,
-           "entry print args differ");
-    ASSERT(strcmp(g_bootstrap_arg4_calls[1].symbol, "func_80071A74") == 0 &&
-           g_bootstrap_arg4_calls[1].arg0 == 0x80011BBCu &&
-           g_bootstrap_arg4_calls[1].arg1 == 0xA5A5A5A5u,
-           "table print args differ");
+    ASSERT(func_8007B558(0x09u, 0u, 0u, 0u) == -2 && !PE_Port_ShouldStop() &&
+           PE_Bios_PrintfLog(&fmt, args) == 2u && fmt == 0x80011BBCu &&
+           args[0] == 0x80150000u && !g_bootstrap_arg4_call_count,
+           "native entry and missing-parameter diagnostics differ");
+    ResetTestState();
+    B558_PlantPointers();
+    B558_SeedPrintf();
+    PE_StoreU32(0x8009AFC0u, 1u);
+    PE_StoreU32(0x8009B1FCu + (0x09u * 4u), 7u);
+    ASSERT(func_8007B558(0x09u, 0u, 0u, 0u) == -2 &&
+           !PE_Port_ShouldStop() && PE_Bios_PrintfLog(&fmt, args) == 1u &&
+           fmt == 0x80011BBCu && args[0] == 0x80150000u,
+           "native lower-level missing-parameter diagnostic differs");
+    for (unsigned i = 0; i < 3u; i++) {
+        static const pe_addr_t entries[] = {0x8007A4D0u, 0x8007A60Cu, 0x8007A740u};
+        ResetTestState();
+        B558_PlantPointers();
+        PE_StoreU32(0x8009AFB4u, 0x81234567u);
+        PE_StoreU8(0x8009AFC4u, 0x10u);
+        PE_StoreU16(0x800945E6u, 1u);
+        ASSERT(PE_CdReg_PushResponse(2u, NULL, 0u), "pending IRQ ingress");
+        PE_StoreU32(0x80011B8Cu + 4u, 0x80012222u);
+        ASSERT(PE_GuestCall("CD control", entries[i], 3u, 4u, 0u, 0u, 0u) == 0 &&
+               PE_Port_ShouldStop() && PE_LoadU32(0x8009AFB4u) == 0x81234567u &&
+               CountOrderLog("func_8007AAB4_jump_table") == 1,
+               "CD control failed to stop and restore its callback");
+    }
+    ResetTestState();
+    PE_StoreU32(0x800A3478u, 0x12345678u);
+    PE_Port_RequestStop(PE_PORT_STOP_UNRESOLVED_BOUNDARY);
+    ASSERT(func_8007B558(1u, 0u, 0u, 0u) == -1 &&
+           func_8007B010(9u, 0u) == 0 && PE_LoadU32(0x800A3478u) == 0x12345678u,
+           "pre-existing stop allowed command or status polling");
+    PASS();
+}
+
+static void test_B558_parameter_port_pointer_reload(void)
+{
+    TEST("B558_parameter_port_pointer_reload");
+    ResetTestState();
+    B558_PlantChain();
+    PE_StoreU32(0x8009B1FCu + 9u * 4u, 2u);
+    PE_StoreU32(0x8009B284u, 0x8009B284u);
+    PE_StoreU8(B558_D, 0x90u);
+    PE_StoreU8(B558_D + 1u, 0x55u);
+    ASSERT(func_8007B558(9u, B558_D, 0u, 1u) == 0 && !PE_Port_ShouldStop() &&
+           PE_LoadU32(0x8009B284u) == 0x8009B290u && PE_LoadU8(0x8009B290u) == 0x55u,
+           "parameter port pointer was not reloaded for the second byte");
     PASS();
 }
 
@@ -21526,7 +22213,7 @@ static void test_6A9E4_zero_cycles_footprint(void) {
         else if (a == 0x8009B6B0u) want = B16_STREAM;  /* last dest */
         else if (a == 0x8009B6B4u) want = 0;
         else if (a == 0x8009B6C4u) want = 0;           /* vs = 0 */
-        else if (a == 0x8009B6D4u) want = 1;
+        else if (a == 0x8009B6CCu) want = 0;           /* DsRead busy clear */
         /* B38: func_8008CBA8 clears D_8009D268 (busy flag) on exit,
          * and RingAlloc increments D_8009D2F4 from 0 to 1. */
         else if (a == 0x8009D268u) want = 0;
@@ -27400,7 +28087,7 @@ static void test_6AD40_complete_effect_allowlist(void)
            PE_LoadU32(0x8009B6B0u) == B50_3126_DEST &&
            PE_LoadU32(0x8009B6B4u) == 0u &&
            PE_LoadU32(0x8009B6C4u) == 1u &&
-           PE_LoadU32(0x8009B6D4u) == 1u,
+           PE_LoadU32(0x8009B6CCu) == 0u,
            "prefix D_800930E0 provider state differs from retail adapter");
     for (uint32_t a = PE_RAM_BASE; a < PE_RAM_END; a++) {
         if ((a >= 0x800957B8u && a < 0x800957CCu) ||
@@ -27408,7 +28095,7 @@ static void test_6AD40_complete_effect_allowlist(void)
             (a >= 0x800B0CD8u && a < 0x800B0CDCu) ||
             (a >= 0x8009B6ACu && a < 0x8009B6B8u) ||
             (a >= 0x8009B6C4u && a < 0x8009B6C8u) ||
-            (a >= 0x8009B6D4u && a < 0x8009B6D8u) ||
+            (a >= 0x8009B6CCu && a < 0x8009B6D0u) ||
             (a >= 0x8009D268u && a < 0x8009D26Cu) ||
             (a >= 0x8009D2F4u && a < 0x8009D2F8u) ||
             (a >= 0x800B8628u && a < 0x800B863Cu) ||
@@ -27458,7 +28145,14 @@ static void test_6AD40_complete_effect_allowlist(void)
             (a >= 0x8009E8B8u && a < 0x8009E928u) ||
             (a >= 0x8009E928u && a < 0x8009E960u) ||
             (a >= 0x8009E960u && a < 0x8009EC38u) ||
-            (a >= 0x8009EC38u && a < 0x8009EC70u))
+            (a >= 0x8009EC38u && a < 0x8009EC70u) ||
+            /* libds: each read's packet and closing CdlPause completions
+             * (sequence counter, completion ring and its write index), as a
+             * retail DsRead leaves them (pe_libcd.c PE_Cd_HostCompletion),
+             * and the command-lane response buffer they are copied from. */
+            (a >= 0x8009B53Cu && a < 0x8009B540u) ||
+            (a >= 0x800A3460u && a < 0x800A3468u) ||
+            (a >= 0x800A3610u && a < 0x800A3694u))
             continue;
         if (PE_LoadU8(a) != snapshot[a - PE_RAM_BASE]) {
             free(snapshot);
@@ -29393,7 +30087,7 @@ static void test_B54KJ_6AD40_f0_completion_and_frontier(void)
     ASSERT(PE_LoadU32(0x8009B6ACu) == 0x200u &&
            PE_LoadU32(0x8009B6B0u) == B50_3126_DEST &&
            PE_LoadU32(0x8009B6B4u) == 0u &&
-           PE_LoadU32(0x8009B6D4u) == 1u,
+           PE_LoadU32(0x8009B6CCu) == 0u,
            "E0 completion changed the synchronous provider contract");
     ASSERT(PE_Port_GetStopReason() == PE_PORT_STOP_NONE,
            "B54KJ complete path requested a host stop");
@@ -30068,13 +30762,22 @@ static void test_7506C_exact_abi_into_dispatch_prefix(void)
     PASS();
 }
 
+/* Read debug names/formats from the user's disc, never embed retail data. */
+static int TTY_SeedRetailFormats(void)
+{
+    char why[256];
+    return PE_DiscCache_FileRead(PE_DISC_SRC_EXE, 0x2098u,
+        PE_Translate(0x80011898u, 0xE0u), 0xE0u, why, sizeof(why)) == 0;
+}
+
 static void test_74E28_validator_level1_paths(void)
 {
     RECT valid = { 0, 0, 1024, 512 };
     RECT invalid = { -1, 2, 0, 600 };
     uint8_t *snapshot;
-    TEST("74E28_validator_level1_paths");
+    TEST_RETAIL_DISC1("74E28_validator_level1_paths");
     ResetTestState();
+    ASSERT(TTY_SeedRetailFormats(), "cannot read retail debug formats");
     PE_StoreU32(B52_JTB_PTR + 4u, B52_PRINT_FN);
     PE_StoreU8(0x8009574Eu, 1);
     PE_StoreU16(0x80095750u, 1024);
@@ -30086,21 +30789,19 @@ static void test_74E28_validator_level1_paths(void)
     ASSERT(g_bootstrap_arg4_call_count == 0 &&
            g_bootstrap_arg5_call_count == 0,
            "valid limit-edge RECT must not print");
+    PE_Bios_PrintfLogReset();
     func_80074E28(0x800118D4u, &invalid);
-    ASSERT(g_bootstrap_arg4_call_count == 1 &&
-           g_bootstrap_arg5_call_count == 1,
-           "invalid RECT must issue both diagnostic calls");
-    ASSERT(g_bootstrap_arg4_calls[0].arg0 == 0x80011898u &&
-           g_bootstrap_arg4_calls[0].arg1 == 0x800118D4u &&
-           g_bootstrap_arg4_calls[0].target == B52_PRINT_FN,
-           "bad-RECT diagnostic prefix arguments");
-    ASSERT(g_bootstrap_arg5_calls[0].arg0 == 0x800118A4u &&
-           g_bootstrap_arg5_calls[0].target == B52_PRINT_FN &&
-           g_bootstrap_arg5_calls[0].arg1 == (uintptr_t)(intptr_t)-1 &&
-           g_bootstrap_arg5_calls[0].arg2 == 2u &&
-           g_bootstrap_arg5_calls[0].arg3 == 0u &&
-           g_bootstrap_arg5_calls[0].arg4 == 600u,
-           "validator signed/fifth diagnostic arguments");
+    {
+        pe_addr_t fmt;
+        uint32_t args[4];
+        ASSERT(PE_Bios_PrintfLog(&fmt, args) == 2u,
+               "invalid RECT must execute both native prints");
+        ASSERT(fmt == 0x800118A4u && args[0] == (uint32_t)-1 &&
+               args[1] == 2u && args[2] == 0u && args[3] == 600u,
+               "signed and stack-fifth diagnostic arguments differ");
+        ASSERT(g_bootstrap_arg4_call_count == 0 && g_bootstrap_arg5_call_count == 0 &&
+               !PE_Port_ShouldStop(), "native validator reached a stub or stopped");
+    }
     ASSERT(memcmp(snapshot, PE_TranslateConst(PE_RAM_BASE, PE_RAM_SIZE),
                   PE_RAM_SIZE) == 0, "validator is not guest-read-only");
     free(snapshot);
@@ -30110,25 +30811,24 @@ static void test_74E28_validator_level1_paths(void)
 static void test_74E28_level2_signed_edges(void)
 {
     RECT rc = { INT16_MIN, INT16_MAX, -1, 1 };
-    TEST("74E28_level2_signed_edges");
+    TEST_RETAIL_DISC1("74E28_level2_signed_edges");
     ResetTestState();
-    PE_StoreU32(B52_JTB_PTR + 4u, 0x81234568u);
+    ASSERT(TTY_SeedRetailFormats(), "cannot read retail debug formats");
+    PE_StoreU32(B52_JTB_PTR + 4u, B52_PRINT_FN);
     PE_StoreU8(0x8009574Eu, 2);
+    PE_Bios_PrintfLogReset();
     func_80074E28(0x800118D4u, &rc);
-    ASSERT(g_bootstrap_arg4_call_count == 1 &&
-           g_bootstrap_arg5_call_count == 1,
-           "debug level 2 must always print name and RECT");
-    ASSERT(g_bootstrap_arg4_calls[0].arg0 == 0x800118B8u,
-           "level-2 name format");
-    ASSERT(g_bootstrap_arg4_calls[0].target == 0x81234568u &&
-           g_bootstrap_arg5_calls[0].target == 0x81234568u,
-           "level-2 diagnostic target did not come from D_80095748");
-    ASSERT(g_bootstrap_arg5_calls[0].arg1 ==
-               (uintptr_t)(intptr_t)INT16_MIN &&
-           g_bootstrap_arg5_calls[0].arg2 == (uintptr_t)INT16_MAX &&
-           g_bootstrap_arg5_calls[0].arg3 == (uintptr_t)(intptr_t)-1 &&
-           g_bootstrap_arg5_calls[0].arg4 == 1u,
-           "level-2 signed RECT widening");
+    {
+        pe_addr_t fmt;
+        uint32_t args[4];
+        ASSERT(PE_Bios_PrintfLog(&fmt, args) == 2u && fmt == 0x800118A4u,
+               "level-2 printf diagnostic did not execute");
+        ASSERT(args[0] == (uint32_t)(int32_t)INT16_MIN &&
+               args[1] == (uint32_t)INT16_MAX && args[2] == (uint32_t)-1 && args[3] == 1u,
+               "level-2 signed RECT widening");
+        ASSERT(!PE_Port_ShouldStop() && g_bootstrap_arg4_call_count == 0,
+               "native printf diagnostic stopped or used a stub");
+    }
     PASS();
 }
 
@@ -30211,8 +30911,9 @@ static void test_7506C_strict_direct(void)
  *
  * B53E translates the direct LoadImage worker.  B53F translates the proven
  * installed-target path through func_80073CF4, so forced enqueue states stop
- * at its installed func_800746A0 backend; other worker identities remain
- * boundaries.  Queue
+ * at its installed func_800746A0 backend.  Other worker identities run
+ * through the guest-code registry, and one with no C stops by name
+ * (test_worker_registry.h); these tests use unregistered ones.  Queue
  * construction, publication, and pump returns remain exercised only by the
  * independent literal-word oracles rather than guessed native state.  These
  * tests assert exact persistent state.
@@ -31120,6 +31821,21 @@ static void B53E_SetupRetailGpu(void)
     (void)func_80074A44(0);
 }
 
+static void test_B53E_upload_source_rect_alias(void)
+{
+    TEST("B53E_upload_source_rect_alias");
+    ResetTestState();
+    B53E_SetupRetailGpu();
+    B53E_StoreRect(1, 2, 33, 1);
+    ASSERT(func_80076664(B53E_RECT, B53E_RECT) == 0 && !PE_Port_ShouldStop(),
+           "upload from overlapping RECT failed");
+    ASSERT(B53B_Pixel(1, 2) == 1u && B53B_Pixel(2, 2) == 2u &&
+           PE_GPU_ReadDMA2MADR() == ((B53E_RECT + 4u) & 0x00ffffffu) &&
+           PE_GPU_ReadDMA2BCR() == 0x00010010u,
+           "upload did not read the clamped RECT before issuing its DMA tail");
+    PASS();
+}
+
 static void test_B53E_dpcr_retail_owner_chain(void)
 {
     TEST("B53E_dpcr_retail_owner_chain");
@@ -31246,7 +31962,7 @@ static void test_B53E_exact_dma_threshold_async_issue(void)
     }
     ASSERT(func_80076664(B53E_RECT, B53E_SOURCE) == 0,
            "exact-threshold worker return is not zero");
-    ASSERT(PE_GPU_ReadDMA2MADR() == B53E_SOURCE &&
+    ASSERT(PE_GPU_ReadDMA2MADR() == ((B53E_SOURCE) & 0x00FFFFFFu) &&
            PE_GPU_ReadDMA2BCR() == 0x00010010u &&
            PE_GPU_ReadDMA2CHCR() == 0x01000201u,
            "exact threshold DMA registers differ from retail");
@@ -31282,7 +31998,7 @@ static void test_B53E_remainder_dma_visibility_and_issue_source(void)
     ASSERT(B53B_Pixel(0, 10) == 0x5000u &&
            B53B_Pixel(1, 10) == 0x6000u &&
            B53B_Pixel(2, 10) == 0u &&
-           PE_GPU_ReadDMA2MADR() == B53E_SOURCE + 4u &&
+           PE_GPU_ReadDMA2MADR() == ((B53E_SOURCE + 4u) & 0x00FFFFFFu) &&
            PE_GPU_ReadDMA2BCR() == 0x00010010u,
            "CPU prefix/DMA suffix split is wrong");
     ASSERT(!PE_GPU_DMA2CompletionPending() && g_stub_count == 0 &&
@@ -31331,7 +32047,7 @@ static void test_B53E_source_span_validation_before_mutation(void)
     B53E_StoreRect(8, 9, 31, 1);
     PE_StoreU32(0x801FFFC0u, 0x22221111u);
     ASSERT(func_80076664(B53E_RECT, 0x801FFFC0u) == 0 &&
-           PE_GPU_ReadDMA2MADR() == 0x801FFFC0u,
+           PE_GPU_ReadDMA2MADR() == ((0x801FFFC0u) & 0x00FFFFFFu),
            "exact guest-RAM end span was rejected");
 
     /* A successful CPU-only issue may change only the two timeout words in
@@ -31459,7 +32175,8 @@ static void test_B53E_max_geometry_and_pointer_width(void)
            PE_LoadU16(B53E_RECT + 4u) == 1024u &&
            PE_LoadU16(B53E_RECT + 6u) == 512u,
            "maximum clamp changed x/y or limits");
-    ASSERT(state.image_x == 0xFFFFu && state.image_y == 0xFFFFu &&
+    /* GPU coordinates wrap to 10/9 bits (psx-spx, f63ac3692). */
+    ASSERT(state.image_x == 0x3FFu && state.image_y == 0x1FFu &&
            state.image_width == 1024u && state.image_height == 512u &&
            state.dma2_source == 0x80100000u &&
            state.dma2_word_count == 0x00040000u &&
@@ -32376,7 +33093,7 @@ static int B53I_B2_SeedCanonicalChain(uint8_t *entry_snapshot)
     B53E_StoreRect(704, 64, 32, 64);
     if (func_80076C34(0x80076664u, B53E_RECT, 8,
                       0x8012A8B8u) != 0) return 0;
-    if (PE_GPU_ReadDMA2MADR() != 0x8012A8B8u ||
+    if (PE_GPU_ReadDMA2MADR() != ((0x8012A8B8u) & 0x00FFFFFFu) ||
         PE_GPU_ReadDMA2BCR() != 0x00400010u ||
         PE_GPU_ReadDMA2CHCR() != 0x01000201u) return 0;
 
@@ -32638,7 +33355,7 @@ static void test_B53I_B2_focused_idle_boundary_chain(void)
            "idle callback did not consume exactly one byte-stable entry");
     ASSERT(PE_GPU_DMA2Pending() &&
            PE_GPU_ReadDMA2CHCR() == 0x01000201u &&
-           PE_GPU_ReadDMA2MADR() == 0x8012B8B8u &&
+           PE_GPU_ReadDMA2MADR() == ((0x8012B8B8u) & 0x00FFFFFFu) &&
            PE_GPU_ReadDMA2BCR() == 0x00020010u &&
            CountOrderLog("func_80076EE4_idle_pump") == 0 &&
            CountOrderLog("func_80076664") == 0 &&
@@ -32796,7 +33513,7 @@ static void test_B53I_B2_dma_diagnostic_live_madrs(void)
                (PE_GPU_DICR_MASTER_FLAG | PE_GPU_DICR_FORCE) &&
            trace.dma_diagnostic_madr[0] == 0u &&
            trace.dma_diagnostic_madr[1] == 0u &&
-           trace.dma_diagnostic_madr[2] == 0x80180000u &&
+           trace.dma_diagnostic_madr[2] == 0x00180000u && /* 24-bit MADR (147f08fb7) */
            trace.dma_diagnostic_madr[3] == 0u &&
            trace.dma_diagnostic_madr[4] == 0x80123440u &&
            trace.dma_diagnostic_madr[5] == 0u &&
@@ -32813,7 +33530,7 @@ static void test_B53I_B2_dma_diagnostic_live_madrs(void)
     PE_IRQ_GetDeliveryTrace(&trace);
     ASSERT(trace.dma_diagnostic_count == 1u &&
            trace.dma_diagnostic_dicr == 0x80848000u &&
-           trace.dma_diagnostic_madr[2] == 0x80180000u &&
+           trace.dma_diagnostic_madr[2] == 0x00180000u && /* 24-bit MADR (147f08fb7) */
            trace.dma_diagnostic_madr[4] == 0x80123440u,
            "post-W1C high-byte==0x80 diagnostic lost live MADRs");
     PASS();
@@ -33010,7 +33727,7 @@ static void test_B53I_B2_repeated_chain_determinism(void)
         ASSERT(PE_Port_ServiceDmaIrqCheckpoint() ==
                    PE_PORT_DMA_IRQ_CHECKPOINT_RETURNED &&
                PE_GPU_ReadDMA2CHCR() == 0x01000201u &&
-               PE_GPU_ReadDMA2MADR() == 0x8012B8B8u &&
+               PE_GPU_ReadDMA2MADR() == ((0x8012B8B8u) & 0x00FFFFFFu) &&
                PE_GPU_ReadDMA2BCR() == 0x00020010u &&
                PE_GPU_ReadStoredDICR() == 0x00800000u &&
                PE_IRQ_ReadStatus() == 0u &&
@@ -33138,7 +33855,7 @@ static void test_B53I_C_canonical_checkpoint_endpoint(void)
            PE_IRQ_ReadStatus() == 0u &&
            PE_LoadU16(B53I_IRQ_DISPATCH_ACTIVE) == 0u,
            "normal callback unwind left IRQ/DICR/active state wrong");
-    ASSERT(PE_GPU_ReadDMA2MADR() == B53I_C_SECOND_SOURCE &&
+    ASSERT(PE_GPU_ReadDMA2MADR() == ((B53I_C_SECOND_SOURCE) & 0x00FFFFFFu) &&
            PE_GPU_ReadDMA2BCR() == 0x00020010u &&
            PE_GPU_ReadDMA2CHCR() == 0x01000201u &&
            PE_GPU_DMA2Pending() && !PE_GPU_DMA2CompletionPending(),
@@ -33147,7 +33864,10 @@ static void test_B53I_C_canonical_checkpoint_endpoint(void)
            after.dma_event_count == before.dma_event_count + 1u &&
            B53B_Pixel(256u, 456u) == 0u,
            "second DMA completed recursively in the first checkpoint");
-    ASSERT(PE_GPU_ReadStatus() == PE_GPU_STATUS_READY_GP0 &&
+    /* Readiness is derived from the parser (ed1fca429): the pending second
+     * image keeps GP0 readiness and IRQ low while DMA readiness is up. */
+    ASSERT((PE_GPU_ReadStatus() & (PE_GPU_STATUS_READY_GP0 | 0x01000000u)) == 0u &&
+           (PE_GPU_ReadStatus() & PE_GPU_STATUS_READY_DMA) != 0u &&
            PE_GPU_VSyncQuery() == 0u && PE_Port_StopEpoch() == 0u,
            "pump fabricated GPU readiness/VBlank/stop state");
     PASS();
@@ -33378,7 +34098,10 @@ static void test_B53I_C_gpustat_hold_and_explicit_transition(void)
            WIFSIGNALED(status) && WTERMSIG(status) == SIGALRM,
            "GPUSTAT-clear poll returned or auto-readied");
 
-    ASSERT(PE_GPU_ReadStatus() == 0u &&
+    /* GPUSTAT bit 13 is always set outside interlace (8fde610b4); the
+     * held state is "no ready/DMA-request bits". */
+    ASSERT((PE_GPU_ReadStatus() & (PE_GPU_STATUS_READY_GP0 | PE_GPU_STATUS_READY_DMA |
+                                   PE_GPU_STATUS_DMA_REQUEST)) == 0u &&
            PE_GPU_VSyncQuery() == 0u &&
            PE_LoadU32(B53C_CONSUMER) == 0u,
            "held poll evolved readiness/VBlank/parent queue state");
@@ -33434,7 +34157,7 @@ static void test_B53I_C_repeated_deterministic_idle_issue(void)
                trace.worker_call_order < trace.consumer_advance_order &&
                trace.consumer_advance_order < trace.mask_restore_order &&
                PE_LoadU32(B53C_CONSUMER) == 1u &&
-               PE_GPU_ReadDMA2MADR() == B53I_C_SECOND_SOURCE &&
+               PE_GPU_ReadDMA2MADR() == ((B53I_C_SECOND_SOURCE) & 0x00FFFFFFu) &&
                PE_GPU_ReadDMA2BCR() == 0x00020010u &&
                PE_GPU_ReadDMA2CHCR() == 0x01000201u &&
                PE_GPU_ReadStoredDICR() == 0x00800000u &&
@@ -33509,7 +34232,7 @@ static int B53I_D_SeedPostC(B53IDStart *start)
 
     if (memcmp(start->entry, published, B53H_RING_ENTRY_BYTES) != 0 ||
         start->token == 0u || !start->gpu.dma2_active ||
-        start->gpu.dma2_madr != B53I_C_SECOND_SOURCE ||
+        start->gpu.dma2_madr != (B53I_C_SECOND_SOURCE & 0x00FFFFFFu) ||
         start->gpu.dma2_bcr != 0x00020010u ||
         start->gpu.dma2_chcr != 0x01000201u ||
         start->gpu.dma2_word_count != 32u ||
@@ -33613,8 +34336,8 @@ static void test_B53I_D_canonical_hardware_completion(void)
                start.source_guard_after,
            "hardware completion mutated source bytes or source guards");
 
-    ASSERT(!after.dma2_active && after.dma2_madr == 0x8012B8B8u &&
-           after.dma2_bcr == 0x00020010u &&
+    ASSERT(!after.dma2_active && after.dma2_madr == 0x0012B938u &&
+           after.dma2_bcr == 0x00000010u &&
            after.dma2_chcr == 0x00000201u &&
            after.dma2_event_token == start.token &&
            after.image_current_pixel == B53I_D_PIXEL_COUNT &&
@@ -33654,7 +34377,12 @@ static void test_B53I_D_canonical_hardware_completion(void)
     ASSERT(PE_LoadU32(B53F_DMA_CB_SLOT2) == 0u &&
            PE_LoadU32(B53D_WORK_MARKER) == 1u &&
            PE_LoadU32(B53D_DRAWSYNC_CB) == 0u &&
-           PE_GPU_ReadStatus() == start.gpu.status &&
+           /* Ready/DMA-request bits are derived from the now-idle parser
+            * (ed1fca429), so compare GPUSTAT without them. */
+           (PE_GPU_ReadStatus() & ~(PE_GPU_STATUS_READY_GP0 | PE_GPU_STATUS_READY_DMA |
+                                    PE_GPU_STATUS_DMA_REQUEST)) ==
+               (start.gpu.status & ~(PE_GPU_STATUS_READY_GP0 | PE_GPU_STATUS_READY_DMA |
+                                     PE_GPU_STATUS_DMA_REQUEST)) &&
            PE_GPU_VSyncQuery() == start.gpu.vsync_count &&
            PE_GPU_ReadDPCR() == start.gpu.dpcr &&
            PE_Port_StopEpoch() == start.stop_epoch,
@@ -34037,14 +34765,14 @@ static void test_B53B_reset_dimensions_initial_vram(void)
     PE_GPU_GetState(&state);
     ASSERT(state.gp0_state == PE_GPU_GP0_IDLE &&
            state.gp1_dma_direction == 0 &&
-           state.status == PE_GPU_STATUS_READY_GP0,
+           state.status == 0x14802000u, /* psx-spx: GP1(00h) -> GPUSTAT 14802000h */
            "GP1 reset did not restore parser/direction/readiness");
     PE_GPU_Reset();
     PE_GPU_Reset();
     PE_GPU_GetState(&state);
     ASSERT(B53B_Pixel(0, 0) == 0x1234u,
            "hardware reset incorrectly cleared VRAM");
-    ASSERT(state.status == PE_GPU_STATUS_READY_GP0 &&
+    ASSERT(state.status == 0x14002000u &&   /* display enabled after hardware reset */
            state.gp0_state == PE_GPU_GP0_IDLE && !state.dma2_active &&
            state.dma2_chcr == PE_GPU_DMA2_CHCR_IDLE && state.dicr == 0 &&
            state.vsync_count == 0, "repeated hardware reset state mismatch");
@@ -34110,11 +34838,10 @@ static void test_B53B_gp1_subset_and_parser_reset(void)
     PE_GPU_GetState(&state);
     ASSERT(state.gp1_dma_direction == 0 &&
            state.gp0_state == PE_GPU_GP0_IDLE &&
-           state.status == PE_GPU_STATUS_READY_GP0,
+           state.status == 0x14802000u, /* psx-spx: GP1(00h) -> GPUSTAT 14802000h */
            "GP1 reset subset state mismatch");
-    ASSERT(!PE_GPU_WriteGP1(0x03000000u) &&
-           !PE_GPU_WriteGP1(0x04000001u) &&
-           !PE_GPU_WriteGP0(0x1F000000u),   /* GP0(1Fh) IRQ: not modelled (48h polylines now are) */
+    /* GP1(03h)/(04h) and GP0(1Fh) IRQ1 are modelled (76ad737ce, 96c69bd62). */
+    ASSERT(!PE_GPU_WriteGP1(0x0A000000u),
            "unsupported GP0/GP1 command silently succeeded");
     PASS();
 }
@@ -34156,19 +34883,24 @@ static void test_B53B_gp0_parse_and_pixel_order(void)
     ASSERT(state.gp0_state == PE_GPU_GP0_IDLE &&
            state.image_remaining_pixels == 0,
            "parser did not finish at exact odd pixel count");
+    /* psx-spx (f63ac3692): size = ((n-1) & mask) + 1, so 0 means max and
+     * oversize wraps; these are wrapped sizes, not malformed ones. */
     for (size_t i = 0; i < sizeof(invalid_sizes) / sizeof(invalid_sizes[0]); i++) {
+        static const uint32_t expect_pixels[] = { 1024u, 512u, 1u, 1u };
         ASSERT(PE_GPU_WriteGP0(0xA0000000u) &&
-               PE_GPU_WriteGP0(0x00070005u),
-               "malformed-size parser setup failed");
-        ASSERT(!PE_GPU_WriteGP0(invalid_sizes[i]),
-               "malformed image size was accepted");
+               PE_GPU_WriteGP0(0x00070005u) &&
+               PE_GPU_WriteGP0(invalid_sizes[i]),
+               "wrapped image size was rejected");
+        PE_GPU_GetState(&state);
+        ASSERT(state.image_remaining_pixels == expect_pixels[i],
+               "wrapped image size decoded wrongly");
+        ASSERT(PE_GPU_WriteGP1(0x01000000u), "command-buffer reset rejected");
         PE_GPU_GetState(&state);
         ASSERT(state.gp0_state == PE_GPU_GP0_IDLE &&
-               state.image_remaining_pixels == 0 &&
                B53B_Pixel(5, 7) == 0x1111u &&
                B53B_Pixel(6, 7) == 0x2222u &&
                B53B_Pixel(7, 7) == 0x3333u,
-               "malformed size did not reset safely without VRAM mutation");
+               "aborted upload mutated VRAM");
     }
     PASS();
 }
@@ -34234,7 +34966,7 @@ static void test_B53B_exact_16word_dma_issue(void)
     }
     ASSERT(B53B_IssueOneBlock(source, 0), "exact one-block issue failed");
     PE_GPU_GetState(&state);
-    ASSERT(PE_GPU_ReadDMA2MADR() == source &&
+    ASSERT(PE_GPU_ReadDMA2MADR() == ((source) & 0x00FFFFFFu) &&
            PE_GPU_ReadDMA2BCR() == 0x00010010u &&
            PE_GPU_ReadDMA2CHCR() == 0x01000201u,
            "DMA2 raw registers mismatch");
@@ -34435,9 +35167,8 @@ static void test_B53B_dma_guest_range_and_pointer_safety(void)
     B53B_PREP_ONE_BLOCK();
     ASSERT(!PE_GPU_DMA2Issue(0x80100002u, 0x00010010u, 0x01000201u),
            "unaligned source accepted");
-    B53B_PREP_ONE_BLOCK();
-    ASSERT(!PE_GPU_DMA2Issue(0u, 0x00010010u, 0x01000201u),
-           "address zero accepted");
+    /* Physical 0 is the start of RAM since 2b4bfd6cb (KSEG/physical
+     * aliases canonicalized), so it is no longer a refusal case. */
     B53B_PREP_ONE_BLOCK();
     ASSERT(!PE_GPU_DMA2Issue(0xFFFFFFC0u, 0x00010010u, 0x01000201u),
            "overflow/high-invalid source accepted");
@@ -34486,8 +35217,9 @@ static void test_B53B_vblank_dma_ready_independence(void)
     ASSERT((PE_GPU_ReadStatus() & PE_GPU_STATUS_READY_GP0) == 0,
            "DMA/VBlank made GPU ready");
     PE_GPU_SetReady(1);
-    ASSERT((PE_GPU_ReadStatus() & PE_GPU_STATUS_READY_GP0) != 0 &&
-           PE_GPU_DMA2Pending() &&
+    /* READY_GP0 needs an idle parser (ed1fca429); a pending image keeps it
+     * low, so check only that readiness does not complete the DMA. */
+    ASSERT(PE_GPU_DMA2Pending() &&
            (PE_GPU_ReadDMA2CHCR() & PE_GPU_DMA2_CHCR_BUSY) != 0 &&
            !PE_GPU_DMA2CompletionPending(),
            "GPU ready transition completed pending DMA");
@@ -34520,7 +35252,7 @@ static void test_B53B_max_geometry(void)
     PE_GPU_GetState(&state);
     ASSERT(state.image_remaining_pixels == 0x80000u &&
            state.dma2_word_count == 0x40000u &&
-           state.dma2_madr == source && state.dma2_bcr == 0x40000010u,
+           state.dma2_madr == (source & 0x00FFFFFFu) && state.dma2_bcr == 0x40000010u,
            "maximum geometry/register derivation mismatch");
     token = PE_GPU_DMA2EventToken();
     ASSERT(PE_GPU_ServiceDMA2Completion(token),
@@ -35103,6 +35835,18 @@ static void test_FLD1_6B4F8_m0431i_load(void) {
     PE_StoreU32(0x8009570Cu, 0x80076C34u);
     PE_StoreU32(0x80095724u, 0x80076664u);
     ASSERT(func_8006B4F8_dest_load_cut(0xA80830C8u) == 1, "load");
+    /* 6B7B0..6B820 belongs to the loader, before its publishers/sound tail. */
+    {
+        pe_addr_t header = dest2 + (PE_LoadU32(dest2 + 4u) & 0x3FFFFFu);
+        uint32_t rows = PE_LoadU32(header + 0x0Cu);
+        ASSERT(PE_LoadU8(0x800B0CE2u) == PE_LoadU8(header + 1u), "loader CE2");
+        ASSERT(PE_LoadU8(0x800B0CE0u) == PE_LoadU8(header + 3u), "loader overlay+8");
+        for (uint32_t n = 0; n < (rows >> 22); n++) {
+            pe_addr_t row = dest2 + (rows & 0x3FFFFFu) + n * 12u;
+            ASSERT(PE_LoadU32(0x800B0E70u + PE_LoadU8(row + 7u) * 4u) ==
+                   dest2 + (PE_LoadU32(row + 4u) & 0xFFFFFFu), "loader header table");
+        }
+    }
     ASSERT(PE_LoadU32(dest0) == 0x8064u, "chunk0 w0");
     ASSERT(PE_LoadU32(dest1) == 0x4050u, "chunk1 w0");
     ASSERT(PE_LoadU32(dest2) == 0x8A1Cu, "chunk2 w0");
@@ -35218,6 +35962,7 @@ static void test_PAD1_source_writes_BE9A2(void)
 {
     TEST("PAD1_source_writes_BE9A2");
     ResetTestState();
+    FT1_SeedOtcJtb();   /* retail libgpu jump table for the frame tail */
     HostFB_Init();
     func_8003E974();
     D_8009D1A0 = 0u;
@@ -35455,6 +36200,238 @@ static void test_RCLEAN_retail_room_cleanup(void)
     PASS();
 }
 
+static pe_addr_t FRAME35558_actor(uint32_t flags)
+{
+    const pe_addr_t actor = 0x80120000u;
+    ResetTestState();
+    PE_Decomp_ResetBoundaries();
+    D_8009D1A0 = 0u;
+    PE_StoreU32(0x8009D20Cu, actor);
+    PE_StoreU32(actor + 0x98u, flags | 0x80u);
+    return actor;
+}
+
+static void test_FRAME35558_native_callback_and_pause(void)
+{
+    TEST("FRAME35558_native_callback_and_pause");
+    for (unsigned mode = 0; mode < 3u; mode++) {
+        pe_addr_t a = FRAME35558_actor(0x40u);
+        PE_StoreU32(0x800B0CD8u, 0x200u); /* isolate callback + cleanup */
+        PE_StoreU32(a + 0x190u, mode == 1u ? 0u : 0x80035F54u);
+        PE_StoreU32(a + 0x40u, 13u << 16);
+        PE_StoreU32(a + 0x44u, 17u << 16);
+        PE_StoreU32(a + 0x48u, 23u << 16);
+        if (mode == 2u) D_8009D1A0 = 4u;
+        func_80035558_walk_cut();
+        ASSERT(PE_LoadU32(a + 0x28u) == (mode == 0u ? 13u << 16 : 0u),
+               "registered callback runs; null and paused callbacks stay skipped");
+        if (mode == 0u) {
+            ASSERT(PE_LoadU32(a + 0x2Cu) == 17u << 16 && PE_LoadU32(a + 0x30u) == 23u << 16, "real native callback receives actor and restores its pose");
+        }
+        ASSERT(!PE_Port_ShouldStop() && !PE_Decomp_BoundaryCount(), "registered actor callback is native");
+    }
+    PASS();
+}
+
+static void test_FRAME35558_unknown_callback_stops_before_next_actor(void)
+{
+    TEST("FRAME35558_unknown_callback_stops_before_next_actor");
+    pe_addr_t a = FRAME35558_actor(0x10000040u), next = a + 0x400u;
+    PE_StoreU32(0x800B0CD8u, 0x200u);
+    PE_StoreU32(a + 4u, next);
+    PE_StoreU32(a + 0x190u, 0x80DEAD90u);
+    PE_StoreU32(next + 0x190u, 0x80035F54u);
+    PE_StoreU32(next + 0x98u, 0xC0u);
+    PE_StoreU32(next + 0x40u, 77u << 16);
+    int policy = PE_Decomp_BoundaryStopEnabled();
+    PE_Decomp_SetBoundaryStop(1);
+    func_80035558_walk_cut();
+    PE_Decomp_SetBoundaryStop(policy);
+    ASSERT(PE_Port_ShouldStop() && PE_Decomp_BoundaryCount() == 1,
+           "unregistered callback must stop once rather than disappear");
+    ASSERT(PE_LoadU32(next + 0x28u) == 0u && (PE_LoadU32(a + 0x98u) & 0x10000000u),
+           "stop prevents the next actor and final frame cleanup");
+    a = FRAME35558_actor(0x40u);
+    PE_StoreU32(a + 0x190u, 0x80DEAD90u);
+    PE_StoreU32(0x800B0CD8u, 0x300u); /* skip ClearOTagR and draw */
+    PE_StoreU32(0x8009CE90u, 1u);
+    PE_StoreU32(0x8009CDA4u, 0x1234u);
+    Test_SeedDigitalController();
+    PE_Decomp_SetBoundaryStop(1);
+    func_8003F3C4();
+    PE_Decomp_SetBoundaryStop(policy);
+    ASSERT(PE_Port_ShouldStop() && PE_LoadU32(0x8009CDA4u) == 0x1234u,
+           "field tick continued after the actor callback stopped");
+    PASS();
+}
+
+static void test_field_loader_stop_not_cached(void)
+{
+    TEST("field_loader_stop_not_cached");
+    ResetTestState();
+    PE_StoreU32(0x8009D280u,0xA80002C8u);
+    PE_StoreU32(0x800B0CD8u+0x194u,0x80120000u);
+    PE_StoreU32(0x800B0CD8u+0x168u,0x80140000u);
+    PE_StoreU32(0x800B0CD8u+0x18Cu,0x801A0000u);
+    PE_StoreU32(0x800B0DD8u,1013u);
+    PE_StoreU32(0x8009CDA4u,0x1234u);
+    b49_quit_poll_count=0;
+    PE_Port_SetQuitPoll(B49_QuitPoll);
+    func_8003F3C4();
+    PE_Port_SetQuitPoll(NULL);
+    ASSERT(PE_Port_GetStopReason()==PE_PORT_STOP_HOST_QUIT && b49_quit_poll_count>0 &&
+           PE_Field_LoadedDestForTest()==0u && PE_LoadU32(0x8009CDA4u)==0x1234u,
+           "stopped destination load was cached or field tick continued");
+    PASS();
+}
+
+extern int func_8006BD68(void);
+static void test_room_bank_stop_before_upload(void)
+{
+    TEST("room_bank_stop_before_upload");
+    ResetTestState();
+    PE_StoreU8(0x800B0CE0u,1u); PE_StoreU8(0x800B0CE1u,0u);
+    b49_quit_poll_count=0;
+    PE_Port_SetQuitPoll(B49_QuitPoll);
+    int result=func_8006BD68();
+    PE_Port_SetQuitPoll(NULL);
+    ASSERT(result==0 && PE_Port_GetStopReason()==PE_PORT_STOP_HOST_QUIT &&
+           b49_quit_poll_count>0 && PE_LoadU8(0x800B0CE1u)==0u,
+           "stopped bank load published completion");
+    PASS();
+}
+
+static void test_INPUT3999_native_facing_callback(void)
+{
+    TEST("INPUT3999_native_facing_callback");
+    const pe_addr_t a = 0x80120000u, table = 0x80130000u, record = table + 0x100u;
+    const pe_addr_t codep = table + 0x200u, handler = table + 0x300u;
+    for (unsigned mode = 0; mode < 3u; mode++) {
+        ResetTestState();
+        PE_Decomp_ResetBoundaries();
+        PE_StoreU32(codep, 2u); PE_StoreU32(table + 8u, record);
+        PE_StoreU32(record, mode == 1u ? 0x20u : 0u);
+        PE_StoreU32(record + 12u, 0x80071754u);
+        PE_StoreU32(0x800B0E98u + 17u * 4u, handler);
+        PE_StoreU8(handler + 2u, 3u);
+        PE_StoreU32(0x8009D26Cu, 8u); PE_StoreU16(0x800BD020u, 0x100u);
+        if (mode == 2u) {
+            PE_StoreU16(0x800BE9A0u, 0x7000u);
+            PE_StoreU8(0x800BE9A6u, 0x80u); PE_StoreU8(0x800BE9A7u, 0xFFu);
+            PE_StoreU16(0x800BD022u, 0x200u);
+        }
+        func_8003999C(a, table, codep);
+        ASSERT(PE_LoadU16(a + 0x3Au) == (mode == 2u ? 0x200u : 0x900u),
+               "native facing callback receives digital/analog input through matched/default records");
+        ASSERT(PE_LoadU8(a + 0xEu) == 17u && PE_LoadU32(a + 0x1B0u) == handler,
+               "facing callback selects its native animation command");
+        ASSERT(!PE_Port_ShouldStop() && !PE_Decomp_BoundaryCount(), "facing callback is compiled native code");
+    }
+    PASS();
+}
+
+static void test_INPUT3999_unknown_stops_record_chain_and_motion(void)
+{
+    TEST("INPUT3999_unknown_stops_record_chain_and_motion");
+    const pe_addr_t a = 0x80120000u, record = 0x80130000u, handler = record + 0x100u;
+    ResetTestState();
+    PE_Decomp_ResetBoundaries();
+    PE_StoreU32(0x800943C0u, record);
+    PE_StoreU32(record, 0x30u); PE_StoreU32(record + 12u, 0x80DEAD9Cu);
+    PE_StoreU32(record + 16u, 0x20u); PE_StoreU32(record + 28u, 0x80071754u);
+    PE_StoreU32(0x800B0E98u + 17u * 4u, handler); PE_StoreU8(handler + 2u, 3u);
+    PE_StoreU32(0x8009D26Cu, 8u); PE_StoreU16(0x800BD020u, 0x100u);
+    PE_StoreU32(a + 0x28u, 5u << 16); PE_StoreU32(a + 0x68u, 1u << 16);
+    int policy = PE_Decomp_BoundaryStopEnabled();
+    PE_Decomp_SetBoundaryStop(1);
+    func_80035C84(a);
+    PE_Decomp_SetBoundaryStop(policy);
+    ASSERT(PE_Port_ShouldStop() && PE_Decomp_BoundaryCount() == 1,
+           "unknown input callback stops once");
+    ASSERT(PE_LoadU8(a + 0xEu) == 0u && PE_LoadU32(a + 0x28u) == 5u << 16,
+           "unknown input stops the following record and actor motion");
+    PASS();
+}
+
+static void test_FRAME35558_pause_freezes_model_matrix(void)
+{
+    TEST("FRAME35558_pause_freezes_model_matrix");
+    for (unsigned paused = 0u; paused < 2u; paused++) {
+        pe_addr_t a = FRAME35558_actor(0x20800000u);
+        /* Mathematical sin(0)=0, cos(0)=4096; this fixture needs no full table. */
+        PE_StoreU32(0x800966ECu, 0x10000000u);
+        PE_StoreU32(a + 0x238u, 0x80140000u);
+        PE_StoreU16(a + 0x26u, 4096u);
+        PE_StoreU32(a + 0x28u, (uint32_t)-12 << 16);
+        PE_StoreU32(a + 0x2Cu, 34u << 16); PE_StoreU32(a + 0x30u, 128u << 16);
+        memset(PE_Translate(a + 0x1E8u,32u),0xA5,32u);
+        D_8009D1A0 = paused ? 4u : 0u;
+        func_80035558_walk_cut();
+        ASSERT(!!(D_8009D1A0 & 4u) == paused, "fixture pause gate remained stable");
+        if (paused) {
+            for (unsigned i=0u; i<32u; i++)
+                ASSERT(PE_LoadU8(a + 0x1E8u + i) == 0xA5u, "paused frame must preserve the model matrix");
+        } else {
+            ASSERT(PE_LoadU16(a + 0x1E8u) == 4096u && PE_LoadU16(a + 0x1F0u) == 4096u
+                   && PE_LoadU16(a + 0x1F8u) == 4096u, "unpaused frame rebuilds rotation/scale");
+            ASSERT(PE_LoadU32(a + 0x1FCu) == (uint32_t)-12 && PE_LoadU32(a + 0x200u) == 34u
+                   && PE_LoadU32(a + 0x204u) == 128u, "unpaused frame publishes integer world position");
+        }
+        ASSERT(!PE_Port_ShouldStop() && !PE_Decomp_BoundaryCount(), "pause/model tick is native");
+    }
+    PASS();
+}
+
+static void test_FRAME35558_resource_free_contact_snapshot(void)
+{
+    TEST("FRAME35558_resource_free_contact_snapshot");
+    pe_addr_t a = FRAME35558_actor(0x40u);
+    PE_StoreU32(a + 0x28u, 0xFF85BEEFu);
+    PE_StoreU32(a + 0x2Cu, 0x80001234u);
+    PE_StoreU32(a + 0x30u, 0x7FFF5678u);
+    PE_StoreU16(a + 0x22Eu, 0xABCDu);
+    func_80035558_walk_cut();
+    ASSERT(PE_LoadU16(a + 0x228u) == 0xFF85u && PE_LoadU16(a + 0x22Au) == 0x8000u
+           && PE_LoadU16(a + 0x22Cu) == 0x7FFFu, "hidden resource-free actor updates contact position");
+    ASSERT(PE_LoadU16(a + 0x22Eu) == 0xABCDu, "contact snapshot retains its neighboring field");
+    ASSERT(!PE_Port_ShouldStop() && !g_stub_order_count, "snapshot tick is native");
+    PASS();
+}
+
+static void test_FRAME35558_resource_scale_and_snapshot_gate(void)
+{
+    TEST("FRAME35558_resource_scale_and_snapshot_gate");
+    pe_addr_t a = FRAME35558_actor(0x40u), resource = 0x80150000u;
+    PE_StoreU32(a + 0x1ACu, 1u);
+    PE_StoreU32(a + 0x1B4u, resource);
+    PE_StoreU16(a + 0x26u, 0xF123u);
+    PE_StoreU16(a + 0x228u, 0xCAFEu);
+    func_80035558_walk_cut();
+    ASSERT(PE_LoadU16(resource + 0x16u) == 0xF123u, "resource scale receives the actor's unsigned halfword");
+    ASSERT(PE_LoadU16(a + 0x228u) == 0xCAFEu, "resource-bearing actor does not take the free-actor snapshot");
+    ASSERT(!PE_Port_ShouldStop() && !g_stub_order_count, "scale tick is native");
+    PASS();
+}
+
+static void test_FRAME35558_hidden_pose_restore(void)
+{
+    TEST("FRAME35558_hidden_pose_restore");
+    pe_addr_t a = FRAME35558_actor(0x2040u), parent = 0x80140000u;
+    pe_addr_t matrix = 0x80141000u, point = 0x80142000u;
+    PE_StoreU32(a + 0x1D8u, parent);
+    PE_StoreU32(parent + 0x84u, matrix);
+    PE_StoreU32(parent + 0x18u, point);
+    PE_StoreU16(matrix, 4096u); PE_StoreU16(matrix + 8u, 4096u); PE_StoreU16(matrix + 16u, 4096u);
+    PE_StoreU32(matrix + 20u, (uint32_t)-7); PE_StoreU32(matrix + 24u, 4u); PE_StoreU32(matrix + 28u, 300u);
+    PE_StoreU16(point, (uint16_t)-12); PE_StoreU16(point + 2u, 34u); PE_StoreU16(point + 4u, 128u);
+    func_80035558_walk_cut();
+    ASSERT(PE_LoadU32(a + 0x28u) == ((uint32_t)-19 << 16)
+           && PE_LoadU32(a + 0x2Cu) == (38u << 16) && PE_LoadU32(a + 0x30u) == (428u << 16),
+           "hidden pose restores signed world coordinates after the native anchor transform");
+    ASSERT(!PE_Port_ShouldStop() && !g_stub_order_count, "pose-restore tick is native");
+    PASS();
+}
+
 static void test_FGATE_retail_overlay_pause(void)
 {
     TEST("FGATE_retail_overlay_pause");
@@ -35477,6 +36454,8 @@ static void test_FGATE_retail_overlay_pause(void)
     PASS();
 }
 
+void func_8001A9F8(void);
+
 static void test_POLY_retail_script_boundary(void)
 {
     TEST_RETAIL_DISC1("POLY_retail_script_boundary"); TEST_RETAIL_FIXUPS(RETAILFIX_polygon_boundary);
@@ -35488,7 +36467,7 @@ static void test_POLY_retail_script_boundary(void)
             PE_StoreU32(0x80000000u+POLY_common[i][0],POLY_common[i][1]);
         for (unsigned i=POLY_cases[k].first;i<POLY_cases[k].end;i++)
             PE_StoreU32(0x80000000u+POLY_patches[i][0],POLY_patches[i][1]);
-        func_8001A9F8_floor_cut();
+        func_8001A9F8();
         uint64_t hash=hit_camera_hash(POLY_ranges,sizeof(POLY_ranges)/sizeof(POLY_ranges[0]));
         if (hash!=POLY_cases[k].hash)
             fprintf(stderr,"polygon boundary case %u: %016llX/%016llX\n",k,
@@ -35496,6 +36475,33 @@ static void test_POLY_retail_script_boundary(void)
         ASSERT(hash==POLY_cases[k].hash,"polygon boundary guest bytes differ from original");
         ASSERT(!g_stub_order_count && !PE_Port_ShouldStop(),"polygon boundary completes natively");
     }
+    PASS();
+}
+
+/* A one-point polygon has a zero-length edge at the player. Retail
+ * reaches the guarded DIV by its zero length; the old copy returned. */
+static void test_POLY_degenerate_edge_traps(void)
+{
+    TEST("POLY_degenerate_edge_traps");
+    ResetTestState();
+    PE_StoreU32(0x8009D254u, 0x80120000u);
+    PE_StoreU32(0x8009D20Cu, 0u);
+    PE_StoreU32(0x8009D2F8u, 0x80130000u);
+    PE_StoreU16(0x8009D264u, 1u);
+    PE_StoreU32(0x8009D2E8u, 4u);
+    PE_StoreU16(0x80120026u, 4096u);
+    PE_StoreU16(0x80120224u, 1u);
+    pid_t pid = fork();
+    int status = 0;
+    ASSERT(pid >= 0, "fork failed for polygon division trap");
+    if (pid == 0) {
+        alarm(5);
+        func_8001A9F8_floor_cut();
+        _exit(99);
+    }
+    ASSERT(waitpid(pid, &status, 0) == pid, "waitpid failed for polygon division trap");
+    ASSERT(WIFSIGNALED(status) && WTERMSIG(status) == SIGABRT,
+           "zero-length script edge must preserve retail DIV break");
     PASS();
 }
 
@@ -35743,6 +36749,7 @@ static void test_ATK3_retail_attack_initialization(void)
 #include "test_m0023i_beam.h"
 #include "test_m0023i_flash.h"
 #include "test_m0023i_pump.h"
+#include "test_flash_vector_writers.h"
 #include "test_eve_flare.h"
 #include "test_effect_fan.h"
 #include "test_m0013i_effect.h"
@@ -35761,6 +36768,10 @@ static void test_ATK3_retail_attack_initialization(void)
 #include "test_pe_plat.h"
 #include "test_vblank_clock.h"
 #include "test_cheats.h"
+#include "test_enhance.h"
+#include "test_assists.h"
+#include "test_enh_all.h"
+#include "test_qol2.h"
 #include "test_split_brain.h"
 #include "test_glow_sprite.h"
 #include "test_v0_passthrough.h"
@@ -35773,6 +36784,24 @@ static void test_ATK3_retail_attack_initialization(void)
 #include "test_anchor_attachment.h"
 #include "test_ncct.h"
 #include "test_m0348i_gte.h"
+#include "test_d2104_glow.h"
+#include "test_d1384_trail.h"
+#include "test_d0e88_blade.h"
+#include "test_d2b58_streak.h"
+#include "test_d3bc8_sprite.h"
+#include "test_cf844_orbit.h"
+#include "test_disc_swap.h"
+#include "test_credits_native.h"
+#include "test_liberate_native.h"
+#include "test_ovl03c9_effect_native.h"
+#include "test_room_slot0_stub.h"
+#include "test_effect_room_identity.h"
+#include "pe_drive_tray.h"
+#include "test_drive_tray.h"
+#include "host_pad.h"
+#include "host_pad_combo.h"
+#include "test_pad_combo.h"
+#include "test_gte_regs.h"
 #include "test_m0034i_model.h"
 #include "test_m0034i_setup.h"
 #include "test_m0034i_delivery.h"
@@ -35789,16 +36818,41 @@ static void test_ATK3_retail_attack_initialization(void)
 #include "test_movie_callback.h"
 #include "test_cd_stream.h"
 #include "test_cd_ack.h"
+#include "test_cd_sync_callbacks.h"
 #include "test_cd_device.h"
+#include "test_cd_flush_native.h"
+#include "test_cd_retry_native.h"
+#include "test_cd_status_native.h"
+#include "test_cd_init_native.h"
+#include "test_cd_issue_native.h"
+#include "test_cd_command_wait_native.h"
+#include "pe_str_feed.h"
+#include "test_cd_issue_step_native.h"
+#include "test_cd_read_stream_native.h"
+#include "test_cd_public_init_native.h"
+#include "test_cd_reset_native.h"
+#include "pe_plat/cd_stream.h"
+#include "test_cd_status_pump_native.h"
+#include "test_pad_init_native.h"
+#include "test_pad_records_native.h"
+#include "test_gpu_rect_native.h"
+#include "test_cd_response_query_native.h"
+#include "test_cd_sequence_native.h"
+#include "test_cd_queue_native.h"
+#include "test_cd_search_file_native.h"
 #include "test_cd_sector_device.h"
 #include "test_cd_dma.h"
+#include "test_cd_getsector2.h"
+#include "test_cd_ready.h"
 #include "test_mdec_pixels.h"
 #include "test_mdec_dma.h"
 #include "test_movie_complete_frame.h"
+#include "test_mdec_vlc.h"
 #include "test_movie_stream_helpers.h"
 #include "test_movie_updater.h"
 #include "test_movie_player.h"
 #include "test_movie_autonomous.h"
+#include "test_mv1a_dims.h"
 #include "test_cd_command_queue.h"
 #include "test_cd_lowlevel_init.h"
 #include "test_cd_startup_helpers.h"
@@ -35826,6 +36880,11 @@ static void test_ATK3_retail_attack_initialization(void)
 #include "test_music_payload.h"
 #include "test_spu_mode_register.h"
 #include "test_spu_dma_event.h"
+#include "test_spu_dma_callbacks.h"
+#include "test_spu_dma_inflight.h"
+#include "test_hook_registry.h"
+#include "test_worker_registry.h"
+#include "test_revive_2aa98.h"
 #include "test_spu_mode.h"
 #include "test_spu_synth.h"
 #include "test_music_consumer.h"
@@ -35908,6 +36967,7 @@ static void test_ATK3_retail_attack_initialization(void)
 #include "test_transition_bounds.h"
 #include "test_transition_motion.h"
 #include "test_transition_update.h"
+#include "test_message_partial.h"
 #include "test_transition_visibility.h"
 #include "test_projection.h"
 #include "test_fixed_model.h"
@@ -35919,6 +36979,7 @@ static void test_ATK3_retail_attack_initialization(void)
 #include "test_transition_ot.h"
 #include "test_controller_sdk.h"
 #include "test_game_input.h"
+#include "test_analog_stick.h"
 #include "test_vsync.h"
 #include "test_vblank.h"
 #include "test_timer1.h"
@@ -35946,6 +37007,7 @@ static void test_ATK3_retail_attack_initialization(void)
 #include "test_formatter_frame.h"
 #include "test_card_operation_frame.h"
 #include "test_memcard.h"
+#include "test_bios_card.h"
 #include "test_dispenv.h"
 #include "test_camera_target.h"
 #include "test_transition_gte.h"
@@ -37272,6 +38334,47 @@ static void test_POS1_model_anchors_and_script_sync(void)
     PASS();
 }
 
+/* Expected whole-scratchpad fingerprints come from the test-only retail
+ * interpreter in native-bone-scratch-20261027/retail-scratch.py. */
+static void test_POSESP_retail_persistent_scratchpad(void)
+{
+    static const uint8_t walk[] = {0,255,1,255,2,254,254,3};
+    static const uint32_t offsets[] = {0x89ABCDEFu,100u,200u,400u};
+    static const uint64_t expected[] = {UINT64_C(0xF5DC2DD7DAD6BD9D), UINT64_C(0x2E942E2FA0AAA659), UINT64_C(0x2260046FB2B5D038), UINT64_C(0x41C2A9C77516B725)};
+    TEST("POSESP_retail_persistent_scratchpad");
+    const pe_addr_t a=0x80120000u, obj=0x80121000u, src=0x80122000u;
+    const pe_addr_t out=0x80123000u, rec=0x80124000u, commands=0x80125000u;
+    for (unsigned test=0u; test<4u; test++) {
+        ResetTestState();
+        PE_Decomp_ResetBoundaries();
+        memset(PE_Translate(0x1F800000u,1024u),0xA5,1024u);
+        PE_StoreU32(a,obj); PE_StoreU32(a+4u,rec); PE_StoreU32(a+0x20u,commands);
+        PE_StoreU32(a+0x58u,src); PE_StoreU32(a+0x84u,out);
+        pe_btl6_store_identity_matrix(a+0x34u); PE_StoreU16(a+0x44u,(uint16_t)-4096);
+        memcpy(PE_Translate(commands,sizeof(walk)),walk,sizeof(walk));
+        PE_StoreU16(obj+0x18u,test==0u?0u:test==2u?sizeof(walk):1u);
+        for (unsigned i=0u; i<4u; i++) {
+            pe_btl6_store_identity_matrix(src+i*32u);
+            PE_StoreU32(rec+i*12u+8u,offsets[i]);
+        }
+        PE_StoreU32(src+20u,10u); PE_StoreU32(src+24u,20u); PE_StoreU32(src+28u,30u);
+        PE_StoreU16(src+32u,0u); PE_StoreU16(src+36u,4096u);
+        PE_StoreU16(src+44u,(uint16_t)-4096); PE_StoreU16(src+48u,0u);
+        if (test==3u) { PE_StoreU16(a+0x28u,3u); PE_StoreU16(a+0x9Cu,0x400u); }
+        func_8003A088_mode0_walk_cut(a);
+        uint64_t hash=UINT64_C(14695981039346656037);
+        for (unsigned i=0u; i<1024u; i++) {
+            hash^=PE_LoadU8(0x1F800000u+i); hash*=UINT64_C(1099511628211);
+        }
+        if (hash!=expected[test]) fprintf(stderr,"POSESP case%u actual%016llX expected%016llX\n",test,(unsigned long long)hash,(unsigned long long)expected[test]);
+        ASSERT(hash==expected[test],"native scratchpad differs from original empty/root/nested/rigid walk");
+        if (test==0u) ASSERT(PE_GTE_ReadCtrl(4u)==(uint32_t)(int32_t)-4096,
+                            "empty walk must still load the actor rotation");
+        ASSERT(!PE_Port_ShouldStop() && !PE_Decomp_BoundaryCount(),"scratchpad walk is native");
+    }
+    PASS();
+}
+
 static void test_POSE1_branch_stack_and_bone_offsets(void)
 {
     static const uint8_t walk[] = {0,255,1,255,2,254,254,3};
@@ -37404,6 +38507,90 @@ static void test_INIT1_rotation_retail_vectors(void)
         for (j=18u; j<32u; j++)
             ASSERT(PE_LoadU8(0x80140000u+j)==0xA5u, "padding and translation preserved");
     }
+    PASS();
+}
+
+/* PE_RotMatrixYXZ_Guest (host replacement for func_80079754 in lowered room
+ * code): guest SVECTOR angles in, the same 3x3 as PE_RotMatrix79754, the
+ * translation left alone, m returned. */
+static void test_INIT1_rotmatrix_guest(void)
+{
+    const int16_t angles[3] = {1, -2, 3};
+    unsigned j;
+    TEST("INIT1_rotmatrix_guest");
+    ResetTestState();
+    INIT1_SeedTrig();
+    PE_StoreU16(0x80140100u, 1u); PE_StoreU16(0x80140102u, (uint16_t)-2);
+    PE_StoreU16(0x80140104u, 3u);
+    PE_Fill(0x80140000u, 32u, 0xA5u);
+    PE_Fill(0x80140040u, 32u, 0xA5u);
+    ASSERT(PE_RotMatrixYXZ_Guest(0x80140100u, 0x80140000u) == 0x80140000u, "returns m");
+    PE_RotMatrix79754(angles, 0x80140040u);
+    for (j = 0; j < 32u; j++)
+        ASSERT(PE_LoadU8(0x80140000u + j) == PE_LoadU8(0x80140040u + j),
+               "same matrix, translation untouched");
+    PASS();
+}
+
+/* PE_ApplyMatrix_Guest (host replacement for func_80078BE4, Psy-Q ApplyMatrix,
+ * in lowered room code; first hit m0167i func_8018F8B8): out = rot*v >>12 as
+ * 32-bit words, translation ignored, returns out. */
+static void test_INIT1_applymatrix_guest(void)
+{
+    static const int16_t a[9] = {4096,0,0, 0,2048,0, 100,-200,4096};
+    static const int16_t v[3] = {1000, -3000, 7};
+    unsigned i;
+    TEST("INIT1_applymatrix_guest");
+    ResetTestState();
+    PE_Fill(0x80140000u, 64u, 0xA5u);
+    for (i = 0; i < 9u; i++) PE_StoreU16(0x80140040u + i*2u, (uint16_t)a[i]);
+    PE_StoreU32(0x80140054u, 0x12345u); PE_StoreU32(0x80140058u, 0x12345u); PE_StoreU32(0x8014005Cu, 0x12345u);
+    for (i = 0; i < 3u; i++) PE_StoreU16(0x80140080u + i*2u, (uint16_t)v[i]);
+    ASSERT(PE_ApplyMatrix_Guest(0x80140040u, 0x80140080u, 0x80140000u) == 0x80140000u, "returns out");
+    for (i = 0; i < 3u; i++) {
+        int32_t want = (a[i*3]*v[0] + a[i*3+1]*v[1] + a[i*3+2]*v[2]) >> 12;
+        ASSERT((int32_t)PE_LoadU32(0x80140000u + i*4u) == want, "out[i] = row_i . v >> 12 (no translation)");
+    }
+    ASSERT(PE_LoadU8(0x8014000Cu) == 0xA5u, "writes 12 bytes only");
+    PASS();
+}
+
+/* PE_MulMatrix0_Guest (host replacement for func_800785D4 in lowered room
+ * code): out = left*right rotation (>>12, int16 clamp), translation kept.
+ * The original stores element [2][2] with swc2 from IR3 (a whole word), so
+ * the pad halfword at +18 gets IR3's sign extension
+ * (docs/evidence/native-gte-cmd-20261031). */
+static void test_INIT1_mulmatrix0_guest(void)
+{
+    static const int16_t ident[9] = {4096,0,0, 0,4096,0, 0,0,4096};
+    static const int16_t a[9] = {100,-200,300, 4096,2048,-1024, 7,8,9};
+    static const int16_t big[9] = {0x7FFF,0x7FFF,0x7FFF, 0,0,0, -0x8000,-0x8000,-0x8000};
+    unsigned j;
+    TEST("INIT1_mulmatrix0_guest");
+    ResetTestState();
+    PE_Fill(0x80140000u, 32u, 0xA5u);
+    for (j = 0; j < 9u; j++) {
+        PE_StoreU16(0x80140040u + j*2u, (uint16_t)ident[j]);
+        PE_StoreU16(0x80140080u + j*2u, (uint16_t)a[j]);
+    }
+    ASSERT(PE_MulMatrix0_Guest(0x80140040u, 0x80140080u, 0x80140000u) == 0x80140000u, "returns out");
+    for (j = 0; j < 9u; j++)
+        ASSERT((int16_t)PE_LoadU16(0x80140000u + j*2u) == a[j], "identity*a == a");
+    ASSERT(PE_LoadU16(0x80140000u + 18u) == (a[8] < 0 ? 0xFFFFu : 0u), "pad = IR3 sign extension");
+    for (j = 20u; j < 32u; j++)
+        ASSERT(PE_LoadU8(0x80140000u + j) == 0xA5u, "translation untouched");
+    /* a*a row0 col0: (100*100 - 200*4096 + 300*7) >> 12 = -198 (floor). */
+    PE_MulMatrix0_Guest(0x80140080u, 0x80140080u, 0x80140000u);
+    ASSERT((int16_t)PE_LoadU16(0x80140000u) == (int16_t)((100*100 - 200*4096 + 300*7) >> 12), "a*a[0][0]");
+    ASSERT((int16_t)PE_LoadU16(0x80140000u + 8u) == (int16_t)((4096*(-200) + 2048*2048 - 1024*8) >> 12), "a*a[1][1]");
+    for (j = 0; j < 9u; j++) {
+        PE_StoreU16(0x80140080u + j*2u, (uint16_t)big[j]);
+        PE_StoreU16(0x801400C0u + j*2u, (uint16_t)0x7FFF);
+    }
+    PE_MulMatrix0_Guest(0x80140080u, 0x801400C0u, 0x80140000u);
+    ASSERT((int16_t)PE_LoadU16(0x80140000u) == 0x7FFF, "positive saturation");
+    ASSERT((int16_t)PE_LoadU16(0x80140000u + 6u) == 0, "zero row");
+    ASSERT((int16_t)PE_LoadU16(0x80140000u + 12u) == -0x8000, "negative saturation");
     PASS();
 }
 
@@ -38587,13 +39774,51 @@ static void test_DRW1_drawotag_empty_chain(void)
     PASS();
 }
 
+static void test_DRW1_debug_print_continues_and_unknown_stops(void)
+{
+    int stop_policy;
+    TEST_RETAIL_DISC1("DRW1_debug_print_continues_and_unknown_stops");
+    ResetTestState();
+    ASSERT(TTY_SeedRetailFormats(), "cannot read retail debug formats");
+    DRW1_SeedDispatch();
+    PE_GPU_WriteDPCR(0x33333333u);
+    func_800752AC(DRW1_OT_BASE, 4);
+    PE_StoreU8(0x8009574Eu, 2u);
+    PE_StoreU32(0x80095748u, 0x80071A74u);
+    PE_Bios_PrintfLogReset();
+    PE_Decomp_ResetBoundaries();
+    stop_policy = PE_Decomp_BoundaryStopEnabled();
+    PE_Decomp_SetBoundaryStop(1);
+    (void)func_800753B4(DRW1_OT_BASE);
+    PE_Decomp_SetBoundaryStop(stop_policy);
+    ASSERT(!PE_Port_ShouldStop() && PE_Bios_PrintfLog(NULL, NULL) == 1u &&
+           PE_Decomp_BoundaryCount() == 0 && g_bootstrap_arg4_call_count == 0,
+           "DrawOTag failed to print and draw natively");
+    PE_StoreU32(0x80095748u, 0x80DEAD08u);
+    PE_Decomp_SetBoundaryStop(1);
+    (void)func_800753B4(DRW1_OT_BASE);
+    PE_Decomp_SetBoundaryStop(stop_policy);
+    ASSERT(PE_Port_ShouldStop() && PE_Decomp_BoundaryCount() == 1 &&
+           PE_Bios_PrintfLog(NULL, NULL) == 1u,
+           "unresolved debug hook did not stop before drawing");
+    PE_Decomp_ResetBoundaries();
+    PASS();
+}
+
 static void test_DRW1_drawotag_dispatch_boundary(void)
 {
+    int stop_policy, result;
     TEST("DRW1_drawotag_dispatch_boundary");
     ResetTestState();
     DRW1_SeedDispatch();
     PE_StoreU32(0x8009570Cu, 0xDEADBEEFu);
-    ASSERT(func_800753B4(DRW1_OT_BASE) == 0, "dirty dispatch result differs");
+    /* An unregistered jtb[2] is the guest-code registry's boundary, a STOP
+     * under the port's production policy (test_gpu_jtb_dispatch.h). */
+    stop_policy = PE_Decomp_BoundaryStopEnabled();
+    PE_Decomp_SetBoundaryStop(1);
+    result = func_800753B4(DRW1_OT_BASE);
+    PE_Decomp_SetBoundaryStop(stop_policy);
+    ASSERT(result == 0, "dirty dispatch result differs");
     ASSERT(PE_Port_GetStopReason() == PE_PORT_STOP_UNRESOLVED_BOUNDARY,
            "dirty dispatch did not stop");
     ASSERT(g_bootstrap_arg4_call_count == 1, "dispatch not recorded");
@@ -38661,6 +39886,40 @@ static void test_DRW1_chain_unknown_word_bounds(void)
     ASSERT(gpu.draw_mode_count == 1u, "node1 packet missing");
     ASSERT(PE_LoadU32(node1 + 4u) == 0xE1000000u, "node1 word moved");
     ASSERT(PE_LoadU32(node2 + 4u) == 0x28000000u, "node2 word moved");
+    PASS();
+}
+
+/* A node's size is the tag's top byte (psx-spx), not the 15 words the walker
+ * used to cut at.  One 20-word node: four GP0(81h) VRAM copies (16 words)
+ * and four NOP mirrors.  Walked whole, no boundary, parser idle. */
+static void test_DRW1_chain_long_node_and_copy(void)
+{
+    const pe_addr_t node = 0x801F2000u;
+    static const uint32_t nops[4] = {0x04000000u, 0xE0000000u, 0xE7000000u, 0x1E000000u};
+    uint16_t src[2] = {0x1357u, 0x2468u}, pixel = 0u;
+    unsigned k, w = 0u;
+    PeGpuState gpu;
+    TEST("DRW1_chain_long_node_and_copy");
+    ResetTestState();
+    PE_GPU_Init();
+    ASSERT(B54KR_UploadPixels(900u, 0u, 2u, 1u, src), "seed pixels");
+    PE_StoreU32(node, (20u << 24) | 0x00FFFFFFu);
+    for (k = 0; k < 4u; k++) {
+        PE_StoreU32(node + 4u + 4u * w++, 0x81000000u);
+        PE_StoreU32(node + 4u + 4u * w++, 900u);
+        PE_StoreU32(node + 4u + 4u * w++, ((9u + k) << 16) | 900u);
+        PE_StoreU32(node + 4u + 4u * w++, (1u << 16) | 2u);
+    }
+    for (k = 0; k < 4u; k++) PE_StoreU32(node + 4u + 4u * w++, nops[k]);
+    (void)func_80076B98(node, 0u);
+    ASSERT(PE_Port_GetStopReason() == PE_PORT_STOP_NONE && g_bootstrap_arg4_call_count == 0,
+           "20-word node stopped or recorded a cut");
+    for (k = 0; k < 4u; k++) {
+        ASSERT(PE_GPU_ReadVRAM(900u, 9u + k, &pixel) && pixel == 0x1357u, "copy left pixel");
+        ASSERT(PE_GPU_ReadVRAM(901u, 9u + k, &pixel) && pixel == 0x2468u, "copy right pixel");
+    }
+    PE_GPU_GetState(&gpu);
+    ASSERT(gpu.gp0_state == PE_GPU_GP0_IDLE, "parser not idle at end");
     PASS();
 }
 
@@ -38743,23 +40002,25 @@ static void test_DRW1_fill_hardware_edges(void)
 static void test_DRW1_754e4_level2_prints(void)
 {
     const pe_addr_t env = 0x80122000u;
-    const BootstrapArgCall4 *call;
-    TEST("DRW1_754e4_level2_prints");
+    pe_addr_t fmt;
+    uint32_t args[4];
+    TEST_RETAIL_DISC1("DRW1_754e4_level2_prints");
     ResetTestState();
+    ASSERT(TTY_SeedRetailFormats(), "cannot read retail debug formats");
     DRW1_SeedDispatch();
     PE_StoreU8(0x8009574Eu, 2u);
     PE_StoreU32(0x80095748u, 0x80071A74u);
     PE_StoreU32(0x8009575Cu, 0xA5A5A5A5u);
+    PE_StoreU32(DRW1_OT_BASE, 0x00FFFFFFu);
+    PE_Bios_PrintfLogReset();
     func_800754E4(DRW1_OT_BASE, env);
-    ASSERT(PE_Port_GetStopReason() == PE_PORT_STOP_UNRESOLVED_BOUNDARY,
-           "level-2 print did not stop");
-    ASSERT(g_bootstrap_arg4_call_count == 1, "print not recorded");
-    call = &g_bootstrap_arg4_calls[0];
-    ASSERT(call->target == 0x80071A74u, "print target differs");
-    ASSERT(call->arg0 == 0x80011954u, "print name differs");
-    ASSERT(call->arg1 == DRW1_OT_BASE && call->arg2 == env, "print args differ");
-    ASSERT(PE_LoadU32(0x8009575Cu) == 0xA5A5A5A5u, "draw ran past the print");
-    ASSERT(PE_LoadU32(env + 0x1Cu) == 0u, "tag splice ran past the print");
+    ASSERT(!PE_Port_ShouldStop() && g_bootstrap_arg4_call_count == 0,
+           "native debug draw stopped or used a stub");
+    ASSERT(PE_Bios_PrintfLog(&fmt, args) == 1u && fmt == 0x80011954u &&
+           args[0] == DRW1_OT_BASE && args[1] == env, "print arguments differ");
+    ASSERT(PE_LoadU32(0x8009575Cu) == PE_LoadU32(env), "draw did not cache env");
+    ASSERT((PE_LoadU32(env + 0x1Cu) & 0x00FFFFFFu) == (DRW1_OT_BASE & 0x00FFFFFFu),
+           "draw did not splice OT after printing");
     PASS();
 }
 
@@ -39240,36 +40501,40 @@ static void test_OTC1_clearotagr_null_ot_skip(void)
     PASS();
 }
 
-static void test_OTC1_clearotagr_debug_print_boundary(void)
+static void test_OTC1_clearotagr_debug_print_native(void)
 {
     const pe_addr_t ot = OTC1_OT_BASE;
-    TEST("OTC1_clearotagr_debug_print_boundary");
+    TEST_RETAIL_DISC1("OTC1_clearotagr_debug_print_native");
     ResetTestState();
+    ASSERT(TTY_SeedRetailFormats(), "cannot read retail debug formats");
     OTC1_SeedDispatch();
     PE_StoreU8(0x8009574Eu, 2u);
     PE_StoreU32(0x80095748u, 0x80071A74u);
     PE_StoreU32(ot, 0xA5A5A5A5u);
     func_800752AC(ot, 4);
-    ASSERT(PE_Port_GetStopReason() == PE_PORT_STOP_UNRESOLVED_BOUNDARY,
-           "level-2 print did not stop");
-    ASSERT(g_bootstrap_arg4_call_count == 1, "print call not recorded");
-    ASSERT(g_bootstrap_arg4_calls[0].target == 0x80071A74u,
-           "print target differs");
-    ASSERT(g_bootstrap_arg4_calls[0].arg0 == 0x80011910u,
-           "print name differs");
-    ASSERT(PE_LoadU32(ot) == 0xA5A5A5A5u, "print path touched the OT");
+    ASSERT(!PE_Port_ShouldStop() && g_bootstrap_arg4_call_count == 0,
+           "native clear debug print stopped or used a stub");
+    ASSERT(PE_LoadU32(ot) == 0x0009580Cu &&
+           PE_LoadU32(ot + 4u) == (ot & 0x00FFFFFFu),
+           "debug clear did not construct the OT");
     PASS();
 }
 
 static void test_OTC1_clearotagr_dirty_jtb_boundary(void)
 {
     const pe_addr_t ot = OTC1_OT_BASE;
+    int stop_policy;
     TEST("OTC1_clearotagr_dirty_jtb_boundary");
     ResetTestState();
     OTC1_SeedDispatch();
     PE_StoreU32(0x80095730u, 0xDEADBEEFu);
     PE_StoreU32(ot, 0xA5A5A5A5u);
+    /* An unregistered jtb[11] is the guest-code registry's boundary, a STOP
+     * under the port's production policy (test_gpu_jtb_dispatch.h). */
+    stop_policy = PE_Decomp_BoundaryStopEnabled();
+    PE_Decomp_SetBoundaryStop(1);
     func_800752AC(ot, 4);
+    PE_Decomp_SetBoundaryStop(stop_policy);
     ASSERT(PE_Port_GetStopReason() == PE_PORT_STOP_UNRESOLVED_BOUNDARY,
            "dirty jtb[11] did not stop");
     ASSERT(PE_LoadU32(ot) == 0xA5A5A5A5u, "dirty dispatch touched the OT");
@@ -39294,6 +40559,1154 @@ static void test_OTC1_clearotagr_small_table(void)
            "n=4 OT[2] differs");
     ASSERT(PE_LoadU32(ot + 12u) == ((ot + 8u) & 0x00FFFFFFu),
            "n=4 OT[3] differs");
+    PASS();
+}
+
+#include "test_gpu_jtb_dispatch.h"
+#include "test_room_entry_native.h"
+
+static void test_cd_data_sync_dispatch(void)
+{
+    TEST("CD_data_sync_dispatch");
+    ResetTestState();
+    PE_CdReg_Reset();
+    PE_StoreU32(0x8009B2C0u, PE_CDREG_DMA3 + 8u);
+    PE_CdReg_WriteU32(PE_CDREG_DMA3 + 8u, 0x01000000u);
+    ASSERT(PE_GuestCall("CD data sync wrapper", 0x8007A910u, 1u,
+                        1u, 0u, 0u, 0u) == 1,
+           "CD wrapper lost the nonblocking mode or busy result");
+    ASSERT(PE_GuestCall("DS data sync wrapper", 0x80080B24u, 1u,
+                        1u, 0u, 0u, 0u) == 1,
+           "DS wrapper lost the nonblocking mode or busy result");
+    ASSERT(!PE_Port_ShouldStop(), "busy query stopped");
+    PE_CdReg_WriteU32(PE_CDREG_DMA3 + 8u, 0u);
+    ASSERT(PE_GuestCall("CD data sync direct", 0x8007BDDCu, 1u,
+                        0u, 0u, 0u, 0u) == 0,
+           "idle direct query failed");
+    ASSERT(!PE_Port_ShouldStop(), "idle query stopped");
+    PASS();
+}
+
+static void test_cd_data_sync_device(void)
+{
+    DiscFixture fx = {0};
+    uint8_t response[1];
+    const uint8_t loc[] = {0u, 2u, 0x20u};
+    TEST("CD_data_sync_device");
+    ResetTestState();
+    ASSERT(FxBuild(&fx, 0), "synthetic disc fixture");
+    PE_Disc_SetActive(fx.disc);
+    CdDeviceSeed();
+    ASSERT(PE_CdReg_EnableDevice(0u), "CD device attachment");
+    CdSectorCommand(2u, loc, 3u);
+    ASSERT(CdSectorReply(response, 1u) == 3u, "Setloc acknowledgement");
+    CdSectorCommand(6u, NULL, 0u);
+    ASSERT(CdSectorReply(response, 1u) == 3u, "ReadN acknowledgement");
+    PE_CdReg_WriteU8(PE_CDREG_BASE, 0u);
+    PE_GPU_WriteDPCR(0x8000u);
+    PE_StoreU32(0x8009B2C0u, PE_CDREG_DMA3 + 8u);
+    PE_CdReg_WriteU32(PE_CDREG_DMA3, 0x80150000u);
+    PE_CdReg_WriteU32(PE_CDREG_DMA3 + 4u, 1u);
+    PE_CdReg_WriteU32(PE_CDREG_DMA3 + 8u, 0x11000000u);
+    ASSERT(PE_GuestCall("CD data sync busy", 0x8007A910u, 1u,
+                        1u, 0u, 0u, 0u) == 1,
+           "pending device DMA did not report busy");
+    PE_CdReg_ServiceDevice(451584u);
+    ASSERT(CdSectorReply(response, 1u) == 1u, "sector-ready response");
+    PE_CdReg_WriteU8(PE_CDREG_BASE, 0u);
+    PE_CdReg_WriteU8(PE_CDREG_BASE + 3u, 0x80u);
+    ASSERT(PE_GuestCall("CD data sync wait", 0x80080B24u, 1u,
+                        0u, 0u, 0u, 0u) == 0,
+           "modeled device DMA did not complete");
+    ASSERT(!PE_Port_ShouldStop() &&
+           !(PE_CdReg_ReadU32(PE_CDREG_DMA3 + 8u) & 0x01000000u),
+           "device DMA remained busy or stopped");
+    PE_Disc_SetActive(NULL);
+    FxFree(&fx);
+    PASS();
+}
+
+static void test_spu_dma_read_model(void)
+{
+    PeSpuDmaState state;
+    uint8_t *spu;
+    TEST("SPU_dma_read_model");
+    ResetTestState();
+    PE_SpuDma_Reset();
+    PE_StoreU32(0x8009B3FCu, 0x80120000u);
+    ASSERT(PE_SpuDma_InstallIrq(PE_SPU_DMA_IRQ_HANDLER), "SPU IRQ install");
+    ASSERT(!PE_SpuDma_BeginRead(0x80150000u, 0u, 0u, 0u),
+           "zero-length read should remain unsupported");
+    spu = PE_SpuRam_Data();
+    for (unsigned i = 0; i < 64u; ++i) {
+        spu[(PE_SPU_RAM_SIZE - 32u + i) % PE_SPU_RAM_SIZE] = (uint8_t)(i + 1u);
+        PE_StoreU8(0x80150000u + i, 0xA5u);
+    }
+    ASSERT(PE_SpuDma_BeginRead(0x80150000u, PE_SPU_RAM_SIZE - 32u, 64u, 0u),
+           "SPU read issue failed");
+    PE_SpuDma_GetState(&state);
+    ASSERT(state.pending && PE_LoadU8(0x80150000u) == 0xA5u &&
+           PE_LoadU32(0x8009B44Cu) == 1u,
+           "read copied early or did not set direction");
+    ASSERT(PE_SpuDma_Service() == 1 && !PE_Port_ShouldStop(),
+           "SPU read completion failed");
+    for (unsigned i = 0; i < 64u; ++i)
+        ASSERT(PE_LoadU8(0x80150000u + i) == (uint8_t)(i + 1u),
+               "SPU read data or wrap differs");
+    PE_SpuDma_GetState(&state);
+    ASSERT(!state.pending && state.event_count == 1u && state.data_order != 0u,
+           "SPU read completion state differs");
+    ASSERT(PE_SpuDma_Begin(0x80150000u, 0x1000u, 64u, 0u),
+           "SPU write after read failed to issue");
+    ASSERT(PE_SpuDma_Service() == 1 && !PE_Port_ShouldStop() &&
+           spu[0x1000u] == 1u && spu[0x103Fu] == 64u &&
+           PE_LoadU32(0x8009B44Cu) == 0u,
+           "SPU write after read used the wrong direction");
+    PASS();
+}
+
+extern int func_800D751C(int32_t mode, pe_addr_t data);
+static void test_PARTICLE_reaction_caller_stops(void)
+{
+    const pe_addr_t pool=0x80130000u, descriptor=0x80140000u, data=0x80160000u;
+    TEST("PARTICLE_reaction_caller_stops");
+    for (int mode=1; mode<=2; ++mode) {
+        int policy;
+        ResetTestState(); PE_StoreU32(pool, 0x10u); PE_StoreU32(pool+4u, 1u);
+        PE_StoreU32(pool+8u, 0x80dead90u); PE_StoreU16(pool+12u, 1u);
+        PE_StoreU32(0x800E2368u, descriptor); PE_StoreU32(0x800F33E0u, descriptor);
+        PE_StoreU32(0x800E27ECu, 32u); PE_StoreU32(data+4u, pool);
+        PE_StoreU32(0x800BCFA4u, 0x80150000u);
+        PE_StoreU32(0x800E21E8u, 0x12345678u); PE_StoreU16(0x800F3368u, 0xabcdu);
+        policy=PE_Decomp_BoundaryStopEnabled(); PE_Decomp_SetBoundaryStop(1);
+        (void)func_800D751C(mode, data); PE_Decomp_SetBoundaryStop(policy);
+        ASSERT(PE_Port_ShouldStop() && PE_LoadU32(0x800E21E8u)==0x12345678u &&
+               PE_LoadU16(0x800F3368u)==0xabcdu,
+               "reaction caller must stop before later update or draw work");
+    }
+    PASS();
+}
+
+static void test_PARTICLE_unknown_callback_stops(void)
+{
+    const pe_addr_t pool = 0x80130000u, descriptor = 0x80140000u;
+    TEST("PARTICLE_unknown_callback_stops");
+    for (int mode = 1; mode <= 2; ++mode) {
+        int policy;
+        ResetTestState(); PE_StoreU32(pool, 0x10u); PE_StoreU32(pool + 4u, 2u);
+        PE_StoreU32(pool + 8u, 0x80dead90u);
+        PE_StoreU16(pool + 12u, 1u); PE_StoreU16(pool + 14u, 7u);
+        PE_StoreU16(pool + 28u, 1u); PE_StoreU16(pool + 30u, 9u);
+        PE_StoreU32(0x800E2368u, descriptor); PE_StoreU32(0x800E27ECu, 0x12345678u);
+        policy = PE_Decomp_BoundaryStopEnabled(); PE_Decomp_SetBoundaryStop(1);
+        if (mode == 1) (void)func_800CE688(pool); else (void)func_800CE78C(pool);
+        PE_Decomp_SetBoundaryStop(policy);
+        ASSERT(PE_Port_ShouldStop() && PE_Decomp_BoundaryCount() == 1 &&
+               PE_LoadU16(pool + 14u) == 7u && PE_LoadU16(pool + 30u) == 9u &&
+               PE_LoadU32(0x800E27ECu) == 0x12345678u,
+               "unknown particle callback must stop the walk and restore effect time");
+    }
+    PASS();
+}
+
+static void test_RENDER_missing_packet_storage_stops(void)
+{
+    pe_addr_t dest = 0x80130000u, model = 0x80131000u;
+    TEST("RENDER_missing_packet_storage_stops");
+    ResetTestState(); PE_StoreU32(dest, model); PE_StoreU16(dest + 0xbau, 1u);
+    PE_StoreU8(dest + 0x9eu, 1u);
+    (void)func_8003AF14(dest, 0u);
+    ASSERT(!PE_Port_ShouldStop(), "empty model needs no packet storage");
+    PE_StoreU16(model + 8u, 1u);
+    PE_StoreU32(dest + 0x10u, 0x80133000u); PE_StoreU32(dest + 0x54u, 0xa0132000u);
+    PE_StoreU32(0x80132000u, 0x12ffffffu);
+    (void)func_8003AF14(dest, 0u);
+    ASSERT(!PE_Port_ShouldStop() && PE_LoadU32(0x80132000u) == 0x12000000u,
+           "mapped KSEG1 packet alias must draw");
+    PE_StoreU32(dest + 0x54u, 0u);
+    (void)func_8003AF14(dest, 0u);
+    ASSERT(PE_Port_ShouldStop() && PE_Port_GetStopReason() == PE_PORT_STOP_UNRESOLVED_BOUNDARY,
+           "nonempty model with missing packets must stop");
+    PASS();
+}
+
+extern void func_8008E8D0(pe_addr_t voice, unsigned int bit);
+static void test_AKAO_unknown_opcode_stops(void)
+{
+    const pe_addr_t voice = 0x80130000u, stream = 0x80150000u;
+    int policy;
+    TEST("AKAO_unknown_opcode_stops");
+    ResetTestState();
+    PE_Decomp_ResetBoundaries();   /* count is cumulative across tests */
+    PE_StoreU32(voice, stream); PE_StoreU8(stream, 0xa1u); PE_StoreU8(stream + 1u, 0xa1u);
+    PE_StoreU32(0x8009C8F0u + 0xa1u * 4u, 0x80dead90u);
+    policy = PE_Decomp_BoundaryStopEnabled(); PE_Decomp_SetBoundaryStop(1);
+    func_8008E8D0(voice, 1u);
+    PE_Decomp_SetBoundaryStop(policy);
+    ASSERT(PE_Port_ShouldStop() && PE_Decomp_BoundaryCount() == 1 &&
+           PE_LoadU32(voice) == stream + 1u, "unknown opcode must stop before reading another byte");
+    PASS();
+}
+
+static void test_spu_fifo_dma_shared_cursor(void)
+{
+    TEST("SPU_fifo_dma_shared_cursor");
+    QUARANTINED_SKIP();
+    ResetTestState(); PE_SpuDma_Reset();
+    ASSERT(PE_SpuDma_InstallIrq(PE_SPU_DMA_IRQ_HANDLER), "SPU IRQ install");
+    PE_StoreU32(0x8009B3FCu, 0x1f801c00u); PE_StoreU32(0x8009B410u, 0x80120400u);
+    PE_StoreU32(0x8009B424u, 3u);
+    ASSERT(PE_GuestCall("SPU cursor address", 0x8007D778u, 3u, 2u, 0x2000u, 0u, 0u) == 0,
+           "SPU address setup");
+    for (unsigned i = 0; i < 4u; ++i) PE_StoreU16(0x1f801da8u, (uint16_t)(0x1100u + i));
+    PE_StoreU8(0x80150000u, 0x7bu);
+    ASSERT(PE_GuestCall("SPU cursor write mode", 0x8007D778u, 3u, 1u, 0u, 0u, 0u) == 0 &&
+           PE_GuestCall("SPU cursor write issue", 0x8007D778u, 3u, 3u, 0x80150000u, 64u, 0u) == 0 &&
+           PE_SpuDma_Service() == 1 && !PE_Port_ShouldStop(), "FIFO followed by DMA issue");
+    ASSERT(PE_SpuRam_Data()[0x2000u] == 0x00u && PE_SpuRam_Data()[0x2008u] == 0x7bu,
+           "DMA must start after FIFO words");
+    PE_StoreU16(0x1f801da8u, 0x4567u);
+    ASSERT(PE_SpuRam_Data()[0x2048u] == 0x67u && PE_SpuRam_Data()[0x2049u] == 0x45u,
+           "FIFO must continue after DMA data");
+    for (unsigned i = 0; i < 3u; ++i) PE_StoreU16(0x1f801da8u, 0x1111u);
+    PE_SpuRam_Data()[0x2050u] = 0x9au; PE_StoreU8(0x80150100u, 0xa5u);
+    ASSERT(PE_GuestCall("SPU cursor read mode", 0x8007D778u, 3u, 0u, 0u, 0u, 0u) == 0 &&
+           PE_GuestCall("SPU cursor read issue", 0x8007D778u, 3u, 3u, 0x80150100u, 64u, 0u) == 0 &&
+           PE_SpuDma_Service() == 1 && !PE_Port_ShouldStop() && PE_LoadU8(0x80150100u) == 0x9au,
+           "read DMA must use the cursor after FIFO words");
+    PE_StoreU16(0x1f801da8u, 0x789au);
+    ASSERT(PE_SpuRam_Data()[0x2090u] == 0x9au && PE_SpuRam_Data()[0x2091u] == 0x78u,
+           "FIFO must continue after read DMA data");
+    PASS();
+}
+
+static void test_spu_transfer_operation_guest(void)
+{
+    PeSpuDmaState state;
+    TEST("SPU_transfer_operation_guest");
+    QUARANTINED_SKIP();
+    ResetTestState(); PE_SpuDma_Reset();
+    ASSERT(PE_SpuDma_InstallIrq(PE_SPU_DMA_IRQ_HANDLER), "SPU IRQ install");
+    PE_StoreU32(0x8009B3FCu, 0x80120000u); PE_StoreU32(0x8009B410u, 0x80120400u);
+    PE_StoreU32(0x8009B424u, 3u); PE_StoreU16(0x801201AAu, 0xa585u);
+    PE_StoreU32(0x80120400u, 0x12345678u);
+    ASSERT(PE_GuestCall("SPU address", 0x8007D778u, 3u, 2u, 0x2000u, 0u, 0u) == 0 &&
+           PE_LoadU16(0x8009B414u) == 0x400u && PE_LoadU16(0x801201A6u) == 0x400u,
+           "SPU transfer address setup");
+    ASSERT(PE_GuestCall("SPU read mode", 0x8007D778u, 3u, 0u, 0u, 0u, 0u) == 0 &&
+           PE_LoadU32(0x8009B44Cu) == 1u && PE_LoadU16(0x801201AAu) == 0xa5b5u,
+           "SPU read direction setup");
+    PE_SpuRam_Data()[0x2000u] = 0x6bu; PE_StoreU8(0x80150000u, 0xa5u);
+    ASSERT(PE_GuestCall("SPU read issue", 0x8007D778u, 3u, 3u, 0x80150000u, 64u, 0u) == 0,
+           "SPU read issue return");
+    PE_SpuDma_GetState(&state);
+    ASSERT(state.pending && PE_LoadU32(0x8009B450u) == 0x80150000u &&
+           PE_LoadU32(0x8009B454u) == 1u && PE_LoadU32(0x80120400u) == 0x32345678u &&
+           PE_LoadU8(0x80150000u) == 0xa5u, "SPU read issue state");
+    ASSERT(PE_SpuDma_Service() == 1 && !PE_Port_ShouldStop() && PE_LoadU8(0x80150000u) == 0x6bu,
+           "SPU read completion");
+    ASSERT(PE_GuestCall("SPU write mode", 0x8007D778u, 3u, 1u, 0u, 0u, 0u) == 0 &&
+           PE_LoadU32(0x8009B44Cu) == 0u, "SPU write direction setup");
+    PE_StoreU8(0x80150000u, 0x8au);
+    ASSERT(PE_GuestCall("SPU write issue", 0x8007D778u, 3u, 3u, 0x80150000u, 64u, 0u) == 0 &&
+           PE_SpuDma_Service() == 1 && !PE_Port_ShouldStop() && PE_SpuRam_Data()[0x2000u] == 0x8au,
+           "SPU write completion");
+    /* Retail mode 3 uses != 1 as write without modifying the direction word. */
+    PE_StoreU32(0x8009B44Cu, 2u); PE_StoreU16(0x801201AAu, 0xa5a5u);
+    ASSERT(PE_GuestCall("SPU noncanonical write", 0x8007D778u, 3u, 3u, 0x80150000u, 64u, 0u) == 0 &&
+           PE_LoadU32(0x8009B44Cu) == 2u && PE_SpuDma_Service() == 1 && !PE_Port_ShouldStop(),
+           "SPU noncanonical direction must be preserved");
+    /* The DMA address is the live TSA in hardware units, not the cached word. */
+    PE_StoreU32(0x8009B424u, 2u); PE_StoreU16(0x801201A6u, 0x500u);
+    PE_StoreU16(0x801201AAu, 0xa5a5u); PE_StoreU8(0x80150000u, 0x9cu);
+    ASSERT(PE_GuestCall("SPU live TSA", 0x8007D778u, 3u, 3u, 0x80150000u, 64u, 0u) == 0 &&
+           PE_SpuDma_Service() == 1 && !PE_Port_ShouldStop() && PE_SpuRam_Data()[0x2800u] == 0x9cu,
+           "SPU DMA must use the live transfer-address register");
+    PE_StoreU32(0x8009B424u, 3u); PE_StoreU16(0x801201A6u, 0x400u);
+    ASSERT(PE_GuestCall("SPU read mode again", 0x8007D778u, 3u, 0u, 0u, 0u, 0u) == 0,
+           "SPU read direction reset");
+    (void)PE_GuestCall("SPU zero read", 0x8007D778u, 3u, 3u, 0x80150000u, 0u, 0u);
+    PE_SpuDma_GetState(&state);
+    ASSERT(PE_Port_ShouldStop() && !state.pending, "unsupported zero read must stop");
+    PASS();
+}
+
+static void test_spu_read_raw_guest_dispatch(void)
+{
+    PeSpuDmaState state;
+    TEST("SPU_read_raw_guest_dispatch");
+    QUARANTINED_SKIP();
+    ResetTestState(); PE_SpuDma_Reset();
+    ASSERT(PE_SpuDma_InstallIrq(PE_SPU_DMA_IRQ_HANDLER), "SPU IRQ install");
+    PE_StoreU32(0x8009B3FCu,0x80120000u); PE_StoreU32(0x8009B410u,0x80120400u);
+    PE_StoreU32(0x8009B424u,3u); PE_StoreU16(0x8009B414u,0x400u);
+    PE_StoreU32(0x8009B434u,0u); PE_StoreU32(0x8009B430u,0x12345678u);
+    PE_SpuRam_Data()[0x2000u]=0x6bu; PE_StoreU8(0x80150000u,0xa5u);
+    ASSERT(PE_GuestCall("SPU raw read",0x8007DA7Cu,2u,0x80150000u,64u,0u,0u)==64,
+           "raw SPU read returned wrong size");
+    PE_SpuDma_GetState(&state);
+    ASSERT(!PE_Port_ShouldStop() && state.pending && state.dma_size==64u &&
+           PE_LoadU32(0x8009B430u)==0x12345678u && PE_LoadU8(0x80150000u)==0xa5u,
+           "raw read issue or wrapper-only flag differs");
+    ASSERT(PE_SpuDma_Service()==1 && !PE_Port_ShouldStop() && PE_LoadU8(0x80150000u)==0x6bu,
+           "raw SPU read completion");
+    (void)PE_GuestCall("SPU raw zero",0x8007DA7Cu,2u,0x80150000u,0u,0u,0u);
+    PE_SpuDma_GetState(&state);
+    ASSERT(PE_Port_ShouldStop() && !state.pending, "unsupported zero-size raw read must stop");
+    PASS();
+}
+
+static void test_spu_read_blocks_guest_dispatch(void)
+{
+    PeSpuDmaState state;
+    TEST("SPU_read_blocks_guest_dispatch");
+    QUARANTINED_SKIP();
+    ResetTestState(); PE_SpuDma_Reset();
+    ASSERT(PE_SpuDma_InstallIrq(PE_SPU_DMA_IRQ_HANDLER), "SPU IRQ install");
+    PE_StoreU32(0x8009B3FCu, 0x80120000u); PE_StoreU32(0x8009B410u, 0x80120400u);
+    PE_StoreU16(0x801201AAu, 0xa585u); PE_StoreU32(0x80120400u, 0x12345678u);
+    PE_StoreU32(0x8009B450u, 0x12345678u); PE_StoreU32(0x8009B454u, 0x55667788u);
+    PE_SpuRam_Data()[0x2000u] = 0x6au; PE_StoreU8(0x80150000u, 0xa5u);
+    (void)PE_GuestCall("SPU block read", 0x8007D6D0u, 3u, 0x80150000u, 0x400u, 2u, 0u);
+    PE_SpuDma_GetState(&state);
+    ASSERT(!PE_Port_ShouldStop() && state.pending && state.dma_size == 128u &&
+           state.source == 0x80150000u && state.destination == 0x2000u &&
+           PE_LoadU8(0x80150000u) == 0xa5u && PE_LoadU32(0x8009B44Cu) == 1u &&
+           PE_LoadU32(0x8009B450u) == 0x12345678u && PE_LoadU32(0x8009B454u) == 0x55667788u &&
+           PE_LoadU16(0x801201A6u) == 0x400u && PE_LoadU16(0x801201AAu) == 0xa5b5u &&
+           PE_LoadU32(0x80120400u) == 0x32345678u, "SPU block read issue state");
+    ASSERT(PE_SpuDma_Service() == 1 && !PE_Port_ShouldStop() &&
+           PE_LoadU8(0x80150000u) == 0x6au, "SPU block read completion");
+    (void)PE_GuestCall("SPU zero block read", 0x8007D6D0u, 3u, 0x80150000u, 0x400u, 0u, 0u);
+    PE_SpuDma_GetState(&state);
+    ASSERT(PE_Port_ShouldStop() && !state.pending, "zero block read must remain unsupported");
+    PASS();
+}
+
+static void test_callback_slot_guest_return(void)
+{
+    TEST("CALLBACK_slot_guest_return");
+    ResetTestState(); PE_Callback_Init();
+    PE_StoreU32(0x8009569cu, 0x80123450u);
+    ASSERT((uint32_t)PE_GuestCall("callback slot", 0x80074478u, 2u,
+                                 4u, 0x80124560u, 0u, 0u) == 0x80123450u &&
+           PE_LoadU32(0x8009569cu) == 0x80124560u,
+           "callback replacement did not return previous handler");
+    ASSERT((uint32_t)PE_GuestCall("callback same", 0x80074478u, 2u,
+                                 4u, 0x80124560u, 0u, 0u) == 0x80124560u &&
+           PE_LoadU32(0x8009569cu) == 0x80124560u && !PE_Port_ShouldStop(),
+           "unchanged callback slot return differs");
+    PASS();
+}
+
+static void test_callback_word_clear_guest_dispatch(void)
+{
+    const pe_addr_t p=0x80150000u;
+    const uint32_t entries[]={0x800744a4u,0x8007474cu};
+    TEST("CALLBACK_word_clear_guest_dispatch");
+    QUARANTINED_SKIP();
+    ResetTestState();
+    for (unsigned k=0;k<2u;++k) {
+        for(unsigned i=0;i<4u;++i)PE_StoreU32(p+i*4u,0x12345678u);
+        (void)PE_GuestCall("zero callback words",entries[k],2u,0u,0u,0u,0u);
+        ASSERT(!PE_Port_ShouldStop(), "zero count touched invalid pointer");
+        (void)PE_GuestCall("clear callback words",entries[k],2u,p,3u,0u,0u);
+        ASSERT(!PE_Port_ShouldStop() && PE_LoadU32(p)==0u && PE_LoadU32(p+4u)==0u &&
+               PE_LoadU32(p+8u)==0u && PE_LoadU32(p+12u)==0x12345678u,
+               "callback clear range differs");
+    }
+    PE_StoreU32(p,0x12345678u);
+    (void)PE_GuestCall("invalid callback count",entries[0],2u,p,0xffffffffu,0u,0u);
+    ASSERT(PE_Port_ShouldStop() && PE_LoadU32(p)==0x12345678u,
+           "invalid callback count wrote partial data");
+    PASS();
+}
+
+static void test_gpu_area_window_guest_dispatch(void)
+{
+    pe_addr_t rect = 0x80150000u;
+    TEST("GPU_area_window_guest_dispatch");
+    ResetTestState();
+    PE_StoreU16(0x80095750u, 320u); PE_StoreU16(0x80095752u, 240u);
+    ASSERT((uint32_t)PE_GuestCall("area top negative", 0x80076170u, 2u,
+                                 0xffffffffu, 8u, 0u, 0u) == 0xe3002000u,
+           "top negative clamp");
+    ASSERT((uint32_t)PE_GuestCall("area top clamp", 0x80076170u, 2u,
+                                 500u, 300u, 0u, 0u) == 0xe303bd3fu &&
+           (uint32_t)PE_GuestCall("area bottom clamp", 0x80076208u, 2u,
+                                 500u, 300u, 0u, 0u) == 0xe403bd3fu,
+           "area high clamp");
+    PE_StoreU16(0x80095750u, 0u); PE_StoreU16(0x80095752u, 0u);
+    ASSERT((uint32_t)PE_GuestCall("area empty limits", 0x80076170u, 2u,
+                                 0u, 0u, 0u, 0u) == 0xe30fffffu,
+           "area zero-limit behavior");
+    ASSERT(PE_GuestCall("null window", 0x800762BCu, 1u, 0u, 0u, 0u, 0u) == 0,
+           "null texture window");
+    PE_StoreU16(rect, 9u); PE_StoreU16(rect+2u, 17u);
+    PE_StoreU16(rect+4u, 8u); PE_StoreU16(rect+6u, 16u);
+    ASSERT((uint32_t)PE_GuestCall("window", 0x800762BCu, 1u, rect, 0u, 0u, 0u) == 0xe20107dfu,
+           "texture window fields");
+    PE_StoreU16(rect, 0xffffu); PE_StoreU16(rect+2u, 0xfffeu);
+    PE_StoreU16(rect+4u, 0xfff8u); PE_StoreU16(rect+6u, 0xfff0u);
+    ASSERT((uint32_t)PE_GuestCall("negative window", 0x800762BCu, 1u, rect, 0u, 0u, 0u) == 0xe20ffc41u &&
+           !PE_Port_ShouldStop(), "texture window signed fields");
+    PASS();
+}
+
+static void test_gpu_mask_packet_dispatch(void)
+{
+    /* SetPriority (0x80075C44) and SetDrawStp (0x80075C6C) have no reference
+     * anywhere in the retail program and are no longer linked
+     * (gen_decomp_ports.py DEAD_SDK_UNLINKED): the guest-code registry has no
+     * entry, so a guest call into one takes the loud boundary. */
+    TEST("GPU_mask_packet_dispatch");
+    ASSERT(PE_GuestCode_Resolve(0x80075C44u) == NULL &&
+           PE_GuestCode_Resolve(0x80075C6Cu) == NULL,
+           "unlinked dead SDK leaf still resolves in the guest-code registry");
+    PASS();
+}
+
+static void test_spu_read_guest_dispatch(void)
+{
+    PeSpuDmaState state;
+    TEST("SPU_read_guest_dispatch");
+    ResetTestState(); PE_SpuDma_Reset();
+    ASSERT(PE_SpuDma_InstallIrq(PE_SPU_DMA_IRQ_HANDLER), "SPU IRQ install");
+    PE_StoreU32(0x8009B3FCu, 0x80120000u);
+    PE_StoreU32(0x8009B410u, 0x80120400u);
+    PE_StoreU32(0x8009B424u, 3u);
+    PE_StoreU16(0x8009B414u, 0x400u);
+    PE_StoreU16(0x801201AAu, 0xA5A5u);
+    PE_StoreU32(0x80120400u, 0x12345678u);
+    PE_StoreU32(0x8009B430u, 0x12345678u);
+    PE_SpuRam_Data()[0x2000u] = 0xB7u;
+    PE_StoreU8(0x80150000u, 0xA5u);
+    ASSERT(PE_GuestCall("SPU read", 0x80085DF4u, 2u, 0x80150000u, 64u, 0u, 0u) == 64,
+           "SPU read returned wrong size");
+    PE_SpuDma_GetState(&state);
+    ASSERT(!PE_Port_ShouldStop() && state.pending && state.source == 0x80150000u &&
+           state.destination == 0x2000u && PE_LoadU32(0x8009B44Cu) == 1u &&
+           PE_LoadU8(0x80150000u) == 0xA5u && PE_LoadU32(0x8009B430u) == 0u &&
+           PE_LoadU16(0x801201A6u) == 0x400u && PE_LoadU16(0x801201AAu) == 0xA5B5u &&
+           PE_LoadU32(0x80120400u) == 0x32345678u, "SPU read issue state");
+    ASSERT(PE_SpuDma_Service() == 1 && !PE_Port_ShouldStop() &&
+           PE_LoadU8(0x80150000u) == 0xB7u, "SPU read completion");
+    ASSERT(PE_GuestCall("SPU empty read", 0x80085DF4u, 2u, 0x80150000u, 0u, 0u, 0u) == 0 &&
+           PE_Port_ShouldStop(), "zero-length read should stop explicitly");
+    PE_SpuDma_GetState(&state);
+    ASSERT(!state.pending, "refused read started DMA");
+    PASS();
+}
+
+static void test_irq_source9_registration(void)
+{
+    static const struct { uint16_t guard; uint32_t old, next; uint16_t mask, registered; } cases[] = {
+        {0, 0, 0x80150000u, 0x155, 0x411},
+        {1, 0x80150000u, 0x80150000u, 0x155, 0x411},
+        {1, 0, 0x80150000u, 0x155, 0x411},
+        {1, 0x80150000u, 0, 0x7ff, 0x7ff},
+        {1, 0x80150000u, 0x80150100u, 0, 0},
+    };
+    static const uint32_t sources[] = {1u, 4u, 5u, 6u, 7u, 8u, 9u, 10u};
+    TEST("IRQ_sources_registration");
+    ResetTestState();
+    for (unsigned j = 0; j < sizeof sources / sizeof sources[0]; ++j) {
+    uint32_t source = sources[j], slot = 0x800945E8u + source * 4u;
+    uint16_t bit = (uint16_t)(1u << source);
+    for (unsigned i = 0; i < sizeof cases / sizeof cases[0]; ++i) {
+        int changed = cases[i].guard && cases[i].old != cases[i].next;
+        uint16_t mask = cases[i].mask, registered = cases[i].registered;
+        PE_StoreU16(0x800945E4u, cases[i].guard);
+        PE_StoreU32(slot, cases[i].old);
+        PE_StoreU16(0x80094614u, registered);
+        PE_IRQ_ExchangeMask(mask);
+        if (source >= 4u && source <= 6u)
+            (void)func_80073C84(source - 4u, 0x5au);
+        if (changed) {
+            mask = cases[i].next ? mask | bit : mask & ~bit;
+            registered = cases[i].next ? registered | bit : registered & ~bit;
+        }
+        ASSERT(func_800740D0(source, cases[i].next) == cases[i].old &&
+               !PE_Port_ShouldStop() &&
+               PE_LoadU32(slot) == (changed ? cases[i].next : cases[i].old) &&
+               PE_LoadU16(0x80094614u) == registered && PE_IRQ_GetMask() == mask,
+               "source registration differs from selected original cases");
+        if (source >= 4u && source <= 6u)
+            ASSERT(func_80073C84(source - 4u, 0x5au) ==
+                   (changed ? (uint32_t)(cases[i].next == 0u) : 0x5au),
+                   "timer clear-mode side effect differs from original");
+    }
+    }
+    PASS();
+}
+
+static void test_spu_init_wrapper_guest_dispatch(void)
+{
+    static const int modes[] = {0, 1, -1};
+    TEST("SPU_init_wrapper_guest_dispatch");
+    for (unsigned i = 0; i < sizeof modes / sizeof modes[0]; ++i) {
+        ResetTestState();
+        PE_Spu_SetActive(0);
+        PE_SpuDma_Reset();
+        PE_StoreU32(0x8009B3FCu, 0x1F801C00u);
+        PE_StoreU32(0x8009B40Cu, 0x1F8010F0u);
+        PE_StoreU32(0x8009B46Cu, 0x7654u);
+        PE_StoreU16(0x8009B3B8u, 0xAAAAu);
+        PE_SpuRegister_StoreU16(0x1AEu, 0u);
+        (void)PE_GuestCall("SPU init wrapper", 0x8007D074u, 1u,
+                           (uint32_t)modes[i], 0u, 0u, 0u);
+        ASSERT(!PE_Port_ShouldStop() && PE_LoadU32(0x8009B398u) == 0x7654u &&
+               PE_SpuRegister_LoadU16(0x1A2u) == 0x7654u &&
+               PE_LoadU16(0x8009B3B8u) == (modes[i] == 0 ? 0xC000u : 0xAAAAu) &&
+               PE_LoadU32(0x8009B3ECu) == 1u && PE_Event_SpuDmaEnabled() &&
+               PE_LoadU32(0x800956D0u) == PE_SPU_DMA_IRQ_HANDLER,
+               "SPU init wrapper state differs from selected modeled path");
+    }
+    PE_SpuDma_Reset();
+    PASS();
+}
+
+static void test_spu_hardware_init_guest_dispatch(void)
+{
+    TEST("SPU_hardware_init_guest_dispatch");
+    ResetTestState();
+    for (unsigned mode = 0; mode <= 1u; ++mode) {
+        PE_Spu_SetActive((int)mode);
+        PE_SpuDma_Reset();
+        PE_StoreU32(0x8009B3FCu, 0x1F801C00u);
+        PE_StoreU32(0x8009B40Cu, 0x1F8010F0u);
+        PE_GPU_WriteDPCR(0x12345678u);
+        PE_SpuRegister_StoreU16(0x1AEu, 0u);
+        PE_SpuRegister_StoreU16(4u, 0xA5A5u);
+        for (uint32_t i = 0; i < 16u; ++i) PE_StoreU8(0x8009B43Cu + i, (uint8_t)i);
+        ASSERT(PE_GuestCall("SPU init", 0x8007D1D4u, 1u, mode, 0u, 0u, 0u) == 0 &&
+               !PE_Port_ShouldStop() && PE_GPU_ReadDPCR() == (0x12345678u | 0xB0000u) &&
+               PE_LoadU32(0x8009B420u) == 2u && PE_LoadU32(0x8009B424u) == 3u &&
+               PE_LoadU32(0x8009B428u) == 8u && PE_LoadU32(0x8009B42Cu) == 7u &&
+               PE_LoadU32(0x8009B430u) == 1u && PE_SpuRegister_LoadU16(0x1AAu) == 0xC000u &&
+               PE_SpuRegister_LoadU16(0x1ACu) == 4u,
+               "SPU init common state differs from selected original case");
+        if (mode == 0u) {
+            ASSERT(PE_LoadU16(0x8009B414u) == 0x200u &&
+                   PE_SpuRegister_LoadU16(4u) == 0x3FFFu &&
+                   PE_SpuRegister_LoadU16(23u * 16u + 6u) == 0x200u &&
+                   PE_SpuRegister_LoadU16(0x188u) == 0xFFFFu &&
+                   PE_SpuRegister_LoadU16(0x18Au) == 0x00FFu &&
+                   PE_SpuRegister_LoadU16(0x18Cu) == 0xFFFFu &&
+                   PE_SpuRegister_LoadU16(0x18Eu) == 0x00FFu,
+                   "SPU init mode-zero register state differs");
+            for (uint32_t i = 0; i < 16u; ++i)
+                ASSERT(PE_SpuRam_LoadU8(0x1000u + i) == (uint8_t)i,
+                       "SPU init PIO payload differs");
+        } else {
+            ASSERT(PE_LoadU16(0x8009B414u) == 0u && PE_SpuRegister_LoadU16(4u) == 0xA5A5u,
+                   "SPU init nonzero mode changed voice state");
+        }
+    }
+    PE_Spu_SetActive(0);
+    PE_SpuDma_Reset();
+    PASS();
+}
+
+static void test_spu_pio_guest_dispatch(void)
+{
+    static const uint32_t sizes[] = {0u, 1u, 2u, 63u, 64u, 65u, 128u};
+    TEST("SPU_pio_guest_dispatch");
+    ResetTestState();
+    for (unsigned active = 0; active < 2u; ++active) {
+        for (unsigned k = 0; k < sizeof sizes / sizeof sizes[0]; ++k) {
+            PeSpuDmaState dma;
+            uint32_t rounded = (sizes[k] + 1u) & ~1u;
+            PE_Spu_SetActive((int)active);
+            PE_SpuDma_Reset();
+            PE_StoreU32(0x8009B3FCu, 0x1F801C00u);
+            PE_StoreU16(0x8009B414u, 0x200u);
+            PE_StoreU32(0x8009B418u, 1u);
+            PE_StoreU32(0x8009B434u, 0u);
+            PE_StoreU32(0x8009B430u, 0x12345678u);
+            PE_SpuRegister_StoreU16(0x1AAu, 0xA5A5u);
+            PE_SpuRegister_StoreU16(0x1AEu, 0u);
+            for (uint32_t i = 0; i < 130u; ++i) PE_StoreU8(0x80160000u + i, (uint8_t)i);
+            ASSERT((uint32_t)PE_GuestCall("SPU PIO write", 0x80085E54u, 2u,
+                                          0x80160000u, sizes[k], 0u, 0u) == sizes[k] &&
+                   !PE_Port_ShouldStop() && PE_LoadU32(0x8009B430u) == 0u &&
+                   PE_SpuRegister_LoadU16(0x1AAu) == 0xA585u,
+                   "SPU PIO wrapper state differs from selected original case");
+            PE_SpuDma_GetState(&dma);
+            ASSERT(!dma.pending, "SPU PIO issued an unexpected DMA transfer");
+            for (uint32_t i = 0; i < rounded; ++i)
+                ASSERT(PE_SpuRam_LoadU8(0x1000u + i) == (uint8_t)i,
+                       "SPU PIO payload differs from selected original writes");
+        }
+    }
+    PE_Spu_SetActive(0);
+    PE_SpuDma_Reset();
+    /* state60a (sw-s60a1): the clean-room programmed-I/O provider replays the vectors' FIFO
+     * register traffic and has no host DMA query (the vectors show none), so the former
+     * "refuse while a DMA4 transfer is pending" contract is no longer part of this leaf. */
+    PE_StoreU32(0x8009B3FCu, 0x1F801C00u);
+    PE_Port_RunControlReset();
+    PE_SpuDma_Reset();
+    pe_plat_spua_write_io(0x80160001u, 2u);
+    ASSERT(PE_Port_ShouldStop(), "PIO did not refuse an unaligned source");
+    PE_Port_RunControlReset();
+    PE_SpuDma_Reset();
+    PASS();
+}
+
+static void test_spu_fifo_synthesis_toggle(void)
+{
+    PeSpuStats stats;
+    TEST("SPU_fifo_synthesis_toggle");
+    ResetTestState();
+    PE_Spu_SetActive(0);
+    PE_SpuDma_Reset();
+    PE_SpuRegister_StoreU16(0x1A6u, 0xffffu);
+    PE_SpuRegister_StoreU16(0x1A8u, 0x1122u);
+    PE_SpuRegister_StoreU16(0x1A8u, 0x3344u);
+    PE_SpuRegister_StoreU16(0x1A8u, 0x5566u);
+    PE_SpuRegister_StoreU16(0x1A8u, 0x7788u);
+    ASSERT(PE_SpuRam_LoadU8(0x7fff8u) == 0x22u && PE_SpuRam_LoadU8(0x7ffffu) == 0x77u,
+           "inactive synthesis did not store FIFO data");
+    PE_Spu_SetActive(1);
+    PE_SpuRegister_StoreU16(0x1A8u, 0x99aau);
+    PE_Spu_GetStats(&stats);
+    ASSERT(PE_SpuRam_LoadU8(0u) == 0xaau && PE_SpuRam_LoadU8(1u) == 0x99u &&
+           PE_SpuRam_LoadU8(2u) == 0u && stats.fifo_bytes == 2u,
+           "FIFO cursor or active statistics changed on synthesis toggle");
+    PE_Spu_SetActive(0);
+    PE_SpuDma_Reset();
+    PASS();
+}
+
+static void test_spu_native_delay_guest_dispatch(void)
+{
+    TEST("SPU_native_delay_guest_dispatch");
+    ResetTestState();
+    PE_StoreU32(0x80150000u, 0xDEADBEEFu);
+    (void)PE_GuestCall("SPU delay", 0x8007DCACu, 0u, 0u, 0u, 0u, 0u);
+    ASSERT(!PE_Port_ShouldStop() && PE_LoadU32(0x80150000u) == 0xDEADBEEFu,
+           "SPU delay did not return with unrelated state intact");
+    PASS();
+}
+
+static void test_spu_init_callback_registration(void)
+{
+    PeSpuDmaState state;
+    uint32_t handle;
+    int depth;
+    TEST("SPU_native_event_install");
+    ResetTestState();
+    PE_SpuDma_Reset();
+    PE_StoreU32(0x8009B3ECu, 0u);
+    PE_StoreU32(0x800956D0u, 0u);
+    PE_GPU_WriteDICR(0u);
+    depth = PE_Irq_LockDepth();
+    (void)PE_GuestCall("SPU DMA event install", 0x8007D15Cu, 0u, 0u, 0u, 0u, 0u);
+    handle = PE_LoadU32(0x8009B384u);
+    PE_SpuDma_GetState(&state);
+    ASSERT(!PE_Port_ShouldStop() && PE_LoadU32(0x8009B3ECu) == 1u && handle != 0u &&
+           state.irq_installed && state.irq_handler == PE_SPU_DMA_IRQ_HANDLER &&
+           PE_LoadU32(0x800956D0u) == PE_SPU_DMA_IRQ_HANDLER &&
+           (PE_GPU_ReadDICR() & 0x00100000u) != 0u && PE_Event_SpuDmaEnabled() &&
+           PE_Irq_LockDepth() == depth, "SPU init did not register DMA4 callback/event");
+    PE_StoreU32(0x800956D0u, 0x80150000u);
+    (void)PE_GuestCall("SPU DMA event install", 0x8007D15Cu, 0u, 0u, 0u, 0u, 0u);
+    ASSERT(PE_LoadU32(0x800956D0u) == 0x80150000u && PE_LoadU32(0x8009B384u) == handle,
+           "SPU init guard reinstalled callback/event");
+    PASS();
+}
+
+static void test_spu_init_reverb_register(void)
+{
+    TEST("SPU_init_reverb_register");
+    ResetTestState();
+    PE_SpuDma_Reset();
+    PE_StoreU32(0x8009B3FCu, 0x1F801C00u);
+    PE_StoreU32(0x8009B46Cu, 0x7654u);
+    func_8007D054();
+    ASSERT(!PE_Port_ShouldStop() && PE_LoadU32(0x8009B398u) == 0x7654u &&
+           PE_SpuRegister_LoadU16(0x1A2u) == 0x7654u,
+           "SPU init did not publish the selected reverb address");
+    PASS();
+}
+
+static void test_spu_shutdown_guest_dispatch(void)
+{
+    int handle, depth;
+    TEST("SPU_shutdown_guest_dispatch");
+    ResetTestState();
+    PE_StoreU32(0x8009B3ECu, 2u);
+    PE_StoreU32(0x8009B434u, 0x11111111u);
+    PE_StoreU32(0x8009B438u, 0x22222222u);
+    (void)PE_GuestCall("SPU shutdown guarded", 0x80085984u, 0u, 0u, 0u, 0u, 0u);
+    ASSERT(!PE_Port_ShouldStop() && PE_LoadU32(0x8009B3ECu) == 2u &&
+           PE_LoadU32(0x8009B434u) == 0x11111111u &&
+           PE_LoadU32(0x8009B438u) == 0x22222222u, "SPU shutdown guard changed state");
+    handle = PE_Event_Open(0xF0000009u, 0x20u, 0x2000u, 0u);
+    (void)PE_Event_Enable(handle);
+    PE_StoreU32(0x8009B384u, (uint32_t)handle);
+    PE_StoreU32(0x8009B3ECu, 1u);
+    PE_StoreU32(0x800956D0u, 0x80150000u);
+    PE_GPU_WriteDICR(0x00900000u);
+    depth = PE_Irq_LockDepth();
+    (void)PE_GuestCall("SPU shutdown", 0x80085984u, 0u, 0u, 0u, 0u, 0u);
+    ASSERT(!PE_Port_ShouldStop() && PE_LoadU32(0x8009B3ECu) == 0u &&
+           PE_LoadU32(0x8009B434u) == 0u && PE_LoadU32(0x8009B438u) == 0u &&
+           PE_LoadU32(0x800956D0u) == 0u && (PE_GPU_ReadDICR() & 0x00100000u) == 0u &&
+           !PE_Event_SpuDmaEnabled() && PE_Irq_LockDepth() == depth,
+           "SPU shutdown did not clear modeled registration and event");
+    PASS();
+}
+
+/* BIOS B(07h) DeliverEvent host model and _err_math (native-errmath-20261031). */
+static void test_bios_deliver_event_and_err_math(void)
+{
+    int spu, card;
+    TEST("BIOS_deliver_event_and_err_math");
+    ResetTestState();
+    spu = PE_Event_Open(0xF0000009u, 0x20u, 0x2000u, 0u);
+    card = PE_Event_Open(0xF0000011u, 0x4u, 0x2000u, 0u);
+    /* opened but not enabled: nothing is delivered */
+    PE_Event_Deliver(0xF0000009u, 0x20u);
+    PE_Event_Deliver(0xF0000011u, 0x4u);
+    ASSERT(!PE_Event_ConsumeSpuDma(spu) && !PE_Event_Test(card), "disabled event delivered");
+    (void)PE_Event_Enable(spu);
+    (void)PE_Event_Enable(card);
+    /* another spec or class: nothing is delivered */
+    PE_Event_Deliver(0xF0000011u, 0x8u);
+    PE_Event_Deliver(0xF4000002u, 0x302u);
+    ASSERT(!PE_Event_ConsumeSpuDma(spu) && !PE_Event_Test(card), "unmatched event delivered");
+    PE_Event_Deliver(0xF0000009u, 0x20u);
+    PE_Event_Deliver(0xF0000011u, 0x4u);
+    ASSERT(PE_Event_ConsumeSpuDma(spu) && PE_Event_Test(card), "enabled NOINTR events not marked");
+    /* _err_math: records code and argument; its F4000002 event is never
+     * opened by the game, so the delivery changes nothing. */
+    PE_Event_Deliver(0xF0000011u, 0x4u);
+    ASSERT(func_800739C4(0x22, 0x11) == 0, "_err_math returns 0");
+    ASSERT(PE_LoadU32(0x80094564u) == 0x22u && PE_LoadU32(0x80094568u) == 0x11u,
+           "_err_math records code and argument");
+    ASSERT(PE_Event_Test(card) && !PE_Event_ConsumeSpuDma(spu) && !PE_Port_ShouldStop(),
+           "_err_math delivery touched another event or stopped the port");
+    PASS();
+}
+
+/* Clean-room BIOS event services (pe_plat_bios_event.c), contract from
+ * psx-spx kernelbios "BIOS Event Functions": TestEvent returns 0 for a
+ * busy or disabled event and 1 once for a ready event (switching it back
+ * to busy); Disable/Close always return 1, even for an invalid handle;
+ * UnDeliverEvent (class, spec) never makes a busy event ready.  The four
+ * guest names forward to the host event table PE_Event_*; the table's own
+ * Disable/Close/UnDeliver side effects are not asserted here (REPORT.md
+ * records what the host table does and does not model). */
+static void test_bios_event_services(void)
+{
+    int a, b;
+    TEST("BIOS_event_services");
+    ResetTestState();
+    a = PE_Event_Open(0xF0000011u, 0x4u, 0x2000u, 0u);
+    b = PE_Event_Open(0xF0000011u, 0x8u, 0x2000u, 0u);
+    ASSERT(pe_plat_bios_test_event((uint32_t)a) == 0, "never-enabled event tests ready");
+    PE_Event_Enable(a);
+    PE_Event_Enable(b);
+    ASSERT(pe_plat_bios_test_event((uint32_t)a) == 0, "busy event tests ready");
+    pe_plat_bios_undeliver_event(0xF0000011u, 0x4);
+    ASSERT(pe_plat_bios_test_event((uint32_t)a) == 0 && pe_plat_bios_test_event((uint32_t)b) == 0,
+           "UnDeliverEvent made a busy event ready");
+    PE_Event_Deliver(0xF0000011u, 0x4u);
+    ASSERT(pe_plat_bios_test_event((uint32_t)b) == 0, "other spec delivered");
+    ASSERT(pe_plat_bios_test_event((uint32_t)a) == 1, "ready event not reported");
+    ASSERT(pe_plat_bios_test_event((uint32_t)a) == 0, "TestEvent did not switch back to busy");
+    PE_Event_Deliver(0xF0000011u, 0x4u);
+    PE_Event_Deliver(0xF0000011u, 0x8u);
+    pe_plat_bios_undeliver_event(0xF0000011u, 0x99);
+    ASSERT(pe_plat_bios_test_event((uint32_t)a) == 1 && pe_plat_bios_test_event((uint32_t)b) == 1,
+           "UnDeliverEvent touched a non-matching event");
+    ASSERT(pe_plat_bios_disable_event(a) == 1, "DisableEvent must return 1");
+    ASSERT(pe_plat_bios_test_event((uint32_t)a) == 0, "disabled busy event tested ready");
+    ASSERT(pe_plat_bios_close_event(a) == 1, "CloseEvent must return 1");
+    ASSERT(pe_plat_bios_close_event(a) == 1 && pe_plat_bios_disable_event(a) == 1,
+           "invalid handle must still return 1");
+    PE_Event_Close(b);
+    PASS();
+}
+
+static void test_spu_common_attributes_guest_dispatch(void)
+{
+    static const struct { uint32_t mask; uint16_t lm, rm, values[7]; } cases[] = {
+        {0, 0, 0, {0x0090, 0x7ff0, 0x1122, 0x3344, 0x5566, 0x7788, 0x5aac}},
+        {0, 1, 7, {0x807f, 0xe000, 0x1122, 0x3344, 0x5566, 0x7788, 0x5aac}},
+        {3, 7, 1, {0x0090, 0x7ff0, 0x5aa5, 0x5aa5, 0x5aa5, 0x5aa5, 0x5aa5}},
+        {15, 7, 1, {0xe07f, 0x8000, 0x5aa5, 0x5aa5, 0x5aa5, 0x5aa5, 0x5aa5}},
+        {0x3f40, 2, 6, {0x5aa5, 0x5aa5, 0x1122, 0x5aa5, 0x5566, 0x7788, 0x5aac}},
+        {0x100, 0, 0, {0x5aa5, 0x5aa5, 0x5aa5, 0x5aa5, 0x5aa5, 0x5aa5, 0x5aa5}},
+        {0x200, 0, 0, {0x5aa5, 0x5aa5, 0x5aa5, 0x5aa5, 0x5aa5, 0x5aa5, 0x5aa4}},
+        {0x1000, 0, 0, {0x5aa5, 0x5aa5, 0x5aa5, 0x5aa5, 0x5aa5, 0x5aa5, 0x5aad}},
+        {0x2000, 0, 0, {0x5aa5, 0x5aa5, 0x5aa5, 0x5aa5, 0x5aa5, 0x5aa5, 0x5aa5}},
+        {4, 7, 7, {0x5aa5, 0x5aa5, 0x5aa5, 0x5aa5, 0x5aa5, 0x5aa5, 0x5aa5}},
+    };
+    static const uint32_t offsets[] = {0x180u, 0x182u, 0x1b0u, 0x1b2u, 0x1b4u, 0x1b6u, 0x1aau};
+    TEST("SPU_common_attributes_guest_dispatch");
+    ResetTestState();
+    PE_SpuDma_Reset();
+    PE_StoreU32(0x8009B3FCu, 0x1F801C00u);
+    for (unsigned i = 0; i < sizeof cases / sizeof cases[0]; ++i) {
+        for (unsigned j = 0; j < 7u; ++j) PE_SpuRegister_StoreU16(offsets[j], 0x5aa5u);
+        PE_StoreU32(0x80160000u, cases[i].mask);
+        PE_StoreU16(0x80160004u, 0x90u); PE_StoreU16(0x80160006u, 0xfff0u);
+        PE_StoreU16(0x80160008u, cases[i].lm); PE_StoreU16(0x8016000Au, cases[i].rm);
+        PE_StoreU16(0x80160010u, 0x1122u); PE_StoreU16(0x80160012u, 0x3344u);
+        PE_StoreU32(0x80160014u, 1u); PE_StoreU32(0x80160018u, 0u);
+        PE_StoreU16(0x8016001Cu, 0x5566u); PE_StoreU16(0x8016001Eu, 0x7788u);
+        PE_StoreU32(0x80160020u, 1u); PE_StoreU32(0x80160024u, 0u);
+        (void)PE_GuestCall("SPU common attributes", 0x80085F74u, 1u, 0x80160000u, 0u, 0u, 0u);
+        ASSERT(!PE_Port_ShouldStop(), "SPU common attributes stopped");
+        for (unsigned j = 0; j < 7u; ++j)
+            ASSERT(PE_SpuRegister_LoadU16(offsets[j]) == cases[i].values[j],
+                   "SPU common attributes differ from selected original case");
+    }
+    PASS();
+}
+
+static void test_spu_voice_volume_native(void)
+{
+    static const struct { int voice; uint16_t left, right; int16_t lm, rm; uint16_t lw, rw; } cases[] = {
+        {0, 0, 0, 0, 0, 0, 0}, {23, 0xffffu, 0x9234u, 1, 7, 0xffffu, 0xf234u},
+        {1, 0x1234u, 0x5678u, 2, 6, 0x9234u, 0xd678u},
+        {2, 0x7fffu, 0x8000u, 3, 5, 0xffffu, 0xc000u},
+        {3, 0x1111u, 0x2222u, 4, 4, 0xb111u, 0xb222u},
+        {4, 0xffffu, 0xffffu, 8, -1, 0x7fffu, 0x7fffu},
+    };
+    TEST("SPU_voice_volume_native");
+    ResetTestState();
+    PE_SpuDma_Reset();
+    PE_StoreU32(0x8009B3FCu, 0x1F801C00u);
+    for (unsigned i = 0; i < sizeof cases / sizeof cases[0]; ++i) {
+        pe_plat_spu_voice_volume(cases[i].voice, cases[i].left, cases[i].right,
+                                 cases[i].lm, cases[i].rm);
+        ASSERT(!PE_Port_ShouldStop() &&
+               PE_SpuRegister_LoadU16((uint32_t)cases[i].voice * 16u) == cases[i].lw &&
+               PE_SpuRegister_LoadU16((uint32_t)cases[i].voice * 16u + 2u) == cases[i].rw,
+               "SPU voice-volume output differs from selected original cases");
+    }
+    PASS();
+}
+
+static void test_spu_control_bit_guest_dispatch(void)
+{
+    static const struct { int32_t mode; uint16_t initial, expected; } cases[] = {
+        {0, 0xffffu, 0xffbfu}, {1, 0u, 0x40u}, {3, 0xa5a5u, 0xa5e5u},
+        {2, 0x1234u, 0x1234u}, {-1, 0x5aa5u, 0x5aa5u},
+    };
+    TEST("SPU_control_bit_guest_dispatch");
+    ResetTestState();
+    PE_SpuDma_Reset();
+    PE_StoreU32(0x8009B3FCu, 0x1F801C00u);
+    for (unsigned i = 0; i < sizeof cases / sizeof cases[0]; ++i) {
+        PE_SpuRegister_StoreU16(0x1AAu, cases[i].initial);
+        ASSERT(PE_GuestCall("SPU control bit", 0x80085C44u, 1u,
+                            (uint32_t)cases[i].mode, 0u, 0u, 0u) == cases[i].mode &&
+               !PE_Port_ShouldStop() && PE_SpuRegister_LoadU16(0x1AAu) == cases[i].expected,
+               "SPU control bit differs from selected original normal path");
+    }
+    PASS();
+}
+
+static void test_spu_reverb_enable_guest_dispatch(void)
+{
+    static const struct { int32_t mode; uint32_t configured, used, old; uint16_t control; } cases[] = {
+        {0, 0, 0, 3, 0xffffu}, {1, 1, 1, 0, 0u}, {1, 0, 0, 0, 0u},
+        {1, 0, 1, 1, 0xffffu}, {2, 0, 1, 3, 0x1234u}, {-1, 0, 1, 3, 0x1234u},
+    };
+    TEST("SPU_reverb_enable_guest_dispatch");
+    ResetTestState();
+    PE_SpuDma_Reset();
+    PE_StoreU32(0x8009B3FCu, 0x1F801C00u);
+    PE_StoreU32(0x8009B424u, 3u);
+    PE_StoreU32(0x8009B464u, 0x80150000u);
+    PE_StoreU32(0x8009B398u, 0x10u);
+    for (unsigned i = 0; i < sizeof cases / sizeof cases[0]; ++i) {
+        int disabled = cases[i].mode == 0 ||
+            (cases[i].mode == 1 && cases[i].configured != 1u && cases[i].used);
+        uint32_t expected = disabled ? 0u : cases[i].mode == 1 ? 1u : cases[i].old;
+        uint16_t control = disabled ? cases[i].control & 0xff7fu :
+            cases[i].mode == 1 ? cases[i].control | 0x80u : cases[i].control;
+        PE_StoreU32(0x8009B390u, cases[i].old);
+        PE_StoreU32(0x8009B394u, cases[i].configured);
+        PE_StoreU32(0x80150000u, cases[i].used ? 0x100u : 0x40000000u);
+        PE_StoreU32(0x80150004u, 0u);
+        PE_SpuRegister_StoreU16(0x1AAu, cases[i].control);
+        ASSERT((uint32_t)PE_GuestCall("SPU reverb enable", 0x80085A64u, 1u,
+                                      (uint32_t)cases[i].mode, 0u, 0u, 0u) == expected &&
+               !PE_Port_ShouldStop() && PE_LoadU32(0x8009B390u) == expected &&
+               PE_SpuRegister_LoadU16(0x1AAu) == control,
+               "SPU reverb enable differs from selected original cases");
+    }
+    PASS();
+}
+
+static void test_spu_transfer_address_guest_dispatch(void)
+{
+    static const uint32_t addresses[] = {0u, 0x100fu, 0x1010u, 0x1234u,
+                                         0x7fff8u, 0x7fff9u, 0xffffffffu};
+    TEST("SPU_transfer_address_guest_dispatch");
+    ResetTestState();
+    PE_StoreU32(0x8009B424u, 3u);
+    PE_StoreU32(0x8009B420u, 0u);
+    for (unsigned i = 0; i < sizeof addresses / sizeof addresses[0]; ++i) {
+        uint32_t address = addresses[i];
+        int valid = address >= 0x1010u && address <= 0x7fff8u;
+        PE_StoreU16(0x8009B414u, 0xABCDu);
+        ASSERT((uint32_t)PE_GuestCall("SPU transfer address", 0x80085EB4u, 1u,
+                                      address, 0u, 0u, 0u) ==
+                   (valid ? (address & ~7u) : 0u) && !PE_Port_ShouldStop() &&
+               PE_LoadU16(0x8009B414u) == (valid ? (uint16_t)(address >> 3) : 0xABCDu),
+               "SPU transfer address differs at selected boundary");
+    }
+    PASS();
+}
+
+static void test_spu_heap_query_raw_guest_dispatch(void)
+{
+    static const struct { uint32_t present, first, first_size, second, address; int result; } cases[] = {
+        {0, 0, 0, 0, 0x80, 0},
+        {1, 0x40000000u, 0, 0, 0x80, 0},
+        {1, 0x100, 0x30, 0, 0x80, 1},
+        {1, 0x100, 0x30, 0, 0x110, 1},
+        {1, 0x100, 0x30, 0x40000000u, 0x140, 0},
+        {1, 0x80000100u, 0x30, 0x200, 0x110, 1},
+    };
+    TEST("SPU_heap_query_raw_guest_dispatch");
+    ResetTestState();
+    for (unsigned i = 0; i < sizeof cases / sizeof cases[0]; ++i) {
+        PE_StoreU32(0x8009B464u, cases[i].present ? 0x80150000u : 0u);
+        PE_StoreU32(0x80150000u, cases[i].first);
+        PE_StoreU32(0x80150004u, cases[i].first_size);
+        PE_StoreU32(0x80150008u, cases[i].second);
+        PE_StoreU32(0x8015000Cu, 0x30u);
+        ASSERT(PE_GuestCall("SPU raw heap query", 0x80085B34u, 1u,
+                            cases[i].address, 0u, 0u, 0u) == cases[i].result &&
+               !PE_Port_ShouldStop(), "SPU raw heap query differs from original");
+    }
+    PASS();
+}
+
+static void test_spu_heap_query_guest_dispatch(void)
+{
+    static const struct { uint32_t present, first, first_size, second, address; int result; } cases[] = {
+        {0, 0, 0, 0, 0x10, 0},
+        {1, 0x40000000u, 0, 0, 0x10, 0},
+        {1, 0x100, 0x30, 0, 0x10, 1},
+        {1, 0x100, 0x30, 0, 0x22, 1},
+        {1, 0x100, 0x30, 0x40000000u, 0x28, 0},
+        {1, 0x80000100u, 0x30, 0x200, 0x22, 1},
+    };
+    TEST("SPU_heap_query_guest_dispatch");
+    ResetTestState();
+    for (unsigned i = 0; i < sizeof cases / sizeof cases[0]; ++i) {
+        PE_StoreU32(0x8009B424u, 3u);
+        PE_StoreU32(0x8009B464u, cases[i].present ? 0x80150000u : 0u);
+        PE_StoreU32(0x80150000u, cases[i].first);
+        PE_StoreU32(0x80150004u, cases[i].first_size);
+        PE_StoreU32(0x80150008u, cases[i].second);
+        PE_StoreU32(0x8015000Cu, 0x30u);
+        ASSERT(PE_GuestCall("SPU heap query", 0x80085BB4u, 1u,
+                            cases[i].address, 0u, 0u, 0u) == cases[i].result &&
+               !PE_Port_ShouldStop(), "SPU heap query differs from original");
+    }
+    PASS();
+}
+
+static void test_spu_heap_config_guest_dispatch(void)
+{
+    static const struct { int32_t count; uint32_t shift; } cases[] = {
+        {0, 3u}, {-1, 3u}, {4, 0u}, {4, 3u}, {4, 31u}, {4, 32u},
+    };
+    TEST("SPU_heap_config_guest_dispatch");
+    ResetTestState();
+    for (unsigned i = 0; i < sizeof cases / sizeof cases[0]; ++i) {
+        PE_StoreU32(0x8009B424u, cases[i].shift);
+        PE_StoreU32(0x8009B45Cu, 0xDEADBEEFu);
+        PE_StoreU32(0x8009B460u, 0xDEADBEEFu);
+        PE_StoreU32(0x8009B464u, 0xDEADBEEFu);
+        PE_StoreU32(0x80150000u, 0xDEADBEEFu);
+        PE_StoreU32(0x80150004u, 0xDEADBEEFu);
+        ASSERT(PE_GuestCall("SPU heap configuration", 0x80085A04u, 2u,
+                            (uint32_t)cases[i].count, 0x80150000u, 0u, 0u) ==
+                   (cases[i].count > 0 ? cases[i].count : 0) && !PE_Port_ShouldStop(),
+               "SPU heap config result differs");
+        if (cases[i].count > 0) {
+            ASSERT(PE_LoadU32(0x8009B45Cu) == (uint32_t)cases[i].count &&
+                   PE_LoadU32(0x8009B460u) == 0u && PE_LoadU32(0x8009B464u) == 0x80150000u &&
+                   PE_LoadU32(0x80150000u) == 0x40001010u &&
+                   PE_LoadU32(0x80150004u) == ((0x10000u << (cases[i].shift & 31u)) - 0x1010u),
+                   "SPU heap config stores differ");
+        } else {
+            ASSERT(PE_LoadU32(0x8009B45Cu) == 0xDEADBEEFu &&
+                   PE_LoadU32(0x8009B460u) == 0xDEADBEEFu &&
+                   PE_LoadU32(0x8009B464u) == 0xDEADBEEFu &&
+                   PE_LoadU32(0x80150000u) == 0xDEADBEEFu &&
+                   PE_LoadU32(0x80150004u) == 0xDEADBEEFu,
+                   "SPU heap config changed state for nonpositive count");
+        }
+    }
+    PASS();
+}
+
+static void test_spu_control_level_guest_dispatch(void)
+{
+    static const struct { int32_t input; uint16_t control, selected; } cases[] = {
+        {-1, 0xffffu, 0u}, {0, 0u, 0u}, {1, 0xffffu, 1u},
+        {63, 0x1234u, 63u}, {64, 0xffffu, 63u}, {0x7fffffff, 0x5aa5u, 63u},
+    };
+    TEST("SPU_control_level_guest_dispatch");
+    ResetTestState();
+    PE_SpuDma_Reset();
+    PE_StoreU32(0x8009B3FCu, 0x1F801C00u);
+    for (unsigned i = 0; i < sizeof cases / sizeof cases[0]; ++i) {
+        PE_SpuRegister_StoreU16(0x1AAu, cases[i].control);
+        ASSERT(PE_GuestCall("SPU control level", 0x80089EB8u, 1u,
+                            (uint32_t)cases[i].input, 0u, 0u, 0u) == cases[i].selected &&
+               !PE_Port_ShouldStop() && PE_SpuRegister_LoadU16(0x1AAu) ==
+                   (uint16_t)((cases[i].control & 0xC0FFu) | (cases[i].selected << 8)),
+               "SPU control level differs from selected original cases");
+    }
+    PASS();
+}
+
+static void test_spu_dma_callback_guest_dispatch(void)
+{
+    TEST("SPU_dma_callback_guest_dispatch");
+    ResetTestState();
+    PE_StoreU32(0x800956D0u, 0u);
+    (void)PE_GuestCall("SPU DMA callback", 0x8007DD14u, 1u,
+                       0x80150000u, 0u, 0u, 0u);
+    ASSERT(!PE_Port_ShouldStop() && PE_LoadU32(0x800956D0u) == 0x80150000u &&
+           (PE_GPU_ReadDICR() & 0x00100000u) != 0u,
+           "SPU DMA callback dispatch did not register channel 4");
+    PASS();
+}
+
+static void test_spu_pair_guest_dispatch(void)
+{
+    TEST("SPU_pair_guest_dispatch");
+    ResetTestState();
+    PE_SpuDma_Reset();
+    PE_StoreU32(0x8009B3FCu, 0x1F801C00u);
+    (void)PE_GuestCall("SPU pair", 0x80089F28u, 2u,
+                       0x12345u, 0xFEDCu, 0u, 0u);
+    ASSERT(!PE_Port_ShouldStop() && PE_SpuRegister_LoadU16(0x184u) == 0x2345u &&
+           PE_SpuRegister_LoadU16(0x186u) == 0xFEDCu &&
+           PE_LoadU16(0x8009B3A4u) == 0x2345u &&
+           PE_LoadU16(0x8009B3A6u) == 0xFEDCu,
+           "SPU paired values differ through guest dispatch");
+    PASS();
+}
+
+static void test_spu_irq_setter_guest_dispatch(void)
+{
+    TEST("SPU_irq_setter_guest_dispatch");
+    ResetTestState();
+    PE_StoreU16(0x800945E4u, 1u);
+    PE_StoreU32(0x8009B438u, 0u);
+    PE_StoreU32(0x8009460Cu, 0u);
+    PE_StoreU16(0x80094614u, 0u);
+    PE_IRQ_ExchangeMask(0u);
+    ASSERT(PE_GuestCall("SPU IRQ setter", 0x80085D84u, 1u,
+                        0x80150000u, 0u, 0u, 0u) == 0 &&
+           !PE_Port_ShouldStop() && PE_LoadU32(0x8009B438u) == 0x80150000u &&
+           PE_LoadU32(0x8009460Cu) == 0x80150000u && (PE_IRQ_GetMask() & 0x200u),
+           "SPU IRQ setter dispatch failed to register callback");
+    ASSERT((uint32_t)PE_GuestCall("SPU IRQ setter", 0x80085D84u, 1u,
+                                  0x80150000u, 0u, 0u, 0u) == 0x80150000u &&
+           PE_LoadU32(0x8009460Cu) == 0x80150000u,
+           "SPU IRQ setter equal-handler return differs");
+    PASS();
+}
+
+static void test_spu_irq_guest_dispatch(void)
+{
+    TEST("SPU_irq_guest_dispatch");
+    ResetTestState();
+    PE_StoreU16(0x800945E4u, 1u);
+    PE_StoreU32(0x8009460Cu, 0u);
+    PE_StoreU16(0x80094614u, 0u);
+    PE_IRQ_ExchangeMask(0u);
+    (void)PE_GuestCall("SPU IRQ callback", 0x80085DC4u, 1u,
+                       0x80150000u, 0u, 0u, 0u);
+    ASSERT(!PE_Port_ShouldStop() && PE_LoadU32(0x8009460Cu) == 0x80150000u &&
+           (PE_LoadU16(0x80094614u) & 0x200u) && (PE_IRQ_GetMask() & 0x200u),
+           "SPU IRQ guest dispatch failed to register source 9");
+    PASS();
+}
+
+static void test_spu_mode_guest_dispatch(void)
+{
+    static const uint32_t cases[] = {0u, 1u, 2u, 0xffffffffu, 0x80000000u};
+    TEST("SPU_mode_guest_dispatch");
+    ResetTestState();
+    for (unsigned i = 0; i < sizeof cases / sizeof cases[0]; ++i) {
+        uint32_t mode = cases[i];
+        int result = PE_GuestCall("SPU mode", 0x80085F14u, 1u, mode, 0u, 0u, 0u);
+        ASSERT(!PE_Port_ShouldStop() && result == (int)(mode == 1u) &&
+               PE_LoadU32(0x8009B38Cu) == mode &&
+               PE_LoadU32(0x8009B418u) == (uint32_t)(mode == 1u),
+               "SPU mode dispatch differs from selected original cases");
+    }
+    PASS();
+}
+
+static void test_spu_write_raw_guest_dispatch(void)
+{
+    PeSpuDmaState state;
+    TEST("SPU_write_raw_guest_dispatch");
+    QUARANTINED_SKIP();
+    ResetTestState(); PE_SpuDma_Reset();
+    ASSERT(PE_SpuDma_InstallIrq(PE_SPU_DMA_IRQ_HANDLER), "SPU IRQ install");
+    PE_StoreU32(0x8009B418u,0u); PE_StoreU32(0x8009B424u,3u);
+    PE_StoreU16(0x8009B414u,0x400u); PE_StoreU32(0x8009B434u,0u);
+    PE_StoreU32(0x8009B430u,0x12345678u); PE_StoreU8(0x80150000u,0xa7u);
+    ASSERT(PE_GuestCall("raw SPU DMA write",0x8007D9F8u,2u,0x80150000u,64u,0u,0u)==64,
+           "raw write returned wrong size");
+    PE_SpuDma_GetState(&state);
+    ASSERT(!PE_Port_ShouldStop() && state.pending && state.destination==0x2000u &&
+           PE_LoadU32(0x8009B430u)==0x12345678u, "raw DMA write state");
+    ASSERT(PE_SpuDma_Service()==1 && !PE_Port_ShouldStop() && PE_SpuRam_LoadU8(0x2000u)==0xa7u,
+           "raw DMA write completion");
+    PE_SpuDma_Reset(); PE_Spu_SetActive(0);
+    PE_StoreU32(0x8009B3FCu,0x1f801c00u); PE_StoreU16(0x8009B414u,0x200u);
+    PE_StoreU32(0x8009B418u,1u); PE_StoreU32(0x8009B430u,0x12345678u);
+    PE_StoreU16(0x80150000u,0xbbaau);
+    ASSERT(PE_GuestCall("raw SPU PIO write",0x8007D9F8u,2u,0x80150000u,2u,0u,0u)==2 &&
+           !PE_Port_ShouldStop() && PE_SpuRam_LoadU8(0x1000u)==0xaau &&
+           PE_SpuRam_LoadU8(0x1001u)==0xbbu && PE_LoadU32(0x8009B430u)==0x12345678u,
+           "raw PIO write or wrapper-only flag differs");
+    PASS();
+}
+
+static void test_spu_write_guest_dispatch(void)
+{
+    PeSpuDmaState state;
+    TEST("SPU_write_guest_dispatch");
+    ResetTestState();
+    PE_SpuDma_Reset();
+    ASSERT(PE_SpuDma_InstallIrq(PE_SPU_DMA_IRQ_HANDLER), "SPU IRQ install");
+    PE_StoreU32(0x8009B418u, 0u);
+    PE_StoreU32(0x8009B424u, 3u);
+    PE_StoreU16(0x8009B414u, 0x400u);
+    PE_StoreU32(0x8009B434u, 0u);
+    PE_StoreU32(0x8009B430u, 0x12345678u);
+    PE_StoreU8(0x80150000u, 0xA7u);
+    ASSERT(PE_GuestCall("SPU write wrapper", 0x80085E54u, 2u,
+                        0x80150000u, 64u, 0u, 0u) == 64,
+           "SPU write dispatch did not return requested size");
+    PE_SpuDma_GetState(&state);
+    ASSERT(!PE_Port_ShouldStop() && state.pending && state.source == 0x80150000u &&
+           state.destination == 0x2000u && PE_LoadU32(0x8009B430u) == 0u,
+           "SPU write dispatch did not issue expected transfer");
+    ASSERT(PE_SpuDma_Service() == 1 && !PE_Port_ShouldStop() &&
+           PE_SpuRam_LoadU8(0x2000u) == 0xA7u,
+           "SPU write dispatch did not complete");
     PASS();
 }
 
@@ -39330,12 +41743,57 @@ int main(void)
 
     /* DEBUG: test filter via PE_TEST_FILTER env var */
     test_filter = getenv("PE_TEST_FILTER");
+    enh_hermetic();   /* never the user's enhancements.conf (test_enhance.h) */
 
     PE_RamInit();
     Test_ResetMemcard();
     PE_GuestCode_InstallGenerated();   /* guest-code dispatch registry */
     PE_Callback_Init();
     Bootstrap_Init();
+    test_cd_data_sync_dispatch();
+    test_cd_data_sync_device();
+    test_spu_dma_read_model();
+    test_spu_read_guest_dispatch();
+    test_gpu_mask_packet_dispatch();
+    test_gpu_area_window_guest_dispatch();
+    test_callback_word_clear_guest_dispatch();
+    test_callback_slot_guest_return();
+    test_spu_read_blocks_guest_dispatch();
+    test_PARTICLE_reaction_caller_stops();
+    test_PARTICLE_unknown_callback_stops();
+    test_RENDER_missing_packet_storage_stops();
+    test_spu_fifo_dma_shared_cursor();
+    test_AKAO_unknown_opcode_stops();
+    test_spu_transfer_operation_guest();
+    test_spu_read_raw_guest_dispatch();
+    test_spu_write_guest_dispatch();
+    test_spu_write_raw_guest_dispatch();
+    test_spu_mode_guest_dispatch();
+    test_spu_irq_guest_dispatch();
+    test_spu_irq_setter_guest_dispatch();
+    test_spu_pair_guest_dispatch();
+    test_spu_dma_callback_guest_dispatch();
+    test_spu_control_level_guest_dispatch();
+    test_spu_heap_config_guest_dispatch();
+    test_spu_heap_query_guest_dispatch();
+    test_spu_heap_query_raw_guest_dispatch();
+    test_spu_transfer_address_guest_dispatch();
+    test_spu_reverb_enable_guest_dispatch();
+    test_spu_control_bit_guest_dispatch();
+    test_spu_voice_volume_native();
+    test_spu_common_attributes_guest_dispatch();
+    test_spu_shutdown_guest_dispatch();
+    test_bios_deliver_event_and_err_math();
+    test_bios_event_services();
+    test_bios_card_thunks();
+    test_spu_init_reverb_register();
+    test_spu_init_callback_registration();
+    test_spu_native_delay_guest_dispatch();
+    test_spu_fifo_synthesis_toggle();
+    test_spu_pio_guest_dispatch();
+    test_spu_hardware_init_guest_dispatch();
+    test_spu_init_wrapper_guest_dispatch();
+    test_irq_source9_registration();
 
     /* Phase 6A baseline (12 tests) */
     test_fb_init_zeros();
@@ -39365,12 +41823,15 @@ int main(void)
     test_B54KQ_5C1EC_zero_path_translated_walk();
     test_B54KR_gpu_move_overlap_wrap_and_zero_geometry();
     test_B54KR_gpu_move_rejections_are_mutation_free();
+    test_GPU_moveimage_null_rect_safe();
     test_B54KR_moveimage_wrapper_packet_and_direct_dispatch();
     test_B54KR_moveimage_zero_and_packet_negative_controls();
     test_B54KR_moveimage_queued_pump_path();
     test_B54KR_801909B4_prefix_effects_and_canary();
     test_B54KR_801909B4_dirty_repeat_and_alternate_cut();
     test_B54KR_801909B4_title_input_pump_with_pad();
+    test_GPU_wait_timeout_counter();
+    test_cd_command_stop_before_poll();
     test_B54KS_drawsync_idle_and_poll_mode();
     test_B54KS_drawsync_completes_direct_dma();
     test_B54KS_drawsync_drains_queued_dma();
@@ -39378,6 +41839,7 @@ int main(void)
     test_B54KT_80190660_two_images_packets_and_boundary();
     test_B54KT_80190660_nonzero_toggle_selects_environment0();
     test_B54KU_gpu_draw_mode_command_state();
+    test_GPU_drawprim_guest_packet_validation();
     test_B54KU_drawprim_wrapper_e1_and_indirect_fence();
     test_B54KV_gpu_textured_rectangle_4bpp_modulation();
     test_B54KV_gpu_textured_rectangle_wrap_clip_and_fence();
@@ -39390,9 +41852,6 @@ int main(void)
     test_MV1D_c89c_pad();
     test_MV1D_c89c_bound();
     test_MV1D_c89c_pad3ff();
-    test_MV1D_c89c_table();
-    test_MV1D_c89c_main();
-    test_MV1D_c89c_resume();
     test_B54KY_192CE8_real_disc_issue_poll_and_boundary();
     test_B54KY_saved_bit_zero_skips_disc_prefix();
     test_B54KZ_191FB8_two_source_and_skip_second_move();
@@ -39797,6 +42256,7 @@ int main(void)
     test_BTL78_3F3C4_70e54_prefix();
     test_BTL79_70e54_resetgraph1();
     test_BTL80_70e54_putdispenv();
+    test_FLD1_3F3C4_exit_reloads_dest();
     test_BTL81_6ec08_status();
     test_BTL82_19728_ae();
     test_BTL83_70e54_cddc_flip();
@@ -39918,6 +42378,9 @@ int main(void)
     test_BTL95_144fc_jtbl_complete();
     test_BTL91_144fc_55_park();
     test_BTL90_m0367i_dest_ready();
+    test_BTL90_weapon_dest_boot_provenance();
+    test_BTL90_weapon_ee13_completes_after_player();
+    test_BTL90_field_ee13_real_model();
     test_BTL94_m0367i_persist09_gate();
     test_BTL72_playable_loop_field_to_hp();
     test_BTL9_after_poll_not_m2();
@@ -39937,6 +42400,15 @@ int main(void)
     test_BTL6_794C4_zero_angle_identity();
     test_BTL6_3A088_mode0_empty();
     test_BTL6_3A088_mode0_walk_2bone();
+    test_LIGHTING_AF14_empty_model_side_effects();
+    test_LIGHTING_AF14_visible_part_scratch();
+    test_LIGHTING_AF14_early_returns();
+    test_ROOMENTRY_default_lighting();
+    test_ROOMENTRY_upload_selected_bank();
+    test_ROOMENTRY_upload_cached_noop();
+    test_ROOMENTRY_native_bank_pixels();
+    test_ROOMENTRY_fade_arm();
+    test_ROOMENTRY_first_frame_fade();
     test_BTL6_3B97C_empty_gate();
     test_BTL6_3B97C_lighting_2bone();
     test_BTL6_3BCE0_zero_counts_and_one_packet();
@@ -40075,8 +42547,10 @@ int main(void)
     test_read_then_ramreset();
     test_poll_after_read();
     test_poll_timeout();
+    test_poll_host_counter_does_not_advance();
+    test_poll_host_deadline_boundary();
     test_698D4_real_disc_sequence();
-    test_698D4_second_disc_bits();
+    test_698D4_quiet_window_takes_no_emulated_time();
     test_698D4_no_disc();
     test_698D4_bootstrap_fixture();
     test_698D4_bootstrap_archive_seeded();
@@ -40105,9 +42579,13 @@ int main(void)
     test_B558_73de8_getter();
     test_B558_7b9ec_transcribe();
     test_B558_7aab4_idle();
+    test_cd_timeout_native_recovery();
     test_B558_7b010_status_arms();
+    test_cd_control_native_adapters();
+    test_cd_command_wait_stop();
     test_B558_7b558_b5bc_gate();
     test_B558_7b558_print_then_minus2();
+    test_B558_parameter_port_pointer_reload();
     test_B558_7b558_dispatch_returns_zero();
     test_B558_7fcfc_zero_data_wrapper();
     test_B558_7fcfc_eight_arm_guarded();
@@ -40508,6 +42986,7 @@ int main(void)
     test_B53I_B1_registration_no_dma_progress();
 
     /* Phase 6E-B53E LoadImage issue worker + DPCR owner repair (10 tests) */
+    test_B53E_upload_source_rect_alias();
     test_B53E_dpcr_retail_owner_chain();
     test_B53E_guest_abi_clamps_and_zero_returns();
     test_B53E_cpu_only_pixel_order_padding_and_wrap();
@@ -40615,6 +43094,17 @@ int main(void)
     test_STG2_script_heading_reaches_walk_matrix();
     test_BENTRY_retail_initialization();
     test_POLY_retail_script_boundary();
+    test_POLY_degenerate_edge_traps();
+    test_FRAME35558_native_callback_and_pause();
+    test_FRAME35558_unknown_callback_stops_before_next_actor();
+    test_field_loader_stop_not_cached();
+    test_room_bank_stop_before_upload();
+    test_INPUT3999_native_facing_callback();
+    test_INPUT3999_unknown_stops_record_chain_and_motion();
+    test_FRAME35558_pause_freezes_model_matrix();
+    test_FRAME35558_resource_free_contact_snapshot();
+    test_FRAME35558_resource_scale_and_snapshot_gate();
+    test_FRAME35558_hidden_pose_restore();
     test_FGATE_retail_overlay_pause();
     test_RCLEAN_retail_room_cleanup();
     test_COL2_retail_floor_collision();
@@ -40658,6 +43148,7 @@ int main(void)
     test_DAY1_retail_m0023i_beam();
     test_DAY1_retail_m0023i_flash();
     test_DAY1_retail_m0023i_pump();
+    test_FLASHVEC_borrowed_vector_writers();
     test_ATK26_retail_eve_flare();
     test_DAY1_retail_effect_fan();
     test_ATK27_retail_beam_geometry();
@@ -40689,6 +43180,7 @@ int main(void)
     test_PV_all();
     test_P7_all();
     test_DISC_check_all();
+    test_inventory_sort_stopped_entry();
     test_DAY1_retail_inventory_sort();
     test_INV20_retail_pe_action();
     test_INV21_retail_equipment_menu();
@@ -40704,6 +43196,8 @@ int main(void)
     test_NAM8_retail_name_display();
     test_NAM9_retail_name_frame();
     test_NAM10_retail_store_image();
+    test_NAM10_invalid_destination_guard();
+    test_NAM10_destination_rect_alias();
     test_NAM10_queued_store_image();
     test_ATK31_retail_player_tick();
     test_ATK32_retail_player_animation();
@@ -40725,9 +43219,13 @@ int main(void)
     test_DRAW1_polygon_submission();
     test_PROJ1_mesh_batches_and_saturation();
     test_POS1_model_anchors_and_script_sync();
+    test_POSESP_retail_persistent_scratchpad();
     test_POSE1_branch_stack_and_bone_offsets();
     test_PKT1_retail_packet_bytes();
     test_INIT1_rotation_retail_vectors();
+    test_INIT1_rotmatrix_guest();
+    test_INIT1_mulmatrix0_guest();
+    test_INIT1_applymatrix_guest();
     test_INIT1_clip_formats_and_joint_override();
     test_SKIP2_script_movie_and_nop();
     test_SKIP2_media_wait_retry();
@@ -40755,6 +43253,7 @@ int main(void)
     test_SEW13_floor_clip_3c2e0();
     test_SEW14_m0013i_effect();
     test_SEW15_mirror_effect();
+    test_room_cleanup_finalizer_stop();
     test_SEW16_room_cleanup();
     test_SEW17_field_pickup();
     test_REWARD_original_entries();
@@ -40767,8 +43266,12 @@ int main(void)
     test_DAY1_m34_projectile_initializer();
     test_DAY1_m34_retained_context();
     test_DAY1_m34_projectile_movement_and_drawing();
+    test_actor_contact_callback_stop();
     test_SEW18_actor_contact();
+    test_effect_update_callback_stop();
+    test_effect_nested_callback_stop();
     test_DAY1_clear_image_packets();
+    test_clear_image_packet_rect_alias();
     test_DAY1_clear_image_dispatch_pixels();
     test_DAY1_gpu_drawing_status();
     test_DAY1_clear_image_queue_ownership();
@@ -40782,8 +43285,26 @@ int main(void)
     test_DAY1_anchor_attachment();
     test_DAY1_ncct();
     test_M348G_mvmva_words();
+    test_GTE_regs_pack();
+    test_GTE_initgeom_controls();
+    test_GTE_regs_rtv0_sequence();
     test_M348G_comp_matrix();
     test_M348G_c4fc4_ring();
+    test_D2104_glow_point();
+    test_D1384_trail();
+    test_D0E88_blade();
+    test_D2B58_streak();
+    test_D3BC8_sprite();
+    test_CF844_orbit();
+    test_disc_swap_boundary_stops();
+    test_credits_native_all();
+    test_LIBERATE_native_dispatch();
+    test_OVL03C9_effect_801F0068_native_dispatch();
+    test_OVL03C9_effect_801F0068_native_draw();
+    test_ROOM_slot0_return0_stub_module_init();
+    test_EFFECT_room_identity_m0089();
+    test_EFFECT_room_identity_m0028();
+    test_drive_tray_swap();
     test_DAY1_m0034i_model();
     test_DAY1_m0034i_setup();
     test_DAY1_m0034i_delivery();
@@ -40798,23 +43319,79 @@ int main(void)
     test_DAY2_movie_init();
     test_DAY2_movie_frame();
     test_DAY2_movie_callback();
+    test_cd_stream_source_stack_alias();
+    test_cd_stream_dma_busy_boundary();
     test_DAY2_cd_stream();
     test_DAY2_cd_ack();
+    test_CDINIT_native_binding_conflict();
+    test_CDINIT_native_stop();
+    test_CDWRAP_stopped_flush();
+    test_CDWAIT_native_setloc_cache();
+    test_CDISSUE_native_stream_stop();
+    test_CDREAD_native_stream_sequence();
+    test_CDPUBLIC_native_stop_before_handlers();
+    test_CDRESET_native_state_and_padding();
+    test_CDPUMP_native_blocked_mode_and_counter();
+    test_PADINIT_native_slots_and_enable();
+    test_PADRECORD_native_alias_and_tables();
+    test_GPURECT_native_diagnostics();
+    test_CDRESPONSE_native_latest_and_missing();
+    test_CDSEQUENCE_native_records_and_capacity();
+    test_CDQUEUE_native_null_and_serial_wrap();
+    test_CDSEARCH_native_lookup_record();
+    test_CDSTATUS_redirected_table();
+    test_CDSTATUS_unknown_table_stops();
+    test_CDSTATUS_mode_change_bit();
+    test_CDSTATUS_stopped_entry();
+    test_CDRETRY_native_issue();
+    test_CDRETRY_stop_after_flush();
+    test_CDFLUSH_native_idle();
+    test_CDFLUSH_native_response_only();
+    test_CDFLUSH_native_device();
+    test_CDFLUSH_detach_contract();
+    test_CDSYNC_installed_callbacks();
+    test_CDSYNC_registry_arguments();
+    test_CDSYNC_unknown_callbacks();
+    test_CDSYNC_nested_stop();
+    test_CDGS2_detached_registers();
+    test_CDGS2_stop_requested();
+    test_CDREADY_nonblocking_empty();
+    test_CDREADY_ready_and_sync_bytes();
+    test_CDREADY_stop_exit();
+    test_STEPGATE_81110_counts_down();
     test_DAY2_cd_device();
+    test_CDXA_device_commands();
+    test_CDXA_cadence_and_flush();
+    test_CDXA_pending_interrupt_flush();
+    test_CDXA_end_of_disc();
+    test_CDXA_short_image_read_error();
     test_DAY2_cd_sector_device();
+    test_cd_sector_dma_status_pointer_reload();
+    test_cd_dma_issue_dpcr_pointer_alias();
+    test_cd_dma_issue_preserves_pending_irq();
+    test_cd_dma_issue_busy_stop();
     test_DAY2_cd_dma();
     test_DAY2_mdec_pixels();
     test_DAY2_mdec_dma();
+    test_DAY2_mdec_output_wait_progress();
     test_DAY2_movie_complete_frame();
+    test_PRESS_mdec_vlc();
+    test_PRESS_mdec_pipeline();
+    test_PRESS_vlc_adapter();
+    test_PRESS_c89c_replay();
+    test_DAY2_movie_table_bounds();
     test_DAY2_movie_stream_helpers();
     test_DAY2_movie_updater();
     test_DAY2_movie_player();
     test_DAY2_movie_autonomous();
     test_DAY2_movie_multiframe();
+    test_MV1A_size_unchanged_latches_x();
     test_DAY2_cd_command_queue();
     test_DAY2_cd_lowlevel_init();
     test_DAY2_cd_startup_helpers();
     test_DAY2_cd_vblank();
+    test_cd_native_state_initializer();
+    test_cd_init_pending_irq_stop();
     test_DAY2_cd_initialization();
     test_DAY2_cd_registration();
     test_DAY2_cd_dispatch();
@@ -40839,6 +43416,46 @@ int main(void)
     test_DAY2_music_payload();
     test_DAY2_spu_mode_register();
     test_DAY2_spu_dma_event();
+    test_SPUCB_registry_callback();
+    test_SPUCB_unknown_callback_stops();
+    test_SPUCB_null_callback_no_event();
+    test_SPUCB_wait_stall_stops();
+    test_SPUCB_wait_returns_on_callback_stop();
+    test_SPUCB_upload_stop_skips_guest_writes();
+    test_SPUCB_stream_bringup_stop();
+    test_SPUCB_cda4_stop_after_service();
+    test_SPUFL_shutdown_with_transfer_in_flight();
+    test_SPUFL_registry_wait_services_in_flight();
+    test_SPUFL_registry_wait_stall_stops();
+    test_SPUFL_issue_delivers_pending_first();
+    test_SPUFL_pending_unknown_callback_stops_issue();
+    test_SPUFL_reverb_clear_delivers_pending();
+    test_SPUFL_reverb_stops_after_pending_callback();
+    test_SPUFL_io_mode_issue_writes();
+    test_SPUFL_bad_shift_issue_stops();
+    test_HOOKREG_dma_registry_continues();
+    test_HOOKREG_dma_unregistered_stops();
+    test_HOOKREG_dma_model_owned_refused();
+    test_HOOKREG_cpu_registry_continues();
+    test_HOOKREG_cpu_unregistered_stops();
+    test_HOOKREG_cd_vblank_registry_tail();
+    test_HOOKREG_cd_aux_registry_continues();
+    test_HOOKREG_b0cc8_chain_then_clear();
+    test_HOOKREG_b0cc8_chain_quit_preserves_flag();
+    test_HOOKREG_drawsync_registry_returns();
+    test_HOOKREG_libpad_registry_hooks();
+    test_HOOKREG_libpad_stops_are_named();
+    test_WKREG_direct_registry_restores();
+    test_WKREG_direct_callee_stop_skips_restore();
+    test_WKREG_direct_stops_unchanged();
+    test_WKREG_pump_registry_advances();
+    test_WKREG_pump_callee_stop_holds_consumer();
+    test_WKREG_queued_registry_drains();
+    test_WKREG_m28_update_registry();
+    test_REVIVE_mode3_item_revives();
+    test_REVIVE_flag800_revives();
+    test_REVIVE_no_item_takes_2b29c();
+    test_REVIVE_legacy_cut_matches_tick();
     test_DAY2_spu_mode();
     test_AUDIO_adpcm_decode();
     test_AUDIO_adsr();
@@ -40847,6 +43464,9 @@ int main(void)
     test_AUDIO_xa_decode();
     test_AUDIO_gauss_and_cd_jitter();
     test_AUDIO_cd_input_stop();
+    test_AUDIO_cd_gain();
+    test_AUDIO_voice_class_gains();
+    test_AUDIO_one_tick_sfx_class();
     test_DAY2_music_consumer();
     test_DAY1_animation_sound_register();
     test_DAY1_m0034i_modes();
@@ -40881,6 +43501,7 @@ int main(void)
     test_DAY1_transition_bounds();
     test_DAY1_transition_motion();
     test_DAY1_transition_update();
+    test_message_partial_open();
     test_DAY1_transition_visibility();
     test_DAY1_projection();
     test_DAY1_fixed_model();
@@ -40931,8 +43552,10 @@ int main(void)
     /* Phase 6E-DRW1 — DrawOTag chain walk (5 tests). */
     test_DRW1_drawotag_empty_chain();
     test_DRW1_drawotag_dispatch_boundary();
+    test_DRW1_debug_print_continues_and_unknown_stops();
     test_DRW1_chain_two_env_nodes();
     test_DRW1_chain_unknown_word_bounds();
+    test_DRW1_chain_long_node_and_copy();
     test_DRW1_fill_command_renders();
     test_DRW1_fill_hardware_edges();
     test_DRW1_754e4_level2_prints();
@@ -40961,9 +43584,12 @@ int main(void)
 
     /* Phase 6E-OTC1 — ClearOTagR synchronous OTC fill (5 tests). */
     test_OTC1_clearotagr_fill_and_tail();    test_OTC1_clearotagr_null_ot_skip();
-    test_OTC1_clearotagr_debug_print_boundary();
+    test_OTC1_clearotagr_debug_print_native();
     test_OTC1_clearotagr_dirty_jtb_boundary();
     test_OTC1_clearotagr_small_table();
+
+    /* GPU jump-table dispatch through the guest-code registry (8 tests). */
+    test_GPUJTB_all();
 
     /* Decomp-derived port regression (8 tests). */
     test_DECOMP_all();
@@ -40975,6 +43601,12 @@ int main(void)
     test_PLAT_all();   /* step P0: pe_plat adapters (test_pe_plat.h) */
     test_HOSTFB_vblank_clock_vs_vsync_calls();
     test_CHEATS_all(); /* opt-in cheat console (test_cheats.h) */
+    test_PADCOMBO_all(); /* Select+Start dev-menu combo (test_pad_combo.h) */
+    test_ENH_all();    /* opt-in movement speed / always run (test_enhance.h) */
+    test_ASSIST_all(); /* opt-in assists: 1-hit kills, god mode, EXP/BP mult (test_assists.h) */
+    test_ANALOG_all(); /* opt-in ANALOG STICK: pad reply, retail analog branch (test_analog_stick.h) */
+    test_ENHX_all();   /* opt-in host-side enhancements: display filter/fit (test_enh_all.h) */
+    test_QOL2_all();   /* QoL: brightness, mono audio, F12 PNG writer (test_qol2.h) */
     test_SPLIT_all();  /* one guest authority per retail scalar (test_split_brain.h) */
     test_GLOW1_func_800E051C_packet();  /* matched-C packet check (test_glow_sprite.h) */
     test_VPASS_all();  /* batch O: retail $v0 of func_80062A7C via func_80044E14 (test_v0_passthrough.h) */

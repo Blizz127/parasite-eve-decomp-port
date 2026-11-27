@@ -123,7 +123,7 @@ uint32_t HostFB_VSync(int mode)
     vs_n++;
     return rets[cur_entry == 0x8007B290u ? 1 : 0] + vs_n * rets[cur_entry == 0x8007B290u ? 6 : 2];
 }
-uint16_t pe_plat_callback_state(void)
+uint16_t pe_plat_ctl_callback_state(void)
 {
     note("80073DE8"); ck_n++;
     return (uint16_t)poll_model(rets[3], ck_n, 0xFFFFu);

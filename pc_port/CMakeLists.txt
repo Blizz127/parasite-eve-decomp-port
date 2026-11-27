@@ -111,8 +111,11 @@ set(PLATFORM_SRCS
     platform/pe_plat_gpu_drawenv.c
     platform/pe_plat2_gpuenv.c
     platform/pe_plat_gpu_primitive.c
+    platform/pe_plat2_gpupkt.c
     platform/pe_plat_gpu_address.c
     platform/pe_plat_state.c
+    platform/pe_plat2_ctl.c
+    platform/pe_plat2_spu_a.c
     platform/host_framebuffer.c
     platform/pe_dispenv.c
     platform/pe_timer1.c

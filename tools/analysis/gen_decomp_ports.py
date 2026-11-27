@@ -715,22 +715,22 @@ PE_PLAT_REPLACED = {
     "func_8007C544": "pc_port/game/boot/func_8007A214_port.c",  # stream range setter
     "func_8007CE80": "pc_port/game/boot/cd_stream_port.c",  # stream word copy
     "func_8007D15C": "pc_port/platform/pe_libsnd.c",  # SPU DMA event installer
-    "func_8007DCAC": "pc_port/platform/pe_plat_state.c",  # SPU modeled delay
+    "func_8007DCAC": "pc_port/platform/pe_plat2_spu_a.c",  # SPU modeled delay
     "func_8007D054": "pc_port/platform/pe_libsnd.c",  # SPU default initialization
     "func_8007D074": "pc_port/platform/pe_libsnd.c",  # SPU initialization wrapper
-    "func_8007D1D4": "pc_port/platform/pe_plat_state.c",  # SPU model initialization
-    "func_8007D454": "pc_port/platform/pe_plat_state.c",  # SPU programmed I/O write
-    "func_80085984": "pc_port/platform/pe_plat_state.c",  # SPU shutdown wrapper
+    "func_8007D1D4": "pc_port/platform/pe_plat2_spu_a.c",  # SPU model initialization
+    "func_8007D454": "pc_port/platform/pe_plat2_spu_a.c",  # SPU programmed I/O write
+    "func_80085984": "pc_port/platform/pe_plat2_spu_a.c",  # SPU shutdown wrapper
     "func_80085F74": "pc_port/platform/pe_plat_state.c",  # SPU common attributes
     "func_800862F4": "pc_port/platform/pe_plat_state.c",  # SPU voice volume
     "func_80085C44": "pc_port/platform/pe_plat_state.c",  # SPU control-bit update
-    "func_80085A64": "pc_port/platform/pe_plat_state.c",  # SPU reverb enable
+    "func_80085A64": "pc_port/platform/pe_plat2_spu_a.c",  # SPU reverb enable
     "func_80085EB4": "pc_port/platform/pe_plat_state.c",  # SPU transfer address wrapper
     "func_80085B34": "pc_port/platform/pe_plat_state.c",  # SPU raw-address heap query
     "func_80085BB4": "pc_port/platform/pe_plat_state.c",  # SPU heap query
-    "func_80085A04": "pc_port/platform/pe_plat_state.c",  # SPU heap configuration
+    "func_80085A04": "pc_port/platform/pe_plat2_spu_a.c",  # SPU heap configuration
     "func_80089EB8": "pc_port/platform/pe_plat_state.c",  # SPU control level
-    "func_8007DD14": "pc_port/platform/pe_plat_state.c",  # SPU DMA callback forwarding
+    "func_8007DD14": "pc_port/platform/pe_plat2_spu_a.c",  # SPU DMA callback forwarding
     "func_80089F28": "pc_port/platform/pe_plat_state.c",  # SPU paired values
     "func_80085D84": "pc_port/platform/pe_plat_state.c",  # SPU IRQ callback setter
     "func_80085DC4": "pc_port/platform/pe_plat_state.c",  # SPU IRQ callback forwarding
@@ -741,8 +741,8 @@ PE_PLAT_REPLACED = {
     "func_8007A910": "pc_port/platform/pe_plat_cd_sync.c",  # CD sync forwarding ABI
     "func_80080B24": "pc_port/platform/pe_plat_cd_sync.c",  # DS sync forwarding ABI
     "func_80089F08": "pc_port/platform/pe_plat_state.c",  # SPU voice field
-    "func_8007DC04": "pc_port/platform/pe_plat_state.c",  # DMA control priority
-    "func_8007DAE0": "pc_port/platform/pe_plat_state.c",  # SPU value write
+    "func_8007DC04": "pc_port/platform/pe_plat2_spu_a.c",  # DMA control priority
+    "func_8007DAE0": "pc_port/platform/pe_plat2_spu_a.c",  # SPU value write
     "func_80075C04": "pc_port/platform/pe_plat2_gpuenv.c",  # draw-offset packet (clean-room, state60d)
     "func_8007FBC0": "pc_port/platform/pe_plat_cd.c",  # CD handler slot
     "func_8007FBCC": "pc_port/platform/pe_plat_cd.c",  # CD handler slot
@@ -751,22 +751,22 @@ PE_PLAT_REPLACED = {
     "func_8007C130": "pc_port/platform/pe_plat_cd.c",  # CD driver callback
     "func_80080930": "pc_port/platform/pe_plat_cd.c",  # CD read state
     "func_800812F4": "pc_port/platform/pe_plat_cd.c",  # CD guarded state
-    "func_8007DB24": "pc_port/platform/pe_plat_state.c",  # SPU address alignment
-    "func_8007DC84": "pc_port/platform/pe_plat_state.c",  # SPU DMA enable
-    "func_8007DBC8": "pc_port/platform/pe_plat_state.c",  # SPU address units
-    "func_8007DC5C": "pc_port/platform/pe_plat_state.c",  # SPU DMA priority
-    "func_80076B58": "pc_port/platform/pe_plat_state.c",  # GPU word transfer
-    "func_80076BE0": "pc_port/platform/pe_plat_state.c",  # GPU query
-    "func_8007633C": "pc_port/platform/pe_plat_state.c",  # GPU status read
-    "func_80076B20": "pc_port/platform/pe_plat_state.c",  # GPU control write
-    "func_80076B44": "pc_port/platform/pe_plat_state.c",  # GPU control cache
-    "func_80073DF8": "pc_port/platform/pe_plat_state.c",  # interrupt mask read
+    "func_8007DB24": "pc_port/platform/pe_plat2_spu_a.c",  # SPU address alignment
+    "func_8007DC84": "pc_port/platform/pe_plat2_spu_a.c",  # SPU DMA enable
+    "func_8007DBC8": "pc_port/platform/pe_plat2_spu_a.c",  # SPU address units
+    "func_8007DC5C": "pc_port/platform/pe_plat2_spu_a.c",  # SPU DMA priority
+    "func_80076B58": "pc_port/platform/pe_plat2_ctl.c",  # GPU word transfer
+    "func_80076BE0": "pc_port/platform/pe_plat2_ctl.c",  # GPU query
+    "func_8007633C": "pc_port/platform/pe_plat2_ctl.c",  # GPU status read
+    "func_80076B20": "pc_port/platform/pe_plat2_ctl.c",  # GPU control write
+    "func_80076B44": "pc_port/platform/pe_plat2_ctl.c",  # GPU control cache
+    "func_80073DF8": "pc_port/platform/pe_plat2_ctl.c",  # interrupt mask read
     "func_80085F44": "pc_port/platform/pe_plat_state.c",  # SPU callback registration
-    "func_80085814": "pc_port/platform/pe_plat_state.c",  # counter setup
-    "func_800858E8": "pc_port/platform/pe_plat_state.c",  # counter start
-    "func_80085918": "pc_port/platform/pe_plat_state.c",  # counter stop
-    "func_800858B0": "pc_port/platform/pe_plat_state.c",  # counter read
-    "func_8008594C": "pc_port/platform/pe_plat_state.c",  # counter reset
+    "func_80085814": "pc_port/platform/pe_plat2_ctl.c",  # counter setup
+    "func_800858E8": "pc_port/platform/pe_plat2_ctl.c",  # counter start
+    "func_80085918": "pc_port/platform/pe_plat2_ctl.c",  # counter stop
+    "func_800858B0": "pc_port/platform/pe_plat2_ctl.c",  # counter read
+    "func_8008594C": "pc_port/platform/pe_plat2_ctl.c",  # counter reset
     "func_8007F7A8": "pc_port/platform/pe_plat_cd.c",  # DS disc type
     "func_8007C444": "pc_port/platform/pe_plat_cd.c",  # clear ring status
     "func_80078C94": "pc_port/platform/pe_plat_gte.c",  # matrix translation
@@ -941,39 +941,39 @@ PE_PLAT_REPLACED = {
     "func_80080B04": "pc_port/platform/pe_plat_cd.c",  # DS get sector 2
     "func_800816F4": "pc_port/platform/pe_plat_cd.c",  # fixed-length filename match
     "func_800749D8": "pc_port/platform/pe_plat2_gpuenv.c",  # display environment (clean-room, state60d)
-    "func_80077CB4": "pc_port/platform/pe_plat_gpu_primitive.c",  # packet append
+    "func_80077CB4": "pc_port/platform/pe_plat2_gpupkt.c",  # packet append
     "func_80077A28": "pc_port/platform/pe_plat_libc.c",  # byte fill
     "func_80074330": "pc_port/platform/pe_plat_libc.c",  # word clear
     "func_800744A4": "pc_port/platform/pe_plat_libc.c",  # same word clear (vectors)
     "func_8007474C": "pc_port/platform/pe_plat_libc.c",  # same word clear (vectors)
-    "func_80077B04": "pc_port/platform/pe_plat_gpu_primitive.c",  # semi-transparency
-    "func_80077B34": "pc_port/platform/pe_plat_gpu_primitive.c",  # texture shade
-    "func_80077B84": "pc_port/platform/pe_plat_gpu_primitive.c",  # poly G3
-    "func_80077BE4": "pc_port/platform/pe_plat_gpu_primitive.c",  # poly GT4
-    "func_80077C24": "pc_port/platform/pe_plat_gpu_primitive.c",  # tile 1
-    "func_80077C84": "pc_port/platform/pe_plat_gpu_primitive.c",  # draw page
+    "func_80077B04": "pc_port/platform/pe_plat2_gpupkt.c",  # semi-transparency
+    "func_80077B34": "pc_port/platform/pe_plat2_gpupkt.c",  # texture shade
+    "func_80077B84": "pc_port/platform/pe_plat2_gpupkt.c",  # poly G3
+    "func_80077BE4": "pc_port/platform/pe_plat2_gpupkt.c",  # poly GT4
+    "func_80077C24": "pc_port/platform/pe_plat2_gpupkt.c",  # tile 1
+    "func_80077C84": "pc_port/platform/pe_plat2_gpupkt.c",  # draw page
     "func_80076150": "pc_port/platform/pe_plat2_gpuenv.c",  # draw mode (clean-room, state60d)
     "func_800762A0": "pc_port/platform/pe_plat2_gpuenv.c",  # draw offset (clean-room, state60d)
-    "func_80077B64": "pc_port/platform/pe_plat_gpu_primitive.c",  # poly F3
-    "func_80077BA4": "pc_port/platform/pe_plat_gpu_primitive.c",  # poly FT4
-    "func_80077BC4": "pc_port/platform/pe_plat_gpu_primitive.c",  # poly G4
-    "func_80077C04": "pc_port/platform/pe_plat_gpu_primitive.c",  # sprite
-    "func_80077C44": "pc_port/platform/pe_plat_gpu_primitive.c",  # tile
-    "func_80077C64": "pc_port/platform/pe_plat_gpu_primitive.c",  # line F2
+    "func_80077B64": "pc_port/platform/pe_plat2_gpupkt.c",  # poly F3
+    "func_80077BA4": "pc_port/platform/pe_plat2_gpupkt.c",  # poly FT4
+    "func_80077BC4": "pc_port/platform/pe_plat2_gpupkt.c",  # poly G4
+    "func_80077C04": "pc_port/platform/pe_plat2_gpupkt.c",  # sprite
+    "func_80077C44": "pc_port/platform/pe_plat2_gpupkt.c",  # tile
+    "func_80077C64": "pc_port/platform/pe_plat2_gpupkt.c",  # line F2
     "func_80077A64": "pc_port/platform/pe_plat_gpu_address.c",  # texture page
     "func_80077AA4": "pc_port/platform/pe_plat_gpu_address.c",  # palette address
-    "func_80074CB8": "pc_port/platform/pe_plat_state.c",  # graphics debug
-    "func_8007DEA4": "pc_port/platform/pe_plat_state.c",  # pad init flag
+    "func_80074CB8": "pc_port/platform/pe_plat2_ctl.c",  # graphics debug
+    "func_8007DEA4": "pc_port/platform/pe_plat2_ctl.c",  # pad init flag
     "func_8007FC34": "pc_port/platform/pe_plat_cd.c",  # position byte 4
     "func_8007FC44": "pc_port/platform/pe_plat_cd.c",  # position byte 5
     "func_8007FC08": "pc_port/platform/pe_plat_cd.c",  # last command
     "func_8007F7C8": "pc_port/platform/pe_plat_cd.c",  # DS last command
     "func_8007FC18": "pc_port/platform/pe_plat_cd.c",  # command mode
-    "func_80074A14": "pc_port/platform/pe_plat_state.c",  # set video mode
+    "func_80074A14": "pc_port/platform/pe_plat2_ctl.c",  # set video mode
     "func_80081E5C": "pc_port/platform/pe_plat_cd.c",  # DS ready mode
-    "func_80073DE8": "pc_port/platform/pe_plat_state.c",  # callback state
-    "func_80074A28": "pc_port/platform/pe_plat_state.c",  # video mode
-    "func_8007DEB0": "pc_port/platform/pe_plat_state.c",  # pad init flag
+    "func_80073DE8": "pc_port/platform/pe_plat2_ctl.c",  # callback state
+    "func_80074A28": "pc_port/platform/pe_plat2_ctl.c",  # video mode
+    "func_8007DEB0": "pc_port/platform/pe_plat2_ctl.c",  # pad init flag
     "func_8007F788": "pc_port/platform/pe_plat_cd.c",  # DS status
     "func_800822AC": "pc_port/platform/pe_plat_cd.c",  # error active
     "func_8007F778": "pc_port/platform/pe_plat_cd.c",  # queue length
@@ -1115,6 +1115,7 @@ PE_PLAT_REPLACED = {
 PE_PLAT_HEADERS = {
     "pc_port/platform/pe_plat_81110.c": "pc_port/include/pe_plat/cd.h",
     "pc_port/platform/pe_plat_cd_ready.c": "pc_port/include/pe_plat/cd.h",
+    "pc_port/platform/pe_plat2_ctl.c": "pc_port/include/pe_plat/ctl.h",
     "pc_port/game/boot/func_8010BD4C_port.c": "pc_port/include/pe_plat/mdec_expand.h",
     "pc_port/platform/pe_plat_mdec_io_host.c": "pc_port/include/pe_plat/mdec_io_host.h",
     "pc_port/platform/pe_plat_vlc_frame.c": "pc_port/include/pe_plat/vlc_frame.h",
@@ -1225,8 +1226,10 @@ PE_PLAT_HEADERS = {
                    "pc_port/platform/pe_plat2_gpuenv.c": "pc_port/include/pe_plat/gpuenv.h",
                    "pc_port/platform/pe_plat_gpu_tim.c": "pc_port/include/pe_plat/gpu_primitive.h",
                    "pc_port/platform/pe_plat_gpu_primitive.c": "pc_port/include/pe_plat/gpu_primitive.h",
+                   "pc_port/platform/pe_plat2_gpupkt.c": "pc_port/include/pe_plat/gpupkt.h",
                    "pc_port/platform/pe_plat_gpu_address.c": "pc_port/include/pe_plat/gpu_address.h",
                    "pc_port/platform/pe_plat_state.c": "pc_port/include/pe_plat/state.h",
+                   "pc_port/platform/pe_plat2_spu_a.c": "pc_port/include/pe_plat/spu_a.h",
                    "pc_port/platform/pe_plat_libc.c": "pc_port/include/pe_plat/libc.h",
                    "pc_port/platform/pe_plat_hostfb_forward.c": "pc_port/include/pe_plat/hostfb_forward.h",
                    "pc_port/platform/pe_bios_card.c": "pc_port/include/pe_plat/bios_file.h",

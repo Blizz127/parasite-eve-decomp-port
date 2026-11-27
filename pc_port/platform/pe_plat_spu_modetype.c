@@ -88,7 +88,7 @@ int pe_plat_spu_set_reverb_mode_type(int mode)
      * a port stop; stop here as the replaced hand port did. */
     if (PE_Port_ShouldStop())
         return -1;
-    pe_plat_spu_store_value((int)FSET_INDEX, PE_LoadU32(STATE_SIZE), 0);
+    pe_plat_spua_store_value((int)FSET_INDEX, PE_LoadU32(STATE_SIZE), 0);
 
     if (ctrl_was_set) {
         spu = PE_LoadU32(SPU_BASE_PTR);
