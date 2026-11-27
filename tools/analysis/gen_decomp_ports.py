@@ -840,7 +840,7 @@ PE_PLAT_REPLACED = {
     "func_80080164": "pc_port/platform/pe_plat_cd_status_callback.c",  # independent CD status provider
     "func_80080220": "pc_port/platform/pe_plat_cd_command_complete.c",  # independent CD status provider
     "func_8008068C": "pc_port/platform/pe_plat2_cdunexp.c",  # clean-room, cdgen60/60b (sw-cdrw-c)
-    "func_800811E4": "pc_port/platform/pe_plat_cd_poll.c",  # independent host read-poll adapter
+    "func_800811E4": "pc_port/platform/pe_plat2_cdhost_readpoll.c",  # CD read poll (clean-room, cdhost author; cdgen50 vectors)
     "func_8007C214": "pc_port/platform/pe_plat2_cdready.c",  # independent data-ready callback
     "func_8007C394": "pc_port/platform/pe_plat_cd_leaf.c",  # native StFreeRing (existing oracle evidence)
     "func_8007C484": "pc_port/platform/pe_plat_cd_ring_host.c",  # native StGetNext plus host feeder scheduling
@@ -1037,6 +1037,7 @@ PE_PLAT_REPLACED = {
     "func_80073D24": "pc_port/platform/pe_plat2_cdx_etc.c",  # VSyncCallback (slot 4)
     "func_80073D58": "pc_port/platform/pe_plat2_cdx_etc.c",  # VSyncCallbacks (slot n)
     "func_80074478": "pc_port/platform/pe_plat2_cdx_etc.c",  # VSyncCallbacks' target (equivalent)
+    "func_80080E34": "pc_port/platform/pe_plat2_cdx_dsread.c",  # libds DsRead (cdgen49b, clean-room)
     "func_80075B1C": "pc_port/platform/pe_plat_gpu_status.c",  # GetODE (psx-spx GPUSTAT.31)
     "func_80075B4C": "pc_port/platform/pe_plat_gpu_area.c",  # SetTexWindow (psx-spx GP0 E2h)
     "func_80075B84": "pc_port/platform/pe_plat_gpu_area.c",  # SetDrawArea (psx-spx GP0 E3h/E4h)
@@ -1187,7 +1188,7 @@ PE_PLAT_HEADERS = {
                    "pc_port/platform/pe_plat_cd_status_callback.c": "pc_port/include/pe_plat/cd.h",
                    "pc_port/platform/pe_plat_cd_command_complete.c": "pc_port/include/pe_plat/cd.h",
                    "pc_port/platform/pe_plat2_cdunexp.c": "pc_port/include/pe_plat/cd.h",
-                   "pc_port/platform/pe_plat_cd_poll.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat2_cdhost_readpoll.c": "pc_port/include/pe_plat/cdhost.h",
                    "pc_port/platform/pe_plat2_cdready.c": "pc_port/include/pe_plat/cd.h",
                    "pc_port/platform/pe_plat_cd_leaf.c": "pc_port/include/pe_plat/cd.h",
                    "pc_port/platform/pe_plat2_cdhost_sector.c": "pc_port/include/pe_plat/cdhost.h",
@@ -1270,6 +1271,7 @@ PE_PLAT_HEADERS = {
                    "pc_port/platform/pe_plat_bios_card.c": "pc_port/include/pe_plat/bios_card.h",
                    "pc_port/platform/pe_plat2_bios_exit.c": "pc_port/include/pe_plat/bios_sys.h",
                    "pc_port/platform/pe_plat2_cdx_etc.c": "pc_port/include/pe_plat/cdx_etc.h",
+                   "pc_port/platform/pe_plat2_cdx_dsread.c": "pc_port/include/pe_plat/cdx_dsread.h",
                    "pc_port/platform/pe_plat_gpu_status.c": "pc_port/include/pe_plat/gpu_status.h",
                    "pc_port/platform/pe_plat_gpu_area.c": "pc_port/include/pe_plat/gpu_area.h",
                    "pc_port/platform/pe_plat_gpu_timeout.c": "pc_port/include/pe_plat/gpu_timeout.h",

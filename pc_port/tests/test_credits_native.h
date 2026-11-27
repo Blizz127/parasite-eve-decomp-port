@@ -330,6 +330,7 @@ static PE_Disc *CxaBuildDiscSized(uint8_t **out, uint32_t total_sectors, int wit
     for (i = 0; i < CXA_SECTORS; i++) {
         uint8_t *raw = img + (size_t)i * PE_DISC_RAW_SECTOR;
         memset(raw + 1, 0xFF, 10);
+        Test_SectorHeaderMsf(raw, i);
         raw[15] = 2u;
     }
     p = FxUser(img, 16);
@@ -495,7 +496,17 @@ static void test_credits_attach_from_host_boot(void)
     ASSERT(PE_LoadU32(0x800945E8u + 8u) == irq2 && PE_Callback_GetSlot(0u) == vsync0 &&
            PE_IRQ_GetMask() == mask && PE_LoadU16(0x80094614u) == registered,
            "detach restores the IRQ 2 slot, VSync slot 0 and both masks");
-    ASSERT(func_8006E6D4(16, 0, 0x801E0000u, 1) == 1 && !PE_Port_ShouldStop() &&
+    /* the retail loader returns the command-sequence serial of the read it started, [0x8009B53C] + 1 with 0 skipped to 1
+     * (func_8006E6D4 passes DsRead's result through, cdgen49b retflip; the sequence assigns the serial, cdgen55 / cdgen55c),
+     * not a constant 1 (that was the old hand loader's value, never a retail observation) */
+    {
+        uint32_t serial_before = PE_LoadU32(0x8009B53Cu), want = serial_before + 1u;
+        int ret;
+        if (want == 0u) want = 1u;
+        ret = func_8006E6D4(16, 0, 0x801E0000u, 1);
+        ASSERT(ret > 0 && (uint32_t)ret == want, "a host-mode read returns the next serial after detach");
+    }
+    ASSERT(!PE_Port_ShouldStop() &&
            memcmp(PE_Translate(0x801E0001u, 5u), "CD001", 5) == 0,
            "a host-mode read completes after detach");
     PE_CdReg_Reset();

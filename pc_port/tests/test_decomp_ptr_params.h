@@ -307,6 +307,7 @@ static void test_DECOMPPTR_overlay_handler_prelude(void)
      * without it D_8009B574 is 0 and the read issue returns -1 forever. */
     func_8007ED58();
     PE_Disc_SetActive(fx.disc);
+    ASSERT(Test_CdLoaderReady(), "cd loader ready");   /* the prelude's read goes through DsRead: libds booted and idle */
 
     PE_StoreU32(0x800B0DD8u, FX_PEIMG_LBA);   /* mount base (PE.IMG LBA)   */
     PE_StoreU32(0x80011618u, F39C_READ_BUF);  /* prelude read dest         */

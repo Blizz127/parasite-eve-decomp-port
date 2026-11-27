@@ -25,7 +25,6 @@ set(PLATFORM_SRCS
     platform/pe_plat_gte_init.c
     platform/pe_plat_ds_leaf.c
     platform/pe_plat2_cdready.c
-    platform/pe_plat_cd_poll.c
     platform/pe_plat_cd_retry.c
     platform/pe_plat2_cdinitcb.c
     platform/pe_plat2_cdissue.c
@@ -47,6 +46,8 @@ set(PLATFORM_SRCS
     platform/pe_plat2_cdhost_sector.c
     platform/pe_plat2_cdhost_stream.c
     platform/pe_plat2_cdhost_dma.c
+    platform/pe_plat2_cdhost_readpoll.c
+    platform/pe_plat2_cdhost_loader.c
     platform/pe_plat_cd_status_callback.c
     platform/pe_plat_cd_command_complete.c
     platform/pe_plat2_cdunexp.c
@@ -174,6 +175,7 @@ set(PLATFORM_SRCS
     platform/pe_plat2_press_dct.c
     platform/pe_str_feed.c
     platform/pe_plat2_cdx_etc.c
+    platform/pe_plat2_cdx_dsread.c
     platform/pe_plat2_cdx_etc_seams.c
     platform/pe_plat2_gpuclear.c
     platform/pe_plat2_gpuq.c

@@ -58,6 +58,7 @@ static uint32_t wlog[8192], nwlog;
 static int bad_read, bad_call; static const char *trap_name;
 static unsigned long runaway;
 static jmp_buf case_escape; static int escape_armed;
+static int case_terminated;   /* cdgen49: a stand-in sets it before longjmp(case_escape) when the callee never returns on hardware (BIOS exit): the case ends there, not a failure */
 /* The candidate's fixed host scratch window (0x801FFE80 .. 0x801FFEA0: the 0xE command parameter byte of the stream pump at 0x801FFE90 and the
  * CD stream handler's own frame, result bytes at +0x10 and FIFO bytes at +8 from 0x801FFE80 (cdhost author, extends the same mapping), the slot the
  * project fixtures reach at the standard sp 0x801FFF00) is the same slot the vectors record as an own-frame pointer F+n
@@ -106,6 +107,7 @@ static int mmio_read(pe_addr_t a, unsigned n, uint32_t *v)
         return 1;
     }
     *v = rq[rq_pos++][2];
+    if (getenv("CDX_TRACE")) fprintf(stderr, "  native R %08X/%u -> %X\n", (unsigned)a, n, *v);
     return 1;
 }
 static void rd(pe_addr_t a, unsigned n)
@@ -392,23 +394,24 @@ int main(int argc, char **argv)
 #endif
         }
         runaway = 0;
-        if (setjmp(case_escape)) { escape_armed = 0; bad_read = 1; has = 0; got = 0; }
+        case_terminated = 0;
+        if (setjmp(case_escape)) { escape_armed = 0; if (!case_terminated) bad_read = 1; has = 0; got = 0; }
         else { escape_armed = 1; has = call(entry, a, &got); escape_armed = 0; }
         if (has < 0) { fprintf(stderr, "unknown entry %08X\n", entry); return 2; }
         if (mutant == 2 || mutant == 5) { if (has) got ^= 1u; }   /* flip = retflip + storeflip */
         if (mutant == 2 || mutant == 6) { if (last_w_size) ram[last_w_addr & (MEM - 1)] ^= 1u; else ram[0x1000] ^= 1; }
         if (mutant == 3 || mutant == 4) {   /* positive controls for the canary: stores the original never made (see the header comment) */
             uint32_t w;
-            for (w = mutant == 3 ? 0x100000u : 0u; w + 4 <= MEM; w += 4) {
+            for (w = mutant == 5 ? 0x100000u : 0u; w + 4 <= MEM; w += 4) {
                 uint32_t b0 = w, ok4 = 1; unsigned q;
                 for (q = 0; q < 4; q++) {
                     uint32_t b = b0 + q;
 #ifndef CDX_SEED_ZERO
                     if (ostore[b] == cur || cdx_exempt(b)) ok4 = 0;
 #endif
-                    if (mutant == 3 ? readable[b] == cur : readable[b] != cur) ok4 = 0;
+                    if (mutant == 5 ? readable[b] == cur : readable[b] != cur) ok4 = 0;
                 }
-                if (ok4) { uint32_t v = 0; if (mutant == 4) memcpy(&v, ram + w, 4); PE_StoreU32(0x80000000u | w, v); break; }
+                if (ok4) { uint32_t v = 0; if (mutant == 6) memcpy(&v, ram + w, 4); PE_StoreU32(0x80000000u | w, v); break; }
             }
         }
         memset(cat_hit, 0, sizeof cat_hit);

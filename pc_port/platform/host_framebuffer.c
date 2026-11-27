@@ -20,6 +20,7 @@
 #include "pe_irq_delivery.h"
 #include "pe_irq.h"
 #include "pe_guestcode.h"
+#include "pe_plat/cdhost.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -531,12 +532,20 @@ uint32_t HostFB_VSync(int mode)
      * the libetc source-0 handler 8007440C bumps it once per VBlank, and each
      * query adds its 1024 device cycles above, so a busy loop on VSync(-1)
      * still advances.  Without the device no VBlank happens inside a busy
-     * loop, so the host keeps its call count there.  The call count moves
+     * loop, so the host keeps its call count there; so does a loader device window (pe_plat2_cdhost_loader.c),
+     * where it stands still at the value it had when the window opened (no guest deadline can expire while the
+     * drive runs, as with the frozen VBlank counter before): the stamp a read stores inside the window must be in
+     * the clock domain the read poll reads after the window has closed (the call count, which the quiet window
+     * restores to that same value), or a stamp taken from the VBlank counter makes the first poll see a
+     * long-expired read.  The call count moves
      * twice per frame inside a VSync callback (its own query plus the wait),
      * so a callback testing `VSync(-1) & 0x1F` (the credits' func_80125A40)
      * can lock onto odd values and never fire. */
     if (mode < 0)
+    {
+        if (device && PE_CdHost_LoaderIsOpen()) return (uint32_t)fb_quiet_vsync_count;   /* frozen, in the call-count domain */
         return device ? PE_LoadU32(0x800956ACu) : (uint32_t)fb_vsync_count;
+    }
     uint32_t entry = fb_vsync_timer;
     uint32_t ret = (entry - fb_vsync_baseline) & 0xFFFFu;
     fb_vsync_timer = (fb_vsync_timer + 1u) & 0xFFFFu;
@@ -590,6 +599,7 @@ void HostFB_DevicePoll(void)
     PE_Port_EscapePoint();      /* armed only by PE_Main_EnterCredits */
     if (!PE_Port_ShouldStop() && PE_CdReg_DeviceEnabled())
         HostFB_DeviceTime(64u);
+    PE_CdHost_LoaderService();  /* closes the loader device window once its read has finished */
 }
 
 /* One guest poll-loop iteration of a CD stream wait.  HostFB_VSync(-1)

@@ -5,6 +5,9 @@
 #include "pe_plat/cd.h"
 #include "pe_guest_ram.h"
 #include "pe_cdreg.h"
+#include "pe_plat/framebuffer_api.h"
+#include <stdio.h>
+#include "game_port.h"
 
 /* Pointer globals holding the CD controller register addresses
  * (0x1F801800..0x1F801803) and the SPU base (0x1F801C00). */
@@ -174,15 +177,36 @@ int pe_plat_cd_st_get_next(uint32_t data, uint32_t header)
 #define CD_STATE_B295       0x8009B295u /* byte: cleared */
 #define CD_STATE_B296       0x8009B296u /* byte: read, then cleared */
 
+/* Host wait contract for the acknowledge loop (the register is hardware: a device model or a seeded fixture decides
+ * when the pending type clears).  The loop exits when a host stop is requested, and a stuck-wait budget ends it with a
+ * diagnostic and a stop request instead of spinning.  Once more than CD_FLUSH_QUICK_PASSES acknowledge passes have found
+ * the type still pending (the queue the register model holds is at most three deep, so a normal flush never gets there),
+ * every further pass also ticks the host clock once (HostFB_StreamTick: VSync(-1) plus device time, which is how an
+ * attached device model advances), so a device that needs time to clear the type can.  A flush that completes within
+ * the quick passes performs exactly the register accesses of the loop above and ticks nothing; the tick is a host-only
+ * call, not a guest access. */
+#define CD_FLUSH_QUICK_PASSES 8u
+#define CD_FLUSH_WAIT_BUDGET  0x10000u
+
 void pe_plat_cd_flush(void)
 {
+    uint32_t polls = 0u;
     PE_CdStoreU8(PE_LoadU32(CD_REG_IDX_PTR), CD_FLUSH_BANK);
     while ((PE_CdLoadU8(PE_LoadU32(CD_REG3_PTR)) & CD_INT_TYPE_MASK) != 0u) {
+        if (PE_Port_ShouldStop())
+            return;
+        if (++polls > CD_FLUSH_WAIT_BUDGET) {
+            fprintf(stderr, "[cd-flush] stuck wait on pending interrupt type after %u polls; requesting stop\n",
+                    CD_FLUSH_WAIT_BUDGET);
+            PE_Port_RequestStop(PE_PORT_STOP_UNRESOLVED_BOUNDARY);
+            return;
+        }
         PE_CdStoreU8(PE_LoadU32(CD_REG_IDX_PTR), CD_FLUSH_BANK);
         PE_CdStoreU8(PE_LoadU32(CD_REG3_PTR), CD_INT_ACK);
         PE_CdStoreU8(PE_LoadU32(CD_REG2_PTR), CD_INT_ENABLE_ALL);
+        if (polls > CD_FLUSH_QUICK_PASSES)
+            HostFB_StreamTick();
     }
-    (void)PE_LoadU8(CD_STATE_B296);
     PE_StoreU8(CD_STATE_B296, 0u);
     PE_StoreU8(CD_STATE_B295, 0u);
     PE_StoreU8(CD_STATE_B294, 2u);

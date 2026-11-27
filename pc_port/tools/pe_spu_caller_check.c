@@ -42,7 +42,7 @@
  *   cdgen39   libds text_170 0x8007E704 (queue flush)          pe_plat_ds_gen39.c
  *   cdgen39   libds text_3D0 0x8007E964 (command complete / error) pe_plat_ds_gen39.c
  *   retry     CD command retry (800800F4), pe_plat_cd_retry.c
- *   poll      CD read poll retail core (800811E4), pe_plat_cd_poll.c
+ *   poll      CD read poll retail core (800811E4), pe_plat2_cdhost_readpoll.c (pe_plat_cdhost_readpoll)
  * Each build line links the checker with some native files and passes
  * CHK_HAVE_<FILE> for each one: call() cases are compiled only for linked
  * natives, and a stub for a bound callee is compiled only when the file that
@@ -1122,7 +1122,7 @@ int pe_test_cd_command_model(uint32_t cmd,uint32_t data,pe_addr_t dst,uint32_t m
 #endif
 #ifdef CHK_HAVE_CD_POLL
 void HostFB_GetState(int *v,int *d,int *p,int *m) { (void)v;(void)d;(void)p;(void)m;abort(); }
-int pe_plat_cd_read_poll(uint32_t fp);
+int pe_plat_cdhost_readpoll(uint32_t fp);
 #ifndef CHK_HAVE_CD_GEN5
 int pe_plat_ds_ready(int arg)
 { char t[64]; snprintf(t,sizeof t,"8007F608,%08X",(uint32_t)arg); note(t);
@@ -1394,7 +1394,7 @@ static int call(uint32_t entry, uint32_t *a, uint32_t *ret)
     case 0x800800F4u: pe_plat_cd_retry_command(); return 0;
 #endif
 #ifdef CHK_HAVE_CD_POLL
-    case 0x800811E4u: *ret=(uint32_t)pe_plat_cd_read_poll(a[0]); return 1;
+    case 0x800811E4u: *ret=(uint32_t)pe_plat_cdhost_readpoll(a[0]); return 1;
 #endif
 #ifdef CHK_HAVE_DS_GEN39
     case 0x8007E964u: pe_plat_ds_text_3d0(a[0], a[1]); return 0;

@@ -34,6 +34,7 @@
 #include "pe_plat/gpuenv.h"
 #include "pe_plat/gpupkt.h"
 #include "pe_plat/cdx_etc.h"
+#include "pe_plat/cdx_dsread.h"
 #include "pe_plat/gte.h"
 #include "pe_plat/libc.h"
 #include "pe_plat/bios_file.h"

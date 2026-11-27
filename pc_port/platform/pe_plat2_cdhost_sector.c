@@ -46,7 +46,11 @@
  * after every not-ready read the wait loop ticks the host clock (HostFB_StreamTick) and, for the DMA wait,
  * services DMA3 (PE_CdReg_ServiceDMA3).  Both are host-only calls the checker counts and ignores.  Each wait also
  * has a ShouldStop exit and a stuck-wait budget that requests a stop with a diagnostic instead of spinning
- * forever; the vectors never reach either (at most 4 reads per wait).  */
+ * forever; the vectors never reach either (at most 4 reads per wait).  The tick also runs inside the synchronous loader
+ * context (DsRead -> read poll -> status callback -> sector), where it is what lets the device model advance.  A wait
+ * that still never ends there means the register pointer words are 0 (the table 0x8009B27C..0x8009B2C0 is EXE .data and
+ * a fixture that reset RAM must plant it): CHCR is then guest address 0, which no device ever clears, and the
+ * diagnostic names that case.  */
 #include <stdint.h>
 #include <stdio.h>
 
@@ -59,9 +63,10 @@
 #define CDH_SECTOR_WAIT_BUDGET 0x40000u   /* polls (each followed by one clock tick) before the wait is declared stuck */
 
 /* Stuck-wait exit: print a diagnostic and request a stop; the caller returns 0 (no transfer completed). */
-static int sector_stuck(const char *what, uint32_t polls)
+static int sector_stuck(const char *what, uint32_t polls, uint32_t reg_ptr)
 {
-    fprintf(stderr, "[cd-sector-dma] stuck wait on %s after %u polls; requesting stop\n", what, polls);
+    fprintf(stderr, "[cd-sector-dma] stuck wait on %s after %u polls (register pointer 0x%08X%s); requesting stop\n", what, polls,
+            reg_ptr, reg_ptr ? "" : ": the CD/DMA pointer table 0x8009B27C..0x8009B2C0 was never planted, so the wait polls guest address 0");
     PE_Port_RequestStop(PE_PORT_STOP_UNRESOLVED_BOUNDARY);
     return 0;
 }
@@ -91,7 +96,7 @@ int pe_plat_cdhost_sector(uint32_t dst, uint32_t count)
     for (polls = 0;; polls++) {
         if (PE_CdLoadU8(p_idx) & 0x40u) break;
         if (PE_Port_ShouldStop()) return 0;
-        if (polls >= CDH_SECTOR_WAIT_BUDGET) return sector_stuck("DRQSTS", polls);
+        if (polls >= CDH_SECTOR_WAIT_BUDGET) return sector_stuck("DRQSTS", polls, p_idx);
         HostFB_StreamTick();                          /* host clock tick: lets the device model raise the request */
     }
 
@@ -101,7 +106,7 @@ int pe_plat_cdhost_sector(uint32_t dst, uint32_t count)
     for (polls = 0;; polls++) {                       /* wait for DMA3 to finish (busy bit 24) */
         if (!(PE_CdLoadU32(p_chcr) & 0x01000000u)) break;
         if (PE_Port_ShouldStop()) return 0;
-        if (polls >= CDH_SECTOR_WAIT_BUDGET) return sector_stuck("DMA3 CHCR busy", polls);
+        if (polls >= CDH_SECTOR_WAIT_BUDGET) return sector_stuck("DMA3 CHCR busy", polls, p_chcr);
         PE_CdReg_ServiceDMA3();                       /* host DMA3 service, then a clock tick */
         HostFB_StreamTick();
     }

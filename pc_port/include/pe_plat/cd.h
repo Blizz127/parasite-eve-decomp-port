@@ -175,10 +175,8 @@ void pe_plat_ds_text_3d8(unsigned char a0, int a1);
 /* libds text_904 0x80081D18 (pe_plat_ds_gen16.c, clean-room from black-box
  * vectors: pe_cd_leaf_vectors.py cdgen16). */
 int pe_plat_ds_text_904(int a0, int a1, int a2);
-/* Independent retail poll core and synchronous-host adapter (800811E4).
- * The production binding preserves host timing/local abort semantics. */
-int pe_plat_cd_read_poll(uint32_t fp);
-int pe_plat_cd_read_poll_host(uint32_t fp);
+/* The retail read poll (800811E4) is the clean-room pe_plat_cdhost_readpoll (pe_plat/cdhost.h; the former names
+ * pe_plat_cd_read_poll / pe_plat_cd_read_poll_host are macros onto it). */
 void pe_plat_cd_retry_command(void);
 /* Initializer retail core and host callback-map adapter (8007F994). */
 int pe_plat_cd_initialize_callbacks_retail(void);
@@ -251,9 +249,6 @@ void pe_plat_cd_data_ready_callback(void);
 #define func_80080164 pe_plat_cd_status_callback
 #define func_80080220 pe_plat_cd_command_complete
 #define func_8008068C pe_plat_cd_unexpected_status
-#ifndef func_800811E4
-#define func_800811E4 pe_plat_cd_read_poll_host
-#endif
 void pe_plat_cd_flush(void);
 #define func_8007B9EC pe_plat_cd_flush
 /* libcd CD_ready 0x8007B290: the BIOS-side CD readiness poll (pe_plat_cd_ready.c,

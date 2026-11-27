@@ -8,6 +8,7 @@
  *   0x8007BF44     pe_plat_cd_sector_dma_host(dst, count)      pe_plat_cdhost_sector
  *   0x8007C564     pe_plat_cd_stream_handler_host(void)        pe_plat_cdhost_stream
  *   0x8007CEAC     pe_plat_cd_dma_issue_host(channel, ...)     pe_plat_cdhost_dma
+ *   0x800811E4     pe_plat_cd_read_poll_host(fp)               pe_plat_cdhost_readpoll
  *
  * The public names stay declared (object-like macros), so every caller that spells them keeps
  * compiling and linking; the retail names func_8007XXXX are bound by the same macros.
@@ -25,6 +26,15 @@ int pe_plat_cdhost_sector(uint32_t dst, uint32_t count);
 void pe_plat_cdhost_stream(void);
 void pe_plat_cdhost_dma(uint32_t channel, uint32_t address, uint32_t blocks, uint32_t words,
                         uint32_t control, uint32_t interrupt, uint32_t unused);
+int pe_plat_cdhost_readpoll(uint32_t fp);
+
+/* Loader device window (host model, platform/pe_plat2_cdhost_loader.c): opened by the DsRead command-sequence host when no
+ * device is attached, serviced from HostFB_DevicePoll, closed when the read has finished. */
+int PE_CdHost_LoaderOpen(void);
+void PE_CdHost_LoaderClose(void);
+void PE_CdHost_LoaderService(void);
+void PE_CdHost_LoaderDrain(void);
+int PE_CdHost_LoaderIsOpen(void);
 
 #define func_8007AAB4 pe_plat_cdhost_ack
 #define func_8007B010 pe_plat_cdhost_poll
@@ -32,6 +42,7 @@ void pe_plat_cdhost_dma(uint32_t channel, uint32_t address, uint32_t blocks, uin
 #define func_8007BF44 pe_plat_cdhost_sector
 #define func_8007C564 pe_plat_cdhost_stream
 #define func_8007CEAC pe_plat_cdhost_dma
+#define func_800811E4 pe_plat_cdhost_readpoll
 
 /* Former public names of the same entries. */
 #define pe_plat_cd_acknowledge_host pe_plat_cdhost_ack
@@ -40,6 +51,8 @@ void pe_plat_cdhost_dma(uint32_t channel, uint32_t address, uint32_t blocks, uin
 #define pe_plat_cd_sector_dma_host pe_plat_cdhost_sector
 #define pe_plat_cd_stream_handler_host pe_plat_cdhost_stream
 #define pe_plat_cd_dma_issue_host pe_plat_cdhost_dma
+#define pe_plat_cd_read_poll_host pe_plat_cdhost_readpoll
+#define pe_plat_cd_read_poll pe_plat_cdhost_readpoll
 
 /* Canonical guest-name prototypes for the bindings above (generated
  * from the pe_plat prototypes; tools read callee signatures from these). */
@@ -50,4 +63,5 @@ int func_8007BF44(uint32_t dst, uint32_t count);
 void func_8007C564(void);
 void func_8007CEAC(uint32_t channel, uint32_t address, uint32_t blocks, uint32_t words,
                    uint32_t control, uint32_t interrupt, uint32_t unused);
+int func_800811E4(uint32_t fp);
 #endif
