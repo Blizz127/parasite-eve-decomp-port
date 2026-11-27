@@ -25,10 +25,14 @@
  *   0x1F8010B0..0x1F8010B8 CD DMA3 MADR/BCR/CHCR: aligned word value
  *               reads / writes through pe_cdreg (including its service gates).
  *               No mutable pointer alias or subword access.
+ *   0x1F801014  SPU_DELAY   32  plain latch (word read / write)
+ *   0x1F8010C0..0x1F8010C8 DMA4 (SPU) MADR/BCR/CHCR: aligned word value
+ *               reads / writes through pe_spu_dma.c (PE_SpuDma_Dma4Load/Store);
+ *               a CHCR write with the start bit records the transfer.
  *   0x1F8010E0..0x1F8010E8 DMA6 OTC MADR/BCR/CHCR: aligned word value
  *               access, native synchronous reverse ordering-table clear.
  *   DMA0..3/6 CHCR at +0xC mirrors +8 (aligned word value access).
- *               DMA4/5 remain unmodelled; no second register storage.
+ *               DMA5 remains unmodelled; no second register storage.
  *   0x1F8010F0  DPCR        32  pe_gpu    read / write
  *   0x1F8010F4  DICR        32  pe_gpu    read / write
  *   0x1F801110  RCNT1 count 16  pe_timer1 read / write

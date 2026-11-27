@@ -187,7 +187,15 @@ void PE_Sdk_ResetState(void);
 void PE_Sdk_ResetState(void) { pe_plat_cdxetc_reset_state(); }   /* the SDK host state under test is the cdx-etc BIOS model */
 #endif
 #endif
-static int mutant;   /* 0 native, 1 noop, 2 flip */
+static int mutant;   /* 0 native, 1 noop, 2 flip, 3 same (control: after each CALL, re-store the value of an untouched word the case never lists) */
+/* Footprint check (canary replay, 2026-11-27): this harness's initial RAM (zeros + the retail EXE image) IS the state the vectors were recorded
+ * from, so unseeded RAM is NOT canary-filled here (the original ran from these zeros); the zero-store blindness is closed the other way: every
+ * byte the code under test stored through PE_Store* that no `RAM` line of the case lists is a footprint difference, whatever its value
+ * (the value check above compares against init_ram only, so an extra store of the value already there was invisible).  Reported as its own column
+ * (stdout `footprint:` lines; CDX_AGG=1 lists entry/word rows on stderr); only CDX43_FOOTPRINT_STRICT=1 makes it a mismatch.  Stores by the
+ * checker's own stand-ins (PE_Callback_SetSlot) and stores of interpreter-only setup calls are in the same log: read the rows by entry. */
+static unsigned fp_cases, fp_words; static uint8_t fp_seen[0x200000 / 4 / 8]; static unsigned fp_distinct;
+struct fpagg { char ent[48]; uint32_t addr; unsigned n; }; static struct fpagg fpaggs[512]; static unsigned nfpagg;
 static unsigned ent_cases[32], ent_bad[32]; static char ent_name[32][48]; static unsigned nent, cur_ent, case_bad;
 static uint32_t run_kind(const char *kind, uint32_t a, uint32_t b)
 {
@@ -231,7 +239,7 @@ int main(int argc, char **argv)
     FILE *f, *e; char line[256]; static char want[40000][64]; unsigned nwant = 0, cases = 0, bad = 0, k;
     static uint8_t exe[0x200000]; uint32_t t_addr, t_size; int in_case = 0;
     if (argc < 3 || !(f = fopen(argv[1], "r")) || !(e = fopen(argv[2], "rb"))) return 2;
-    if (argc > 3) mutant = !strcmp(argv[3], "noop") ? 1 : !strcmp(argv[3], "flip") ? 2 : 0;
+    if (argc > 3) mutant = !strcmp(argv[3], "noop") ? 1 : !strcmp(argv[3], "flip") ? 2 : !strcmp(argv[3], "same") ? 3 : 0;
     (void)fread(exe, 1, sizeof exe, e); memcpy(&t_addr, exe + 0x18, 4); memcpy(&t_size, exe + 0x1C, 4);
     while (fgets(line, sizeof line, f)) {
         unsigned id, im, is, dirty; uint32_t dicr0; char kind[16]; uint32_t a, b, c;
@@ -261,6 +269,7 @@ int main(int argc, char **argv)
             if (!strcmp(kind, "FLUSH") || !strcmp(kind, "CPAD") || !strcmp(kind, "EXIT")) snprintf(s, 64, "RETV");   /* void natives */
             else snprintf(s, 64, "RET %08X", r);
             ev(s);
+            if (mutant == 3) { uint32_t w = 0x100000u + 4u * (cases & 0xFFu), v; memcpy(&v, ram + w, 4); PE_StoreU32(0x80000000u | w, v); }
         } else if (!strncmp(line, "CB ", 3)) {
             unsigned fn; sscanf(line, "CB %x", &fn); snprintf(want[nwant++], 64, "CB %08X", fn);   /* by target */
         } else if (!strncmp(line, "MMIO", 4) || !strncmp(line, "RET", 3) || !strncmp(line, "STORE", 5)) {
@@ -294,6 +303,16 @@ int main(int argc, char **argv)
                         fprintf(stderr, "  %-34s | %s\n", k < ngot ? got[k] : "-", k < nwant ? want[k] : "-");
                 }
             }
+            { unsigned fw = 0; uint32_t lastw = 0xFFFFFFFFu;
+              for (k = 0; k < 0x200000u; k++) if (touched[k] && (k & ~3u) != lastw) {
+                  uint32_t w = lastw = k & ~3u; unsigned q;
+                  fw++; fp_words++;
+                  if (!(fp_seen[(w >> 2) >> 3] & (1u << ((w >> 2) & 7)))) { fp_seen[(w >> 2) >> 3] |= (uint8_t)(1u << ((w >> 2) & 7)); fp_distinct++; }
+                  for (q = 0; q < nfpagg && !(fpaggs[q].addr == w && !strcmp(fpaggs[q].ent, ent_name[cur_ent])); q++) ;
+                  if (q < nfpagg) fpaggs[q].n++;
+                  else if (nfpagg < 512) { snprintf(fpaggs[nfpagg].ent, 48, "%s", ent_name[cur_ent]); fpaggs[nfpagg].addr = w; fpaggs[nfpagg].n = 1; nfpagg++; }
+              }
+              if (fw) { fp_cases++; if (getenv("CDX43_FOOTPRINT_STRICT")) { bad++; } } }
             for (k = 0; k < 0x200000u; k++) if (touched[k] && ram[k] != init_ram[k]) {
                 if (bad < 40) fprintf(stderr, "case %u unexpected RAM write at %08X\n", cases - 1, 0x80000000u | k);
                 bad++; break;
@@ -302,7 +321,9 @@ int main(int argc, char **argv)
             in_case = 0;
         }
     }
-    printf("mode=%s checked %u cases, %u mismatches\n", mutant == 1 ? "noop" : mutant == 2 ? "flip" : "native", cases, bad);
+    printf("mode=%s checked %u cases, %u mismatches\n", mutant == 1 ? "noop" : mutant == 2 ? "flip" : mutant == 3 ? "same" : "native", cases, bad);
+    printf("footprint: %u cases store RAM the original's RAM lines do not list (value-agnostic): %u words stored, %u distinct words\n", fp_cases, fp_words, fp_distinct);
+    if (getenv("CDX_AGG")) { unsigned q; for (q = 0; q < nfpagg; q++) fprintf(stderr, "  footprint %-32s %08X n=%u\n", fpaggs[q].ent, 0x80000000u | fpaggs[q].addr, fpaggs[q].n); }
     { unsigned q; for (q = 0; q < nent; q++) printf("  %-32s cases=%u failing_cases=%u\n", ent_name[q], ent_cases[q], ent_bad[q]); }
     return mutant ? 0 : bad != 0;
 }

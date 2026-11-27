@@ -11,7 +11,8 @@
  *
  * Replay rules (stricter than the cd checker; nothing is silently skipped):
  * - RAM starts as poison.  Each byte the original loaded gets the value it
- *   loaded (first load wins); the candidate may read only those bytes.
+ *   loaded (first load wins); the candidate may read only those bytes and the bytes it has itself stored earlier in the
+ *   same case (own-written read-back; -DSTATE60_STRICT_READS: only the logged loads).
  * - Register loads (0x1F80xxxx) are replayed in the original's order: same
  *   address and width each, value from the log, and made after exactly the
  *   same number of stores (the token's @k) -- the read/write protocol order.  Extra, missing or reordered
@@ -49,8 +50,17 @@ static uint32_t rq[CAP_M][4], nrq, rq_pos;
 static void rd(pe_addr_t a, unsigned n)
 {
     unsigned i;
-    for (i = 0; i < n; i++)
-        if (readable[(a + i) & (MEM - 1)] != cur) bad_read = 1;
+    for (i = 0; i < n; i++) {
+        uint32_t b = (a + i) & (MEM - 1);
+        if (readable[b] == cur) continue;
+#ifndef STATE60_STRICT_READS
+        /* A byte the candidate itself stored earlier in this case may be read back: the original does the same, and
+         * the generator no longer logs such own-written loads (pe_ownwrite.py), so they are not in L.
+         * -DSTATE60_STRICT_READS restores the old rule (every read must be a logged original load). */
+        if (wrote[b] == cur) continue;
+#endif
+        bad_read = 1;
+    }
 }
 static void wr(pe_addr_t a, unsigned n)
 {

@@ -29,7 +29,7 @@ void __wrap_func_800755F0(pe_addr_t a){call(0x800755F0u,a,0,0,0,0);}
 int __wrap_func_80074F44(RECT *r,uint8_t a,uint8_t b,uint8_t c)
 {call(0x80074F44u,a,b,c,(uint16_t)r->x|((uint32_t)(uint16_t)r->y<<16),(uint16_t)r->w|((uint32_t)(uint16_t)r->h<<16));return 0;}
 int __wrap_func_80086C5C(int a,uint32_t b,uint32_t c){call(0x80086C5Cu,(uint32_t)a,b,c,0,0);return 0;}
-int __wrap_func_8008CBA8(void){call(0x8008CBA8u,0,0,0,0,0);return 0;}
+int __wrap_pe_plat_cdxspu_stream_dispatch(void){call(0x8008CBA8u,0,0,0,0,0);return 0;}
 void __wrap_func_80086FF8(void){call(0x80086FF8u,0,0,0,0,0);}
 void __wrap_func_80087024(void){call(0x80087024u,0,0,0,0,0);}
 static void fixture(void)

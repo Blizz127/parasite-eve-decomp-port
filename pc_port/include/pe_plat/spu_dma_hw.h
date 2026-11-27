@@ -91,6 +91,19 @@ uint8_t *PE_SpuRam_Data(void);
 uint16_t PE_SpuRegister_LoadU16(uint32_t offset);
 void PE_SpuRegister_StoreU16(uint32_t offset, uint16_t value);
 
+/* DMA channel 4 register file (psx-spx "DMA Channels": 0x1F8010C0 MADR, 0x1F8010C4 BCR, 0x1F8010C8 CHCR).
+ * index 0 = MADR (bits 0-23), 1 = BCR, 2 = CHCR.  Reads are side-effect free; CHCR bit 24 reads back as
+ * set while a transfer is pending.  A CHCR store with the start bit (bit 24) starts the transfer the
+ * registers describe: block mode (bits 9-10 = 1), 16 words per block, direction from bit 0 (1 = guest
+ * RAM -> SPU RAM, 0 = SPU RAM -> guest RAM), SPU RAM address = the SPU transfer address register
+ * (0x1F801DA6) * 8.  The transfer is recorded exactly like PE_SpuDma_Begin / PE_SpuDma_BeginRead
+ * (completion by PE_SpuDma_Service); it is not serviced inside the store, and the guest bookkeeping words
+ * those calls write are the writer's own business.  A transfer the model cannot represent (handler not
+ * installed, another transfer pending, misaligned source, source outside guest RAM, other block size,
+ * zero-length read) is a loud stop (PE_Port_RequestStop with a stderr report), never silently dropped. */
+uint32_t PE_SpuDma_Dma4Load(uint32_t index);
+void PE_SpuDma_Dma4Store(uint32_t index, uint32_t value);
+
 /* Host backend for clearing the reverb work area:
  * DMA channel 4 zero-fill of the work area for reverb mode 0..9 (pe_stream.c).
  * Returns 0, or -1 for a bad / allocated mode or a failed transfer. */

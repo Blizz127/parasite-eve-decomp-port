@@ -61,17 +61,32 @@ PILOT = [False]       # True while discover() runs its pilot cases (hooks use ra
 # spills/locals stay out); a load that mixes own-written and external bytes drops the case.  Stores stay unlogged.
 STACKW = (0x1FE000, 0x1FF000)
 _OWN = set()
+# ---- own-written RAM loads (cdgen46b fix; resolves the cdgen46 B414 artefact, docs cdx-spu2/REPORT.md) -------------
+# A load of main-RAM bytes (0x2000 <= a < STACKW[0]) that the original ITSELF stored earlier in the same case reads
+# its own result, not entry state.  Logging it made the checker seed the word with the post-store value (the first
+# logged load of a word wins), so "store == value read" held trivially: the cdgen46 rows' 0x8009B414 readback right
+# after 80085EB4's own `sh` seeded B414 with the value the original had just stored, and a provider that stores back
+# the ENTRY value passed 400/400.  Fix: such a load is not logged when every byte was own-written (counted per entry
+# in OWNLOAD, non-pilot cases only, and reported by main as own_written_loads=N); a load that mixes own-written and
+# external bytes DROPS THE CASE (the cdgen42b rule; counted in MIXEDLOAD, reported as mixed_own_loads=N;
+# CDX_KEEP_MIXED_OWN_LOADS=1 logs only the external bytes instead).  Register-page accesses (a < 0x2000) are hardware
+# reads and stay as before.
+OWNLOAD = {}
+MIXEDLOAD = {}      # per entry: loads that mixed own-written and external bytes (non-pilot cases; the case is dropped by default)
+KEEP_MIXED_OWN_LOADS = bool(os.environ.get('CDX_KEEP_MIXED_OWN_LOADS'))   # =1: log only the external bytes instead of dropping the case
+LEGACY_OWN_LOADS = bool(os.environ.get('CDX_LEGACY_OWN_LOADS'))   # =1: reproduce the pre-fix sets (own-written loads logged)
 _chain_load = pl._ns['LOAD']
 _chain_store = pl._ns['STORE']
 
 
 def _own_store(fmt, buf, a, val):
-    if STACKW[0] <= a < STACKW[1]:
+    if 0x2000 <= a < STACKW[1]:
         _OWN.update(range(a, a + struct.calcsize(fmt)))
     return _chain_store(fmt, buf, a, val)
 
 
 def _own_load(fmt, buf, a):
+    n0 = len(pl.LOADS)
     val = _chain_load(fmt, buf, a)
     if STACKW[0] <= a < STACKW[1] and not getattr(c, 'NO_STACK_LOADS', False):
         n = struct.calcsize(fmt)
@@ -80,6 +95,23 @@ def _own_load(fmt, buf, a):
             pl.LOADS.append((0x80000000 + a, n, val[0] & 0xFFFFFFFF))
         elif not all(own):
             c.UNFAITHFUL[0] = True
+    elif 0x2000 <= a < STACKW[0] and len(pl.LOADS) > n0 and not LEGACY_OWN_LOADS:
+        n = struct.calcsize(fmt)
+        own = [(a + i) in _OWN for i in range(n)]
+        if any(own):
+            ent = pl.LOADS.pop()
+            if not PILOT[0]:
+                OWNLOAD[pl.CUR[0]] = OWNLOAD.get(pl.CUR[0], 0) + 1
+            if not all(own):
+                if not PILOT[0]:
+                    MIXEDLOAD[pl.CUR[0]] = MIXEDLOAD.get(pl.CUR[0], 0) + 1
+                if KEEP_MIXED_OWN_LOADS:
+                    raw = ent[2]
+                    for i in range(n):
+                        if not own[i]:
+                            pl.LOADS.append((0x80000000 + a + i, 1, (raw >> (8 * i)) & 0xFF))
+                else:
+                    c.UNFAITHFUL[0] = True          # default (the cdgen42b rule): drop the case
     return val
 
 
@@ -189,6 +221,7 @@ def run_case(ram, entry, args, rets, sp, sysc, models=None):
             if a + n > len(ram):
                 raise IndexError('bzero out of RAM')
             ram[a:a + n] = bytes(n)
+            _OWN.update(range(a, a + n))
             for o in range(0, n, 4):
                 pl.STORES.append((0x80000000 + a + o, min(4, n - o), 0))
             r[2] = r[4]
@@ -413,7 +446,9 @@ def main():
         o, spun, dropped = cases(base, e, max(n, SPEC[e].get('n', 0)))
         lines += o
         report.append('%08X %s cases=%d spun=%d dropped=%d (break=%d) discovered_words=%d' % (
-            e, SPEC[e]['name'], len(o), spun, dropped, BREAKS.get(e, 0), len(DISC[e])))
+            e, SPEC[e]['name'], len(o), spun, dropped, BREAKS.get(e, 0), len(DISC[e])) +
+            (' own_written_loads=%d' % OWNLOAD[e] if OWNLOAD.get(e) else '') +
+            (' mixed_own_loads=%d' % MIXEDLOAD[e] if MIXEDLOAD.get(e) else ''))
     open(outp, 'w').write('\n'.join(lines) + '\n')
     print('\n'.join(report))
     if hasattr(sys.modules[__name__], 'COV'):

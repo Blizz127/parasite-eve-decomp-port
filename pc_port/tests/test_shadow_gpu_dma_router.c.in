@@ -68,6 +68,14 @@ void PE_GuestHook_Refuse(const char *slot, const char *caller, pe_addr_t fn,
 void PE_Port_RequestStop(PEPortStopReason r) { (void)r; abort(); }
 void Bootstrap_ReturnVoid1(const char *a,const char *b,uint32_t c) { (void)a;(void)b;(void)c;abort(); }
 void Trace_Direct(const char *s) { (void)s; }
+/* Run the clean-room DMA interrupt handler (func_80074520 = pe_plat_dma_handler)
+ * and classify the pass by the stop epoch. */
+static PeIrqServiceResult dma_handler_verdict(void)
+{
+    unsigned epoch = PE_Port_StopEpoch();
+    (void)func_80074520();
+    return PE_Port_StopEpoch() == epoch ? PE_IRQ_SERVICE_RETURNED : PE_IRQ_SERVICE_BOUNDARY;
+}
 static unsigned normal_calls, projections, geometry;
 uint32_t __real_pe_plat_gte_vector_normal(uint32_t, uint32_t);
 uint32_t __wrap_pe_plat_gte_vector_normal(uint32_t in, uint32_t out)
@@ -177,7 +185,7 @@ static void run(int nonzero,int transparent)
          trace.cpu_callback_order < trace.dma_ack_order &&
          trace.dma_ack_order < trace.dma_callback_order)) abort();
     /* Re-entering the handler with no pending flag must not invoke it again. */
-    if (PE_func_80074520_Dispatch()!=PE_IRQ_SERVICE_RETURNED || dma_callback_calls!=1) abort();
+    if (dma_handler_verdict()!=PE_IRQ_SERVICE_RETURNED || dma_callback_calls!=1) abort();
     PE_GPU_AcknowledgeDMA2Interrupt();
     if(PE_GPU_DMA2CompletionPending() || (PE_IRQ_ReadStatus()&8u)) abort();
     PE_IRQ_WriteStatus((uint16_t)~8u);

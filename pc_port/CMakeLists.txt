@@ -118,11 +118,13 @@ set(PLATFORM_SRCS
     platform/pe_plat2_gpuprim_poolw.c
     platform/pe_plat2_gpuprim_setenv.c
     platform/pe_plat2_gpuprim_host.c
+    platform/pe_plat2_gpuprim_clearrect.c
     platform/pe_plat_state.c
     platform/pe_plat2_ctl.c
     platform/pe_plat2_cdx_save.c
     platform/pe_plat2_spu_a.c
     platform/pe_plat2_spu_b.c
+    platform/pe_plat2_cdx_spu.c
     platform/host_framebuffer.c
     platform/pe_dispenv.c
     platform/pe_timer1.c
@@ -170,7 +172,6 @@ set(PLATFORM_SRCS
     platform/pe_plat2_gpuq.c
     platform/pe_plat2_gpuq_host.c
     platform/pe_plat_resetgraph_light_host.c
-    platform/pe_libsnd.c
     platform/pe_spu_dma.c
     platform/pe_spu.c
     platform/pe_audio_driver.c
@@ -541,7 +542,10 @@ set(GAME_SRCS
 )
 # gpu2a (sw-gpu2a-20261127): the queue pump func_80076EE4 and the deadline seed func_800773D0 are the
 # clean-room pe_plat2_gpuq.c; the published host file and the translated pump file were removed 2026-11-27
-# (func_80076C34_port.c stays: it still carries PE_DispatchClearRect).
+# (func_80076C34_port.c was retired 2026-11-27: its two host seams PE_DispatchClearRect and
+# pe_plat_gpu_seed_deadline_host are the clean-room platform/pe_plat2_gpuprim_clearrect.c; the file is removed from
+# GAME_SRCS below and left in place for deletion).
+list(REMOVE_ITEM GAME_SRCS game/boot/func_80076C34_port.c)
 # DecDCToutCallback (func_8010C0D8) and the VLC table expander (func_8010BD4C) are the clean-room
 # pe_plat2_press.c; the old boot translation files were removed 2026-11-27.
 # Clean-room gpu2c providers (platform/pe_plat2_gpuprim*.c, pe_plat2_gpuaddr.c) own the libgpu primitive/address
@@ -819,6 +823,10 @@ set(FIELD_RUNTIME_SRCS
 # point or the X11 presentation adapter.  Creating this target does not claim
 # that the currently translated graph is a complete Day 1 field runtime.
 add_library(pe_field_runtime STATIC ${FIELD_RUNTIME_SRCS})
+# The translated stream engine keeps its own func_8008CB54 / func_8008CBA8 definitions: they stay
+# compiled but unreferenced by the generated callers, which bind to pe_plat/cdx_spu.h.
+set_source_files_properties(platform/pe_stream.c PROPERTIES
+    COMPILE_DEFINITIONS PE_CDXSPU_KEEP_LEGACY_STREAM)
 target_include_directories(pe_field_runtime PUBLIC
     ${CMAKE_SOURCE_DIR}
     ${CMAKE_SOURCE_DIR}/include
@@ -1357,7 +1365,7 @@ if(BUILD_TESTS)
         if(_pe_ok)
             add_executable(pe-transition-exit-tests tests/test_transition_exit.c)
             target_link_libraries(pe-transition-exit-tests PRIVATE pe_field_runtime)
-            pe_wrap_providers(pe-transition-exit-tests HostFB_SetDispMask HostFB_VSync func_80074A44 func_80074F44 func_80074DC0 func_800755F0 func_80086C5C func_8008CBA8 func_80086FF8 func_80087024)
+            pe_wrap_providers(pe-transition-exit-tests HostFB_SetDispMask HostFB_VSync func_80074A44 func_80074F44 func_80074DC0 func_800755F0 func_80086C5C pe_plat_cdxspu_stream_dispatch func_80086FF8 func_80087024)
             if(PE_PORT_SANITIZERS)
                 target_compile_options(pe-transition-exit-tests PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
                 target_link_options(pe-transition-exit-tests PRIVATE -fsanitize=address,undefined -static-libasan -static-libubsan)

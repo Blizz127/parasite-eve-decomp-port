@@ -24,6 +24,21 @@
  * "flip" = run the native, then corrupt its return value / its last
  * guest write by one bit (control: must FAIL).  Both controls print the same
  * per-entry table.
+ * Canary seeding (the default; -DCDX_SEED_ZERO restores the old zero seeding, bit-identical output):
+ *   unseeded guest RAM (a byte the case's L list does not seed) starts as the deterministic non-zero canary
+ *   canary_byte(b) = 0xC5 ^ ((b ^ (b>>8) ^ (b>>16)) & 0x7F)  (always 0x80..0xC5, varies by address, never 0 / 0xFF),
+ *   except the two exempt windows that are never compared (the native's guest-frame arena
+ *   PE_GUEST_FRAME_LO..HI and the original's stack 0x801FE000..0x801FEFFF), which stay 0.  Consequences:
+ *   - a provider store (of 0 or anything else) to a word the original neither read nor stored changes the
+ *     canary and fails the final-image diff (before: a store of 0 over the zero seed was invisible);
+ *   - an original store (of 0 or anything else) the provider omits leaves the canary behind and fails the diff;
+ *   - category 8 "store-footprint": every byte the provider stored through PE_Store* (outside the exempt windows) must
+ *     be a byte the original's S list stored, whatever its value (a same-value re-store is a footprint difference).
+ *     Stores through PE_Translate pointers bypass the footprint log; they are covered by the image diff only.
+ *   Both register stores (0x1F80xxxx) and RAM stores alias into ram[a & (MEM-1)] the same way on both sides.
+ *   Extra controls (argv[2]): "poke0" = run the native, then PE_StoreU32(<a word the case neither reads nor stores>, 0)
+ *   (must FAIL with canary, PASSES with -DCDX_SEED_ZERO); "same" = run the native, then re-store a seeded, unstored
+ *   word with its own value (FAILS only through category 8).
  * Pointers into the caller's own stack frame are compared as offsets from the
  * case's first such pointer ("F+n"): the original's lie in 0x801FE000..FFF,
  * the native's in the guest-frame arena. */
@@ -45,6 +60,12 @@ static unsigned long runaway;
 static jmp_buf case_escape; static int escape_armed;
 static int in_frame(pe_addr_t a) { return a >= PE_GUEST_FRAME_LO && a < PE_GUEST_FRAME_HI; }
 static uint32_t mlog[1024][3]; static unsigned nmlog;
+#ifndef CDX_SEED_ZERO
+static uint8_t canary_img[MEM];                 /* the seed image of unseeded RAM */
+static uint32_t ostore[MEM];                    /* generation mark: byte stored by the original's S list in this case */
+static uint8_t canary_byte(uint32_t b) { return (uint8_t)(0xC5u ^ ((b ^ (b >> 8) ^ (b >> 16)) & 0x7Fu)); }
+static int cdx_exempt(uint32_t b) { return (b >= (PE_GUEST_FRAME_LO & (MEM - 1)) && b < (PE_GUEST_FRAME_HI & (MEM - 1))) || (b >= 0x1FE000u && b < 0x1FF000u); }
+#endif
 static uint32_t rq[16384][3]; static unsigned nrq, rq_pos;
 static uint32_t last_w_addr; static unsigned last_w_size;
 static int is_reg(pe_addr_t a) { return (a >> 16) == 0x1F80u; }
@@ -117,7 +138,7 @@ static uint32_t ret_of(uint32_t fn)
 }
 static void fmt_got(char *o, size_t n, uint32_t v)
 {
-    if (v >= PE_GUEST_FRAME_LO && v < PE_GUEST_FRAME_HI) {
+    if (v >= PE_GUEST_FRAME_LO && v < 0x801FF000u) {   /* sw-cdx-stream2 de6617fc9: the whole 0x801FE000..FFF own-frame window */
         if (!got_fset) { got_fbase = v; got_fset = 1; }
         snprintf(o, n, "F%+d", (int)(v - got_fbase));
     } else snprintf(o, n, "%08X", v);
@@ -168,6 +189,61 @@ static uint32_t (*want_norm)(uint32_t fn, unsigned idx, uint32_t v);
 static int call(uint32_t entry, const uint32_t *a, uint32_t *ret);   /* batch dispatcher: 1 = returns a value, 0 = void, -1 unknown */
 static int mutant;   /* 0 native, 1 noop, 2 flip */
 
+#ifndef CDX_SEED_ZERO
+/* canary-mode diagnostics: classification of every final-image difference / footprint extra, aggregated per (entry, word) */
+enum { CL_EXTRA = 0, CL_EXTRA_SAME, CL_MISSING, CL_WRONG, CL_UNLOGGED, CL_N };
+static const char *const cl_name[CL_N] = {"extra-store (provider stored, original did not; value differs from pre-image)",
+    "extra-store-same-value (footprint only: provider re-stored the pre-image value)",
+    "missing-store (original stored, provider left the pre-image)", "wrong-value (both stored the byte, values differ)",
+    "unlogged-image-diff (no PE_Store* by the provider: PE_Translate write, or an earlier-case artefact)"};
+static unsigned cl_cases[CL_N], cl_words[CL_N], cl_zero_words[CL_N]; static uint32_t cl_case_mark[CL_N];
+static unsigned zero_unseeded_entries; static uint8_t zero_unseeded_word[MEM / 4]; static unsigned zero_unseeded_distinct;
+static unsigned footprint_only_cases, canary_image_cases;
+struct agg { uint32_t entry, addr; unsigned cls, n; uint32_t got, want, pre; };
+static struct agg aggs[1024]; static unsigned nagg;
+static void agg_add(uint32_t entry, uint32_t addr, unsigned cls, uint32_t got, uint32_t want, uint32_t pre)
+{
+    unsigned i;
+    for (i = 0; i < nagg; i++) if (aggs[i].entry == entry && aggs[i].addr == addr && aggs[i].cls == cls) { aggs[i].n++; return; }
+    if (nagg < 1024) { aggs[nagg].entry = entry; aggs[nagg].addr = addr; aggs[nagg].cls = cls; aggs[nagg].n = 1; aggs[nagg].got = got; aggs[nagg].want = want; aggs[nagg].pre = pre; nagg++; }
+}
+static uint32_t rdw(const uint8_t *m, uint32_t k) { uint32_t v; memcpy(&v, m + k, 4); return v; }
+/* Classify the case's differences.  Returns 1 when category 8 (footprint extra) fires; *img = 1 when the image differs (cat 4).
+ * Cost: only the 64-byte blocks that differ from `expect` and the bytes the provider stored (wlog, complete below its 8192 cap) are visited. */
+static uint32_t wseen[CL_N][MEM / 4];
+static void classify_byte(uint32_t entry, uint32_t k, unsigned *fp, int *img, char *first, size_t firstn)
+{
+    int pw = wrote[k] == cur, os = ostore[k] == cur;
+    int diff = ram[k] != expect[k];
+    unsigned cls = CL_N;
+    if (cdx_exempt(k)) return;
+    if (pw && !os) { cls = (ram[k] != snap[k]) ? CL_EXTRA : CL_EXTRA_SAME; *fp = 1; }
+    else if (diff) cls = (!pw && os) ? CL_MISSING : (pw && os) ? CL_WRONG : CL_UNLOGGED;
+    if (diff) *img = 1;
+    if (cls < CL_N) {
+        uint32_t w = k & ~3u;
+        if (wseen[cls][w >> 2] != cur) {
+            int z = (cls == CL_EXTRA) ? (rdw(ram, w) == 0 && rdw(snap, w) != 0) : (cls == CL_MISSING) ? (rdw(expect, w) == 0) : 0;
+            wseen[cls][w >> 2] = cur; cl_words[cls]++; if (z) cl_zero_words[cls]++;
+            agg_add(entry, 0x80000000u | w, cls, rdw(ram, w), rdw(expect, w), rdw(snap, w));
+            if (strlen(first) + 120 < firstn && strlen(first) < 480)
+                snprintf(first + strlen(first), firstn - strlen(first), "    %-12s %08X got=%08X want=%08X pre=%08X\n",
+                         cls == CL_EXTRA ? "extra" : cls == CL_EXTRA_SAME ? "extra-same" : cls == CL_MISSING ? "missing" : cls == CL_WRONG ? "wrong-value" : "unlogged",
+                         0x80000000u | w, rdw(ram, w), rdw(expect, w), rdw(snap, w));
+        }
+        if (cl_case_mark[cls] != cur) { cl_case_mark[cls] = cur; cl_cases[cls]++; }
+    }
+}
+static unsigned classify_case(uint32_t entry, int *img, char *first, size_t firstn)
+{
+    unsigned k, j, fp = 0;
+    *img = 0; first[0] = 0;
+    if (nwlog >= 8192) { for (k = 0; k < MEM; k++) classify_byte(entry, k, &fp, img, first, firstn); return fp; }
+    for (k = 0; k < MEM; k += 64) if (memcmp(ram + k, expect + k, 64)) for (j = 0; j < 64; j++) classify_byte(entry, k + j, &fp, img, first, firstn);
+    for (j = 0; j < nwlog; j++) { uint32_t bb = wlog[j] & ~63u; if (!memcmp(ram + bb, expect + bb, 64)) classify_byte(entry, wlog[j], &fp, img, first, firstn); }
+    return fp;
+}
+#endif
 static int find(char **tok, int nt, int from, const char *s)
 {
     while (from < nt && strcmp(tok[from], s)) from++;
@@ -184,8 +260,15 @@ static void apply_seed(const char *t)
     }
 }
 /* failure categories (printed with CDX_CATEGORIES=1): a case can fail several */
+#ifndef CDX_SEED_ZERO
+#define CDX_NCAT 9
+#define CDX_CAT_FOOTPRINT 8
+static const char *const cat_name[] = {"return", "read-outside-original-loads", "trap-call", "register-read-replay", "ram-image", "register-stores", "callee-sequence", "callee-write-timing", "store-footprint"};
+#else
+#define CDX_NCAT 8
 static const char *const cat_name[] = {"return", "read-outside-original-loads", "trap-call", "register-read-replay", "ram-image", "register-stores", "callee-sequence", "callee-write-timing"};
-static unsigned cat_count[8]; static int cat_hit[8];
+#endif
+static unsigned cat_count[CDX_NCAT]; static int cat_hit[CDX_NCAT];
 #define FAILC(k) do { cat_hit[k] = 1; ok = 0; } while (0)
 static unsigned entries_seen[256]; static uint32_t entry_id[256]; static unsigned entry_bad[256]; static unsigned nentry;
 static unsigned entry_slot(uint32_t e)
@@ -200,7 +283,10 @@ int main(int argc, char **argv)
     unsigned n = 0, bad = 0, i;
     if (argc < 2 || !(f = fopen(argv[1], "r"))) { fprintf(stderr, "usage: check vectors.txt [noop|flip]\n"); return 2; }
     loose_reads = getenv("CDX_LOOSE_READS") != NULL;
-    if (argc > 2) mutant = !strcmp(argv[2], "noop") ? 1 : !strcmp(argv[2], "flip") ? 2 : 0;
+    if (argc > 2) mutant = !strcmp(argv[2], "noop") ? 1 : !strcmp(argv[2], "flip") ? 2 : !strcmp(argv[2], "poke0") ? 3 : !strcmp(argv[2], "same") ? 4 : 0;
+#ifndef CDX_SEED_ZERO
+    { uint32_t b; for (b = 0; b < MEM; b++) canary_img[b] = cdx_exempt(b) ? 0 : canary_byte(b); }
+#endif
     while (fgets(line, sizeof line, f)) {
         int nt = 0, ri, li, si, ti, ci, ok = 1, na, has; uint32_t entry, a[8] = {0}, wret, got = 0; unsigned k, slot;
         strncpy(copy, line, sizeof copy - 1); copy[sizeof copy - 1] = 0;
@@ -215,7 +301,11 @@ int main(int argc, char **argv)
         slot = entry_slot(entry); entries_seen[slot]++;
         cur = ++n; nwlog = 0; bad_read = 0; bad_call = 0; nmlog = 0; nrq = rq_pos = 0; ngot = 0; frame_top = PE_GUEST_FRAME_HI;
         want_fset = got_fset = 0;
+#ifndef CDX_SEED_ZERO
+        memcpy(ram, canary_img, sizeof ram);
+#else
         memset(ram, 0, sizeof ram);
+#endif
         for (k = (unsigned)li + 1; k < (unsigned)si; k++) {
             unsigned addr, size, val;
             if (!strcmp(tok[k], "-")) continue;
@@ -252,12 +342,41 @@ int main(int argc, char **argv)
             unsigned addr, size, val, b;
             if (!strcmp(tok[k], "-") || sscanf(tok[k], "%x:%u=%x", &addr, &size, &val) != 3 || size > 4) continue;
             for (b = 0; b < size; b++) expect[(addr + b) & (MEM - 1)] = (uint8_t)(val >> (8 * b));
+#ifndef CDX_SEED_ZERO
+            { int allz = 1, unseeded = 1;
+              for (b = 0; b < size; b++) {
+                  uint32_t m = (addr + b) & (MEM - 1);
+                  ostore[m] = cur;
+                  if (((val >> (8 * b)) & 0xFFu) != 0) allz = 0;
+                  if (readable[m] == cur || cdx_exempt(m) || is_reg(addr)) unseeded = 0;
+              }
+              if (allz && unseeded) {   /* the blind class of the audit: an original store of 0 to bytes the case never seeds */
+                  uint32_t w = ((addr & (MEM - 1)) >> 2);
+                  zero_unseeded_entries++;
+                  if (!(zero_unseeded_word[w >> 3] & (1u << (w & 7)))) { zero_unseeded_word[w >> 3] |= (uint8_t)(1u << (w & 7)); zero_unseeded_distinct++; }
+              }
+            }
+#endif
         }
         runaway = 0;
         if (setjmp(case_escape)) { escape_armed = 0; bad_read = 1; has = 0; got = 0; }
         else { escape_armed = 1; has = call(entry, a, &got); escape_armed = 0; }
         if (has < 0) { fprintf(stderr, "unknown entry %08X\n", entry); return 2; }
         if (mutant == 2) { if (has) got ^= 1u; if (last_w_size) ram[last_w_addr & (MEM - 1)] ^= 1u; else ram[0x1000] ^= 1; }
+        if (mutant >= 3) {   /* positive controls for the canary: stores the original never made (see the header comment) */
+            uint32_t w;
+            for (w = mutant == 3 ? 0x100000u : 0u; w + 4 <= MEM; w += 4) {
+                uint32_t b0 = w, ok4 = 1; unsigned q;
+                for (q = 0; q < 4; q++) {
+                    uint32_t b = b0 + q;
+#ifndef CDX_SEED_ZERO
+                    if (ostore[b] == cur || cdx_exempt(b)) ok4 = 0;
+#endif
+                    if (mutant == 3 ? readable[b] == cur : readable[b] != cur) ok4 = 0;
+                }
+                if (ok4) { uint32_t v = 0; if (mutant == 4) memcpy(&v, ram + w, 4); PE_StoreU32(0x80000000u | w, v); break; }
+            }
+        }
         memset(cat_hit, 0, sizeof cat_hit);
         if (has && got != wret) FAILC(0);
         if (bad_read) FAILC(1);
@@ -274,6 +393,16 @@ int main(int argc, char **argv)
                 }
             }
         }
+#ifndef CDX_SEED_ZERO
+        {   /* canary mode: classification + category 8 (every provider-stored byte must be an original-stored byte) */
+            int img; char first[600]; unsigned fp = classify_case(entry, &img, first, sizeof first);
+            if (fp) FAILC(CDX_CAT_FOOTPRINT);
+            if (img) canary_image_cases++;
+            if (fp && !img) footprint_only_cases++;
+            if (first[0] && bad < (getenv("CDX_MAXPRINT") ? (unsigned)atoi(getenv("CDX_MAXPRINT")) : 8u) && !mutant)
+                fprintf(stderr, "CANARY line %u entry %08X (final-image / footprint differences):\n%s", n, entry, first);
+        }
+#endif
         {   /* register stores in order */
             unsigned want_m = 0, addr, size, val;
             for (k = (unsigned)si + 1; k < (unsigned)ti; k++) {
@@ -330,7 +459,7 @@ int main(int argc, char **argv)
             }
             if (want_c != ngot) FAILC(6);
         }
-        { unsigned q; for (q = 0; q < 8; q++) cat_count[q] += (unsigned)cat_hit[q]; }
+        { unsigned q; for (q = 0; q < CDX_NCAT; q++) cat_count[q] += (unsigned)cat_hit[q]; }
         if (!ok) {
             entry_bad[slot]++;
             if (bad++ < (getenv("CDX_MAXPRINT") ? (unsigned)atoi(getenv("CDX_MAXPRINT")) : 8u) && !mutant) {
@@ -353,7 +482,17 @@ int main(int argc, char **argv)
     }
     printf("mode=%s checked %u cases, %u mismatches (host-only calls ignored: %u)\n", mutant == 1 ? "noop" : mutant == 2 ? "flip" : "native", n, bad, host_only_calls);
     for (i = 0; i < nentry; i++) printf("  %08X cases=%u mismatches=%u\n", entry_id[i], entries_seen[i], entry_bad[i]);
-    if (getenv("CDX_CATEGORIES")) for (i = 0; i < 8; i++) printf("  category %-28s %u cases\n", cat_name[i], cat_count[i]);
+#ifndef CDX_SEED_ZERO
+    printf("canary: original S stores of 0 to never-seeded bytes: %u stores, %u distinct words (the blind set under zero seeding)\n", zero_unseeded_entries, zero_unseeded_distinct);
+    printf("canary: cases with a final-image difference %u, footprint-only (extra same-value store, image equal) %u\n", canary_image_cases, footprint_only_cases);
+    for (i = 0; i < CL_N; i++) printf("canary: class %-96s cases=%u words=%u (zero-class words %u)\n", cl_name[i], cl_cases[i], cl_words[i], cl_zero_words[i]);
+    if (nagg && getenv("CDX_AGG")) {
+        fprintf(stderr, "canary aggregate (entry, word, class, cases, first got/want/pre):\n");
+        for (i = 0; i < nagg && i < 1024; i++) fprintf(stderr, "  %08X %08X %-11s n=%u got=%08X want=%08X pre=%08X\n", aggs[i].entry, aggs[i].addr,
+            aggs[i].cls == CL_EXTRA ? "extra" : aggs[i].cls == CL_EXTRA_SAME ? "extra-same" : aggs[i].cls == CL_MISSING ? "missing" : aggs[i].cls == CL_WRONG ? "wrong-value" : "unlogged", aggs[i].n, aggs[i].got, aggs[i].want, aggs[i].pre);
+    }
+#endif
+    if (getenv("CDX_CATEGORIES")) for (i = 0; i < CDX_NCAT; i++) printf("  category %-28s %u cases\n", cat_name[i], cat_count[i]);
     return mutant ? 0 : bad != 0;
 }
 #endif

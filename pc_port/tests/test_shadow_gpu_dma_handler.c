@@ -41,11 +41,12 @@ int PE_Irq_LockDepth(void) { return 0; }
 unsigned PE_Port_StopEpoch(void) { return 0; }
 void Bootstrap_ReturnVoid(const char *a,const char *b) { (void)a;(void)b;abort(); }
 int32_t PE_Bios_Printf(pe_addr_t a,const uint32_t *b,int c) { (void)a;(void)b;(void)c;abort(); }
+static PeIrqServiceResult dma_handler_verdict(void);
 static unsigned dma_handler_calls, dma_callback_calls;
 int pe_plat_invoke_guest_callback(uint32_t a) {
     if (a == 0x80074520u) {
         dma_handler_calls++;
-        return PE_func_80074520_Dispatch()==PE_IRQ_SERVICE_RETURNED;
+        return dma_handler_verdict()==PE_IRQ_SERVICE_RETURNED;
     }
     if (a == 0x8017f000u) {
         /* The native DMA handler must acknowledge before invoking this double. */
@@ -58,6 +59,14 @@ int pe_plat_invoke_guest_callback(uint32_t a) {
 void PE_Port_RequestStop(PEPortStopReason r) { (void)r; abort(); }
 void Bootstrap_ReturnVoid1(const char *a,const char *b,uint32_t c) { (void)a;(void)b;(void)c;abort(); }
 void Trace_Direct(const char *s) { (void)s; }
+/* Run the clean-room DMA interrupt handler (func_80074520 = pe_plat_dma_handler)
+ * and classify the pass by the stop epoch. */
+static PeIrqServiceResult dma_handler_verdict(void)
+{
+    unsigned epoch = PE_Port_StopEpoch();
+    (void)func_80074520();
+    return PE_Port_StopEpoch() == epoch ? PE_IRQ_SERVICE_RETURNED : PE_IRQ_SERVICE_BOUNDARY;
+}
 static unsigned normal_calls, projections, geometry;
 uint32_t __real_pe_plat_gte_vector_normal(uint32_t, uint32_t);
 uint32_t __wrap_pe_plat_gte_vector_normal(uint32_t in, uint32_t out)
@@ -163,7 +172,7 @@ static void run(int nonzero,int transparent)
        trace.last_cpu_handler!=0x80074520u || trace.dma_ack_count!=1 ||
        trace.last_dma_channel!=2 || dma_handler_calls!=1 || dma_callback_calls!=1) abort();
     /* Re-entering the handler with no pending flag must not invoke it again. */
-    if (PE_func_80074520_Dispatch()!=PE_IRQ_SERVICE_RETURNED || dma_callback_calls!=1) abort();
+    if (dma_handler_verdict()!=PE_IRQ_SERVICE_RETURNED || dma_callback_calls!=1) abort();
     PE_GPU_AcknowledgeDMA2Interrupt();
     if(PE_GPU_DMA2CompletionPending() || (PE_IRQ_ReadStatus()&8u)) abort();
     PE_IRQ_WriteStatus((uint16_t)~8u);

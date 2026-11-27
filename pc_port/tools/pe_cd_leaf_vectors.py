@@ -572,6 +572,7 @@ import struct
 import sys
 
 import pe_gpu_leaf_vectors as gv
+import pe_ownwrite
 
 v = gv.v
 pl = gv.pl
@@ -591,6 +592,12 @@ def _faithful_logged(a):
 
 
 pl._logged = _faithful_logged
+
+# Own-written-load filter (docs/evidence/public-openness-20261126/VECTOR-GENERATOR-SELFREAD-AUDIT.md): installed innermost
+# on the pl load/store chain, inactive until main() calls OWN.enable() (library users and CD_LEGACY_OWN_LOADS=1 keep the
+# old behaviour byte for byte).  MEMSEQ words (cdgen38 plain-memory wait model) are replayed in order by the checker and
+# stay logged.  See pe_ownwrite.py.
+OWN = pe_ownwrite.install(pl, UNFAITHFUL, exempt=lambda a: (a & ~3) in MEMSEQ)
 
 
 class CdIrq:
@@ -3022,6 +3029,14 @@ def spucallee_cases(base):
 
 
 def main():
+    OWN.enable()
+    try:
+        _main()
+    finally:
+        OWN.report()
+
+
+def _main():
     if sys.argv[2:] == ['spucallees']:
         exe = (v.ROOT / 'build/disc1.candidate.exe').read_bytes()
         out = spucallee_cases(bytes(v.fixture(exe, 0, 0, 0)))
@@ -3388,6 +3403,12 @@ def main():
             out.append(gv.line(entry, s, 0, args, res))
     open(sys.argv[1], 'w').write('\n'.join(out) + '\n')
     print('cases', len(out), 'skipped (budget)', spun, 'dropped (unfaithful)', dropped)
+
+
+# per-case own-set reset: the three case runners (pl.LOADS / pl.CUR are not used for this)
+gv.run = OWN.case_runner(gv.run)
+run_with_callbacks = OWN.case_runner(run_with_callbacks)
+run_with_callees = OWN.case_runner(run_with_callees)
 
 
 if __name__ == '__main__':

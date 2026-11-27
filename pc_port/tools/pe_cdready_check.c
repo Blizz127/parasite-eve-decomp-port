@@ -58,6 +58,11 @@ static void rd(pe_addr_t a, unsigned n)
 {
     unsigned i;
     for (i = 0; i < n; i++) {
+#ifndef CHK_STRICT_READS
+        /* a byte the code under test stored itself earlier in this case may be read back (the original does the same and
+         * the generator no longer logs such own-written loads); -DCHK_STRICT_READS restores the old rule */
+        if (wrote[(a + i) & (MEM - 1)] == cur) { /* own-written */ } else
+#endif
         if (readable[(a + i) & (MEM - 1)] != cur) bad_read = 1;
         seen[(a + i) & (MEM - 1)] = cur;
     }

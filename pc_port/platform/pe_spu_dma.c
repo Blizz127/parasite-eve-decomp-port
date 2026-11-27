@@ -70,6 +70,7 @@ static uint16_t g_spu_registers[0x100];
 static PeSpuDmaState g_dma;
 static int g_dma_read;
 static uint64_t g_order;
+static uint32_t g_dma4_madr, g_dma4_bcr, g_dma4_chcr;   /* DMA4 register file (PE_SpuDma_Dma4Load/Store) */
 
 /* Translated retail completion callback, implemented with the wrapper. */
 extern void func_80085098(void);
@@ -98,6 +99,7 @@ void PE_SpuDma_Reset(void)
     memset(&g_dma, 0, sizeof(g_dma));
     g_dma_read = 0;
     g_order = 0;
+    g_dma4_madr = g_dma4_bcr = g_dma4_chcr = 0;
     PE_Spu_Reset();                          /* audio lane (pe_spu.h) */
 }
 
@@ -204,6 +206,76 @@ static int SpuDma_BeginChecked(pe_addr_t source, uint32_t destination,
     PE_StoreU32(GA_D_8009B450, source);
     PE_StoreU32(GA_D_8009B454, dma_size / PE_SPU_DMA_BLOCK_SIZE);
     return 1;
+}
+
+/* DMA channel 4 registers (pe_plat/spu_dma_hw.h).  The CHCR start records the transfer the registers
+ * describe, with the same fields PE_SpuDma_Begin / BeginRead leave in g_dma; `source` stays the raw MADR
+ * value and the request-size cap of the call API does not apply (the size is BCR's block count). */
+static void Dma4Refuse(const char *why)
+{
+    char msg[200];
+    snprintf(msg, sizeof msg, "SPU_DMA/REFUSED DMA4 CHCR start (%s): MADR=0x%08X BCR=0x%08X CHCR=0x%08X",
+             why, (unsigned)g_dma4_madr, (unsigned)g_dma4_bcr, (unsigned)g_dma4_chcr);
+    fprintf(stderr, "%s (the host SPU DMA model cannot represent this transfer)\n", msg);
+    PE_Decomp_NoteStopDetail(msg);
+    PE_Port_RequestStop(PE_PORT_STOP_UNRESOLVED_BOUNDARY);
+}
+
+static void Dma4Start(void)
+{
+    int read_direction = !(g_dma4_chcr & 1u);
+    uint32_t blocks = g_dma4_bcr >> 16, words = g_dma4_bcr & 0xFFFFu;
+    uint32_t bytes = blocks * PE_SPU_DMA_BLOCK_SIZE;
+    uint32_t destination;
+    pe_addr_t registers = PE_LoadU32(0x8009B3FCu);
+    pe_addr_t source = g_dma4_madr;
+    FILE *f;
+
+    /* the SPU transfer address register (units of 8 bytes) as the guest sees it: the host register file at
+     * 0x1F801C00, or a RAM block the register pointer word names (the test fixtures) */
+    if ((registers & 0x1FFFFFFFu) == 0x1F801C00u) destination = (uint32_t)g_spu_registers[0x1A6u / 2u] * 8u;
+    else if (PE_RangeIsRam(registers, 0x200u)) destination = (uint32_t)PE_LoadU16(registers + 0x1A6u) * 8u;
+    else { Dma4Refuse("SPU register block"); return; }
+    if (((g_dma4_chcr >> 9) & 3u) != 1u || words * 4u != PE_SPU_DMA_BLOCK_SIZE) { Dma4Refuse("not 16-word block mode"); return; }
+    if (!g_dma.irq_installed || g_dma.irq_handler != PE_SPU_DMA_IRQ_HANDLER) { Dma4Refuse("completion handler not installed"); return; }
+    if (g_dma.pending) { Dma4Refuse("another transfer pending"); return; }
+    if ((source & 3u) != 0) { Dma4Refuse("misaligned source"); return; }
+    if (read_direction && bytes == 0) { Dma4Refuse("zero-length read"); return; }
+    if (blocks > PE_SPU_RAM_SIZE / PE_SPU_DMA_BLOCK_SIZE || !PE_RangeIsRam(source, bytes) ||
+        destination >= PE_SPU_RAM_SIZE) { Dma4Refuse("range"); return; }
+
+    g_dma.pending = 1;
+    g_dma_read = read_direction;
+    g_dma.source = source;
+    g_dma.destination = destination;
+    g_dma.requested_size = bytes;
+    g_dma.dma_size = bytes;
+    g_dma.callback_at_issue = PE_LoadU32(GA_D_8009B434);
+    g_dma.data_order = 0;
+    g_dma.callback_order = 0;
+    f = dma_log();
+    if (f && !read_direction) {
+        g_dma_issue_sum = dma_sum(source, bytes);
+        fprintf(f, "BEGIN ok src=%08X dst=%05X req=%X size=%X cb=%08X irq=%d/%08X pending=0 sum=%08X (DMA4)\n",
+                source, destination, bytes, bytes, g_dma.callback_at_issue, g_dma.irq_installed,
+                g_dma.irq_handler, g_dma_issue_sum);
+        fflush(f);
+    }
+}
+
+uint32_t PE_SpuDma_Dma4Load(uint32_t index)
+{
+    if (index == 0) return g_dma4_madr & 0x00FFFFFFu;
+    if (index == 1) return g_dma4_bcr;
+    return (g_dma4_chcr & ~0x01000000u) | (g_dma.pending ? 0x01000000u : 0u);
+}
+
+void PE_SpuDma_Dma4Store(uint32_t index, uint32_t value)
+{
+    if (index == 0) { g_dma4_madr = value; return; }
+    if (index == 1) { g_dma4_bcr = value; return; }
+    g_dma4_chcr = value;
+    if (value & 0x01000000u) Dma4Start();
 }
 
 /* 7D6A4: retail's jalr through the live slot.  Only a native thunk of at

@@ -51,6 +51,8 @@ def load_specs(m, batch):
         m.HOOKS[0x8007BBFC] = _cdirq_hook(m)
     if batch == 'cdgen42b':
         _load_cdgen42b(m)
+    if batch in ('cdgen42c', 'cdgen42ci'):
+        _load_cdgen42c(m, batch == 'cdgen42ci')
     if batch == 'cdgen44':
         b = 'cdgen44'
         # SPU DMA event installer / SPU init chain (libsnd): BIOS B(08h) OpenEvent and B(0Ch) EnableEvent are
@@ -382,3 +384,250 @@ def _load_cdgen42b(m):
     s(0x8008080C, 'cd_decode_status', 'ww', {}, batch=b, void=True, inline=(0x80080998,),
       n=len(RT['decode']) + NDEC + NRAND)
     m.HOOKS[0x8008080C] = dec_hook
+
+
+# ------------------------------------------------------------------------------------------------------------------
+# cdgen42c / cdgen42ci: the three callback-slot targets that have no native (sw-vec-cd2, 2026-11-27):
+#   0x8007F7E8  libds VBlank hook (pump slot 0x800A36A0; no arguments): lane getter 8007FBF0(0) twice, queue record
+#               at 0x800A3540 + 24 * [0x800A3604] (count word 0x800A3608), issue 8007FB44(rec[4] byte, rec[12]);
+#   0x8007F88C  libds status callback (progress slot 0x800A36A8; status, response): 8007E704(5, response) for status 5
+#               with response[0] bit 4, per-status table records at 0x800A3520 / 0x800A3530 (8-byte copy of the response),
+#               then the user callback word 0x800B8AB4 (status byte, response);
+#   0x80080778  default CD ready callback (status, response): 8008080C(status byte, response), flag byte 0x8009B56C bit 4,
+#               user slot 0x800A36A8 gated by 0x8009B554.
+# 'cdgen42ci' = 0x80080778 only with 8008080C run inline as original code (for a provider whose decode is not a separate
+# call site); 'cdgen42c' stops it as a recorded callee.  Callback targets are stopped callees (sentinels 0x80131300/40/80, and
+# the real slot targets that have callee records).  Runtime tuples: CDXT cb7F7E8 lines (callee results observed inline in the
+# legacy object) and CDXT afterdecode lines (the state the decode's callers see; 80080164 / 80080778 are indistinguishable).
+CB42C_SENT = (0x80131300, 0x80131340, 0x80131380)
+
+
+def _load_cdgen42c(m, inline_decode):
+    import os
+    import re
+    import struct
+    c, gv = m.c, m.gv
+    s = m.spec
+    b = 'cdgen42ci' if inline_decode else 'cdgen42c'
+
+    def put32(ram, a, v):
+        struct.pack_into('<I', ram, a & 0x1FFFFF, v & 0xFFFFFFFF)
+
+    def put8(ram, a, v):
+        ram[a & 0x1FFFFF] = v & 0xFF
+
+    def hsh(*k):
+        h = 0x9E3779B1
+        for q in k:
+            h = gv.xs32((h ^ (q & 0xFFFFFFFF)) * 2654435761 & 0xFFFFFFFF or 1)
+        return h
+    RT = {'vb': [], 'afterdecode': [], 'scb': []}
+    for path in [q for q in os.environ.get('CDX42B_TRACE', '').split(',') if q]:
+        for ln in open(path, errors='replace'):
+            mm = re.match(r'CDXT cb7F7E8 .*in\[idx=(\w+) cnt=(\w+) rec0=(\w+) rec4=(\w+) rec12=(\w+)\]((?: lane\(\w+\)->\w+| issue\(\w+,\w+\)->\w+)*)', ln)
+            if mm:
+                tail = mm.group(6)
+                t = dict(zip(('idx', 'cnt', 'rec0', 'rec4', 'rec12'), (int(g, 16) for g in mm.groups()[:5])))
+                t['lane'] = [int(q, 16) for q in re.findall(r'lane\(\w+\)->(\w+)', tail)]
+                t['issue'] = [int(q, 16) for q in re.findall(r'issue\(\w+,\w+\)->(\w+)', tail)]
+                if t not in RT['vb']:
+                    RT['vb'].append(t)
+                continue
+            mm = re.match(r'CDXT table3520 vsync=\d+ slotB8AB4=(\w+) \| ((?:[0-9A-Fa-f]{2} ?){32})', ln)
+            if mm:      # 0x8007F88C wrote its record (word 1, status byte, 8 response bytes): the observed (status, response bytes, user slot)
+                bts = [int(q, 16) for q in mm.group(2).split()]
+                for half in (0, 16):
+                    if bts[half] == 1 and not any(bts[half + 1:half + 4]):
+                        t = {'status': bts[half + 4], 'bytes': bts[half + 5:half + 13], 'slot': int(mm.group(1), 16)}
+                        if t not in RT['scb']:
+                            RT['scb'].append(t)
+                continue
+            mm = re.match(r'CDXT afterdecode status=(\w+) resp=(\w+) b56C=(\w+) slot36A8=(\w+) g554=(\w+)', ln)
+            if mm:
+                t = dict(zip(('status', 'resp', 'b56C', 'slot', 'g554'), (int(g, 16) for g in mm.groups())))
+                if t not in RT['afterdecode']:
+                    RT['afterdecode'].append(t)
+    REP, NRAND = 8, 400
+    for key in RT:
+        RT[key] = [t for t in RT[key] for _ in range(REP)]
+    COV = {}
+
+    def cov(fn, key):
+        COV.setdefault(fn, {})
+        COV[fn][key] = COV[fn].get(key, 0) + 1
+    m.COV = COV
+    m.RT = RT
+    cbs = {a: 2 for a in CB42C_SENT}
+
+    # ---- 0x8007F7E8 ---------------------------------------------------------------------------------------------
+    LANE1 = (0, 1, 2, 0xFFFFFFFF, 0x10, 0x80000000)
+    LANE2 = ('eq', 'plus1', 0, 1, 0xFFFFFFFF)
+    CNT = (0, 1, 2, 0x7FFFFFFF, 0x80000000, 0xFFFFFFFF)
+    IDX = (0, 1, 2, 4, 5, 0x1F, 0xFFFFFFFF)
+    R0 = (0, 1, 'rand')
+    NVB0 = len(LANE1) * len(LANE2) * len(CNT) * len(IDX) * len(R0)
+    # deep block: the path that reads the queue record and issues (lane 1 / 1, positive count): count x idx x rec0 x rec4 x rec12
+    DCNT, DR0, DR4, DR12 = (1, 2, 0x7FFFFFFF), (0, 1, 2, 0x80000000, 0x152, 'rand'), (0, 9, 0xFF, 'rand'), (0, 'rand', 0x80100040)
+    NDEEP = len(DCNT) * len(IDX) * len(DR0) * len(DR4) * len(DR12)
+    NVB = NVB0 + NDEEP
+
+    def vb_apply(ram, rets, idx, cnt, r0, r4, r12, lane, issue):
+        put32(ram, 0x800A3604, idx); put32(ram, 0x800A3608, cnt)
+        rec = (0x800A3540 + idx * 24) & 0xFFFFFFFF
+        put32(ram, rec, r0); put8(ram, rec + 4, r4); put32(ram, rec + 12, r12)
+        rets[0x8007FBF0] = list(lane)
+        rets[0x8007FB44] = issue
+        st = [0]
+        seq = list(lane)
+
+        def lane_model(ram_, r, seq=seq, st=st):
+            v_ = seq[min(st[0], len(seq) - 1)]
+            st[0] += 1
+            return v_
+        return {0x8007FBF0: lane_model}
+
+    def vb_hook(ram, x, args, rets, seed):
+        k = seed - 1
+        nrt = len(RT['vb'])
+        h = hsh(seed, 41)
+        if m.PILOT[0] or k >= nrt + NVB:
+            idx = (IDX + (h >> 5,))[(h >> 3) % 8] if (h >> 3) % 8 < 7 else h % 0x40
+            cnt = (CNT + (h >> 9, 3))[(h >> 12) % 8]
+            l1 = (LANE1 + (h >> 16,))[(h >> 20) % 7]
+            l2 = (l1, (l1 + 1) & 0xFFFFFFFF, h >> 4, 1)[(h >> 22) % 4]
+            models = vb_apply(ram, rets, idx, cnt, (0, 1, h >> 7)[(h >> 24) % 3], h >> 8, h >> 14, [l1, l2], (0, 1, 0xFFFFFFFF, h >> 6)[(h >> 26) % 4])
+            if k >= nrt + NVB:
+                cov('7F7E8', 'random')
+            return x, models
+        if k < nrt:
+            t = RT['vb'][k]
+            lane = t['lane'] or [0]
+            models = vb_apply(ram, rets, t['idx'], t['cnt'], t['rec0'], t['rec4'], t['rec12'], lane, (t['issue'] or [1])[0])
+            cov('7F7E8', 'runtime')
+            return x, models
+        p = k - nrt
+        if p >= NVB0:
+            p -= NVB0
+            j1, p = p % len(DCNT), p // len(DCNT)
+            j2, p = p % len(IDX), p // len(IDX)
+            j3, p = p % len(DR0), p // len(DR0)
+            j4, p = p % len(DR4), p // len(DR4)
+            j5 = p
+            rnd = h | 1
+            models = vb_apply(ram, rets, IDX[j2], DCNT[j1], rnd if DR0[j3] == 'rand' else DR0[j3], (h >> 9) & 0xFF if DR4[j4] == 'rand' else DR4[j4],
+                              (rnd >> 3) if DR12[j5] == 'rand' else DR12[j5], [1, 1], (0, 1, 0xFFFFFFFF)[(h >> 13) % 3])
+            cov('7F7E8', 'deep')
+            return x, models
+        i1, p = p % len(LANE1), p // len(LANE1)
+        i2, p = p % len(LANE2), p // len(LANE2)
+        i3, p = p % len(CNT), p // len(CNT)
+        i4, p = p % len(IDX), p // len(IDX)
+        i5 = p
+        l1 = LANE1[i1]
+        l2 = l1 if LANE2[i2] == 'eq' else (l1 + 1) & 0xFFFFFFFF if LANE2[i2] == 'plus1' else LANE2[i2]
+        r0 = R0[i5] if R0[i5] != 'rand' else (h | 1)
+        models = vb_apply(ram, rets, IDX[i4], CNT[i3], r0, (0, 9, 0xFF, h >> 9)[(h >> 3) % 4], (0, h >> 5, ZONE_PTR)[(h >> 11) % 3],
+                          [l1, l2], (0, 1, 0xFFFFFFFF)[(h >> 13) % 3])
+        cov('7F7E8', 'product')
+        return x, models
+    ZONE_PTR = 0x80100040
+    s(0x8007F7E8, 'ds_vblank_hook', '', {0x8007FBF0: 1, 0x8007FB44: 2}, batch=b, void=True,
+      n=len(RT['vb']) + NVB + NRAND)
+    m.HOOKS[0x8007F7E8] = vb_hook
+
+    # ---- 0x8007F88C ---------------------------------------------------------------------------------------------
+    ST = (0, 1, 2, 3, 4, 5, 6, 7, 0x10, 0xFF, 0x1234505)
+    R0B = (0x00, 0x10, 0x20, 0x30, 0xFF, 0xEF)
+    PT = (0x80100000, 0x801FE400, 0x801FEC00, 0x00100100, 0xA0100200, 0x800A3460)
+    SL = (0, CB42C_SENT[0], CB42C_SENT[1])
+    NCB = len(ST) * len(R0B) * len(PT) * len(SL)
+
+    def cb_hook(ram, x, args, rets, seed):
+        k = seed - 1
+        h = hsh(seed, 43)
+        nrt = len(RT['scb'])
+        if m.PILOT[0] or k >= nrt + NCB:
+            put32(ram, 0x800B8AB4, (0, CB42C_SENT[(h >> 3) % 3])[(h >> 6) & 1])
+            if k >= nrt + NCB:
+                cov('7F88C', 'random')
+            return x, None
+        if k < nrt:
+            # runtime proxy: the record the inline body wrote at boot (status, 8 response bytes, user slot); the response pointer
+            # is not observable (inline body) -- 0x800A3468 is the pointer of the DS data callback of the same event (CDXT call line)
+            t = RT['scb'][k]
+            args[0] = t['status']; args[1] = 0x800A3468
+            for q, v_ in enumerate(t['bytes']):
+                ram[(0x800A3468 + q) & 0x1FFFFF] = v_
+            put32(ram, 0x800B8AB4, t['slot'])
+            cov('7F88C', 'runtime')
+            return x, None
+        k -= nrt
+        p = k
+        i1, p = p % len(ST), p // len(ST)
+        i2, p = p % len(R0B), p // len(R0B)
+        i3, p = p % len(PT), p // len(PT)
+        i4 = p
+        args[0] = ST[i1]
+        args[1] = PT[i3]
+        base_ = PT[i3] & 0x1FFFFF
+        for q in range(8):
+            ram[(base_ + q) & 0x1FFFFF] = (h >> (3 * q)) & 0xFF
+        ram[base_ & 0x1FFFFF] = R0B[i2]
+        put32(ram, 0x800B8AB4, SL[i4])
+        cov('7F88C', 'product')
+        return x, None
+    s(0x8007F88C, 'ds_status_callback', 'ew', {**{0x8007E704: 2}, **cbs}, batch=b, void=True, inline=(0x80080998,),
+      n=len(RT['scb']) + NCB + NRAND) if not inline_decode else None
+    if not inline_decode:
+        m.HOOKS[0x8007F88C] = cb_hook
+
+    # ---- 0x80080778 ---------------------------------------------------------------------------------------------
+    ST3 = (0, 1, 2, 3, 5, 0xFF, 0x1234502)
+    FL = (0x00, 0x10, 0x02, 0x12, 0xFF, 0xE0)
+    SL3 = (0, 0x8007F88C, CB42C_SENT[0])
+    G554 = (0, 1, 2, 0xFFFFFFFF)
+    RP = (0x80100000, 0x00100100, 0x800A3460, 0x801FED80) if inline_decode else (0, 0x80100000, 0x800A3460, 0xFFFFFFFF)   # inline decode dereferences the response
+    N778 = len(ST3) * len(FL) * len(SL3) * len(G554) * len(RP)
+
+    def rd_hook(ram, x, args, rets, seed):
+        k = seed - 1
+        nrt = len(RT['afterdecode'])
+        h = hsh(seed, 47)
+        if m.PILOT[0] or k >= nrt + N778:
+            put8(ram, 0x8009B56C, (FL + (h >> 9,))[(h >> 3) % 7]); put32(ram, 0x800A36A8, (SL3 + (h >> 7,))[(h >> 12) % 4] if (h >> 12) % 4 < 3 else CB42C_SENT[1])
+            put32(ram, 0x8009B554, (G554 + (h >> 11,))[(h >> 15) % 5])
+            if k >= nrt + N778:
+                cov('80080778', 'random')
+            return x, None
+        if k < nrt:
+            t = RT['afterdecode'][k]
+            args[0] = t['status']; args[1] = t['resp']
+            put8(ram, 0x8009B56C, t['b56C']); put32(ram, 0x800A36A8, t['slot']); put32(ram, 0x8009B554, t['g554'])
+            if inline_decode:
+                # the decode runs inline and rewrites 0x8009B56C from resp[idx]: reproduce the observed post-decode byte through the
+                # command table (command 1 -> table word 1 -> index 0) and resp[0]
+                put8(ram, 0x8009B558, 1); put32(ram, 0x8009B624 + 4, 1)
+                ram[t['resp'] & 0x1FFFFF] = t['b56C']
+            cov('80080778', 'runtime')
+            return x, None
+        p = k - nrt
+        i1, p = p % len(ST3), p // len(ST3)
+        i2, p = p % len(FL), p // len(FL)
+        i3, p = p % len(SL3), p // len(SL3)
+        i4, p = p % len(G554), p // len(G554)
+        i5 = p
+        args[0] = ST3[i1]
+        args[1] = RP[i5]
+        put8(ram, 0x8009B56C, FL[i2]); put32(ram, 0x800A36A8, SL3[i3]); put32(ram, 0x8009B554, G554[i4])
+        put32(ram, 0x8009B574, h); put32(ram, 0x8009B578, h >> 3)      # overwritten by the original on the bit-4 path
+        cov('80080778', 'product')
+        return x, None
+    callees778 = {**cbs, 0x8007F88C: 2}
+    if inline_decode:
+        s(0x80080778, 'cd_ready_default_cb', 'ew', callees778, batch=b, void=True, inline=(0x8008080C, 0x80080998),
+          n=len(RT['afterdecode']) + N778 + NRAND)
+    else:
+        callees778[0x8008080C] = 2
+        s(0x80080778, 'cd_ready_default_cb', 'ew', callees778, batch=b, void=True,
+          n=len(RT['afterdecode']) + N778 + NRAND)
+    m.HOOKS[0x80080778] = rd_hook

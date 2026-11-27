@@ -222,8 +222,16 @@ static void rd(pe_addr_t a, unsigned n)
         return;
     }
     unsigned i;
-    for (i = 0; i < n; i++)
-        if (readable[(a + i) & (MEM - 1)] != cur) bad_read = 1;
+    for (i = 0; i < n; i++) {
+        uint32_t b = (a + i) & (MEM - 1);
+        if (readable[b] == cur) continue;
+#ifndef CHK_STRICT_READS
+        /* a byte the code under test stored itself earlier in this case may be read back (the original does the same and
+         * the generators no longer log such own-written loads); -DCHK_STRICT_READS restores the old rule */
+        if (wrote[b] == cur) continue;
+#endif
+        bad_read = 1;
+    }
 }
 /* Register stores by the code under test, in order. */
 static uint32_t mlog[256][3], nmlog;

@@ -63,10 +63,10 @@ PeIrqEdgeResult PE_IRQ_BridgeDICRRisingEdge(PeIrqGeneration generation);
 PeIrqServiceResult PE_IRQ_ServicePendingForGeneration(
     PeIrqGeneration generation);
 
-/* Host entry for the clean-room DMA interrupt handler: reports a nested stop
- * as BOUNDARY. */
-PeIrqServiceResult PE_func_80074520_Dispatch(void);
-/* Host observers/services for the clean-room DMA handler. */
+/* Host observers/services for the clean-room DMA handler (the guest entry
+ * func_80074520 is bound to pe_plat_dma_handler in pe_plat/irq_callback.h; a
+ * host caller that needs a returned/boundary verdict compares the port stop
+ * epoch around that call). */
 void PE_IRQ_ObserveDicrWrite(uint32_t value);
 int PE_IRQ_DmaCallbackService(uint32_t handler, int *ok);
 int PE_IRQ_CpuCallbackService(uint32_t handler, int *ok);

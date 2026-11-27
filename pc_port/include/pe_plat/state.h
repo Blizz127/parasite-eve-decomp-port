@@ -43,30 +43,19 @@ int pe_plat_spu_set_control_bit(int mode);
 void pe_plat_spu_write_io(uint32_t source, uint32_t size);
 int pe_plat_spu_initialize(int mode);
 void pe_plat_spu_wait_cycles(void);
-void pe_plat_spu_install_dma_event(void);
-void pe_plat_spu_init_wrapper(int mode);
-void pe_plat_spu_init_default(void);
 int pe_plat_spu_configure_heap(int count, uint32_t buffer);
 int pe_plat_spu_heap_contains(uint32_t address);
 int pe_plat_spu_heap_contains_raw(uint32_t address);
 uint32_t pe_plat_spu_write(uint32_t source, uint32_t size);
 uint32_t pe_plat_spu_read(int guest_destination, unsigned int size);
 
-#define func_8007D15C pe_plat_spu_install_dma_event
-#define func_8007D054 pe_plat_spu_init_default
-#define func_8007D074 pe_plat_spu_init_wrapper
-#define func_80085E54 pe_plat_spu_write
-#define func_80085DF4 pe_plat_spu_read
 /* Canonical guest-name prototypes for the bindings above (generated
  * from the pe_plat prototypes; tools read callee signatures from these). */
-void func_8007D15C(void);
-void func_8007D054(void);
-void func_8007D074(int mode);
-uint32_t func_80085E54(uint32_t source, uint32_t size);
-uint32_t func_80085DF4(int guest_destination, unsigned int size);
 /* The SPU leaves re-derived clean-room (state60a) bind in pe_plat/spu_a.h; users of these guest
  * names keep seeing the bindings through this include. */
 #include "pe_plat/spu_a.h"
 /* bindings for the state60a rows 14-26 leaves (clean-room provider pe_plat2_spu_b.c) */
 #include "pe_plat/spu_b.h"
+/* The cdgen44 SPU / stream leaves (cdx-spu) bind in pe_plat/cdx_spu.h. */
+#include "pe_plat/cdx_spu.h"
 #endif

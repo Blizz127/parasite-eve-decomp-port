@@ -188,6 +188,17 @@ static int CountOrderLog(const char *symbol) {
     return n;
 }
 
+/* Run the clean-room DMA interrupt handler (guest entry func_80074520 =
+ * pe_plat_dma_handler) and classify the pass: BOUNDARY when it raised a new
+ * port stop, RETURNED otherwise. */
+static PeIrqServiceResult TEST_DmaHandlerVerdict(void)
+{
+    unsigned epoch = PE_Port_StopEpoch();
+    (void)func_80074520();
+    return PE_Port_StopEpoch() == epoch ? PE_IRQ_SERVICE_RETURNED
+                                        : PE_IRQ_SERVICE_BOUNDARY;
+}
+
 /* Phase 6E-CD0: live-chain plant helpers (defined beside the B558
  * tests).  The tables take their production initializers (EXE .data:
  * CD registers) — the shadow routes them exactly as in production.
@@ -2934,6 +2945,7 @@ static void test_6A5BC_setup_order(void) {
     ResetTestState();
     g_bootstrap_disc = 1;
     HostFB_Init();
+    PE_StoreU32(0x8009B424u, 3u);   /* cdx-spu: SpuInit's shift word, only read by the bring-up */
 
     func_8006A5BC();
 
@@ -3356,6 +3368,16 @@ static void test_3E944_save_state(void) {
 static void test_85644_bringup(void) {
     TEST("85644_stream_bringup");
     ResetTestState();
+    /* cdx-spu2: the retail bring-up calls the transfer-address setter with the BYTE address 0x1010, which stores
+     * (0x1010 >> shift) & 0xFFFF (0x202 units for the shift 3 SpuInit leaves) into the word 0x8009B414 and discards
+     * its entry value; the upload therefore lands at SPU byte 0x1010, right after SpuInit's own block at 0x1000
+     * (docs/evidence/native-cdx-20261126/cdgen44/SPU-ORACLE-CHAIN.md: the original code run in the test-only
+     * interpreter).  The reverb mode word already holds mode 4, so the retail transition (which ends with the
+     * transfer address word at the reverb work area) is skipped.  The entry word below is SpuInit's 0x200, and
+     * the expectation does not depend on it. */
+    PE_StoreU32(0x8009B424u, 3u);
+    PE_StoreU16(0x8009B414u, 0x200u);
+    PE_StoreU32(0x8009B3A0u, 4u);
     for (uint32_t i = 0; i < 0x40u; i++)
         PE_StoreU8(0x8009B7FCu + i, (uint8_t)(0x40u + i));
     func_80085644();
@@ -3364,11 +3386,11 @@ static void test_85644_bringup(void) {
     ASSERT(PE_LoadU32(0x800B6958u + 4u) == 0x7EFF0u, "config word 1 (0x10000<<3)-0x1010");
     ASSERT(PE_LoadU32(0x8009B45Cu) == 4, "config arg word");
     ASSERT(PE_LoadU32(0x8009B464u) == 0x800B6958u, "config ptr");
-    ASSERT(PE_LoadU16(0x8009B414u) == 0x1010, "SPU heap top");
+    ASSERT(PE_LoadU16(0x8009B414u) == 0x202, "SPU transfer address word = (0x1010 >> 3), entry value discarded");
     ASSERT(PE_LoadU32(0x8009D24Cu) == 0, "stream barrier must complete transfer");
     ASSERT(PE_LoadU32(0x8009B434u) == 0, "callback deregistered after completion");
-    ASSERT(PE_SpuRam_LoadU8(0x8080u) == 0x40u &&
-           PE_SpuRam_LoadU8(0x80BFu) == 0x7Fu,
+    ASSERT(PE_SpuRam_LoadU8(0x1010u) == 0x40u &&
+           PE_SpuRam_LoadU8(0x104Fu) == 0x7Fu,
            "stream bring-up did not use the central SPU RAM authority");
     /* func_80085290 state init */
     ASSERT(PE_LoadU32(0x8009D2C8u) == 0x800B6980u, "state base ptr");
@@ -33484,7 +33506,7 @@ static void test_B53I_B2_dma_zero_callbacks_and_scan_order(void)
            PE_GPU_LatchDMACompletionFlag(0u),
            "cannot seed multiple DMA completion flags");
     (void)PE_GPU_TakeDICRRisingEdge();
-    ASSERT(PE_func_80074520_Dispatch() == PE_IRQ_SERVICE_RETURNED &&
+    ASSERT(TEST_DmaHandlerVerdict() == PE_IRQ_SERVICE_RETURNED &&
            PE_GPU_ReadStoredDICR() == 0x00C50000u,
            "zero DMA slots were not acknowledged/drained");
     PE_IRQ_GetDeliveryTrace(&trace);
@@ -33511,7 +33533,7 @@ static void test_B53I_B2_dma_diagnostic_live_madrs(void)
            "cannot seed represented DMA4 MADR");
     ASSERT(B53E_SeedBusyDma(), "cannot seed represented DMA2 MADR");
     PE_GPU_WriteDICR(PE_GPU_DICR_FORCE);
-    ASSERT(PE_func_80074520_Dispatch() == PE_IRQ_SERVICE_RETURNED,
+    ASSERT(TEST_DmaHandlerVerdict() == PE_IRQ_SERVICE_RETURNED,
            "force diagnostic did not return normally");
     PE_IRQ_GetDeliveryTrace(&trace);
     ASSERT(trace.dma_diagnostic_count == 1u &&
@@ -33531,7 +33553,7 @@ static void test_B53I_B2_dma_diagnostic_live_madrs(void)
     PE_GPU_WriteDICR(0x00848000u);
     ASSERT(PE_GPU_LatchDMACompletionFlag(2u),
            "cannot seed physical high-byte diagnostic");
-    ASSERT(PE_func_80074520_Dispatch() == PE_IRQ_SERVICE_RETURNED,
+    ASSERT(TEST_DmaHandlerVerdict() == PE_IRQ_SERVICE_RETURNED,
            "high-byte diagnostic did not return normally");
     PE_IRQ_GetDeliveryTrace(&trace);
     ASSERT(trace.dma_diagnostic_count == 1u &&
@@ -33566,7 +33588,7 @@ static void test_B53I_B2_unbound_callback_boundaries(void)
            "cannot seed DMA flags");
     (void)PE_GPU_TakeDICRRisingEdge();
     PE_StoreU32(B53F_DMA_CB_SLOT2, 0xE2345678u);
-    ASSERT(PE_func_80074520_Dispatch() == PE_IRQ_SERVICE_BOUNDARY &&
+    ASSERT(TEST_DmaHandlerVerdict() == PE_IRQ_SERVICE_BOUNDARY &&
            !PE_GPU_DMA2CompletionPending() &&
            (PE_GPU_ReadStoredDICR() & 0x40000000u) != 0u &&
            PE_LoadU32(B53F_DMA_CB_SLOT2) == 0xE2345678u &&
@@ -40991,6 +41013,9 @@ static void test_spu_read_guest_dispatch(void)
     ResetTestState(); PE_SpuDma_Reset();
     ASSERT(PE_SpuDma_InstallIrq(PE_SPU_DMA_IRQ_HANDLER), "SPU IRQ install");
     PE_StoreU32(0x8009B3FCu, 0x80120000u);
+    PE_StoreU32(0x8009B400u, 0x1F8010C0u);   /* cdx-spu: DMA4 MADR / BCR / CHCR pointer words (retail data) */
+    PE_StoreU32(0x8009B404u, 0x1F8010C4u);
+    PE_StoreU32(0x8009B408u, 0x1F8010C8u);
     PE_StoreU32(0x8009B410u, 0x80120400u);
     PE_StoreU32(0x8009B424u, 3u);
     PE_StoreU16(0x8009B414u, 0x400u);
@@ -41711,6 +41736,11 @@ static void test_spu_write_guest_dispatch(void)
     ASSERT(PE_SpuDma_InstallIrq(PE_SPU_DMA_IRQ_HANDLER), "SPU IRQ install");
     PE_StoreU32(0x8009B418u, 0u);
     PE_StoreU32(0x8009B424u, 3u);
+    PE_StoreU32(0x8009B3FCu, 0x80120000u);   /* cdx-spu: SPU register block (RAM stand-in), as the read test */
+    PE_StoreU32(0x8009B400u, 0x1F8010C0u);   /* cdx-spu: DMA4 and SPU_DELAY pointer words (retail data) */
+    PE_StoreU32(0x8009B404u, 0x1F8010C4u);
+    PE_StoreU32(0x8009B408u, 0x1F8010C8u);
+    PE_StoreU32(0x8009B410u, 0x80120400u);
     PE_StoreU16(0x8009B414u, 0x400u);
     PE_StoreU32(0x8009B434u, 0u);
     PE_StoreU32(0x8009B430u, 0x12345678u);

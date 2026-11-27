@@ -579,6 +579,14 @@ def yaml_rows():
 
 
 def main():
+    cd.OWN.enable()          # own-written loads are not inputs (CD_LEGACY_OWN_LOADS=1: old behaviour, byte-identical)
+    try:
+        _main()
+    finally:
+        cd.OWN.report()
+
+
+def _main():
     if len(sys.argv) < 3 or sys.argv[2] not in BATCH:
         raise SystemExit(__doc__)
     outdir = sys.argv[1]

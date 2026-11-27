@@ -37,7 +37,7 @@ static void test_HOOKREG_dma_registry_continues(void)
     PeIrqDeliveryTrace trace;
     TEST("HOOKREG_dma_registry_continues");
     HOOKREG_SeedDma(HOOKREG_WITNESS, 3u, 0x8007C214u);
-    ASSERT(PE_func_80074520_Dispatch() == PE_IRQ_SERVICE_RETURNED &&
+    ASSERT(TEST_DmaHandlerVerdict() == PE_IRQ_SERVICE_RETURNED &&
            !PE_Port_ShouldStop() && !g_bootstrap_arg4_call_count,
            "registered DMA callback stopped or took a boundary");
     ASSERT(PE_LoadU32(HOOKREG_SLOT) == 0x1F8010F4u,
@@ -55,7 +55,7 @@ static void test_HOOKREG_dma_unregistered_stops(void)
 {
     TEST("HOOKREG_dma_unregistered_stops");
     HOOKREG_SeedDma(HOOKREG_NONE, 3u, 0x8007C214u);
-    ASSERT(PE_func_80074520_Dispatch() == PE_IRQ_SERVICE_BOUNDARY &&
+    ASSERT(TEST_DmaHandlerVerdict() == PE_IRQ_SERVICE_BOUNDARY &&
            PE_Port_GetStopReason() == PE_PORT_STOP_UNRESOLVED_BOUNDARY,
            "unknown DMA callback did not stop");
     ASSERT(g_bootstrap_arg4_call_count == 1 &&
@@ -79,7 +79,7 @@ static void test_HOOKREG_dma_model_owned_refused(void)
                "fixture: the refused callback must have C in the registry");
         HOOKREG_SeedDma(0u, 3u, owned[i]);
         PE_StoreU32(HOOKREG_SLOT, HOOKREG_WITNESS);
-        ASSERT(PE_func_80074520_Dispatch() == PE_IRQ_SERVICE_BOUNDARY &&
+        ASSERT(TEST_DmaHandlerVerdict() == PE_IRQ_SERVICE_BOUNDARY &&
                PE_Port_GetStopReason() == PE_PORT_STOP_UNRESOLVED_BOUNDARY,
                "model-owned DMA callback did not stop");
         ASSERT(CountOrderLog("func_80074520_model_owned_callback") == 1 &&

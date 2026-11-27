@@ -107,7 +107,7 @@ int func_80074DC0(int mode);
 int pe_plat_gpu_clear_inline_host(uint32_t words[2], uint32_t color);
 #define PE_ClearImageInline8 pe_plat_gpu_clear_inline_host
 int PE_ClearImageInline8(uint32_t words[2], uint32_t color);
-int PE_DispatchClearRect(pe_addr_t worker, RECT *rect, uint32_t color);
+#include "pe_plat/gpuprim_clearrect.h" /* PE_DispatchClearRect (host-RECT ClearImage seam), clean-room */
 /* Original PutDispEnv command/state sequence, followed by host presentation. */
 extern pe_addr_t func_800755F0(pe_addr_t env);
 /* func_800752AC (ClearOTagR) and func_80076354 (jtb[11] OTC worker) are

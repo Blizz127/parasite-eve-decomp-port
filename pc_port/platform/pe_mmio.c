@@ -61,6 +61,18 @@ static int w_s0ctrl(uint32_t v) { PE_Sio0_WriteCtrl((uint16_t)v); return 1; }
 static uint32_t r_s0baud(void) { return PE_Sio0_ReadBaud(); }
 static int w_s0baud(uint32_t v) { PE_Sio0_WriteBaud((uint16_t)v); return 1; }
 
+/* SPU_DELAY (0x1F801014): plain latch (the SPU DMA delay / size word; no model reads it). */
+static uint32_t g_spu_delay;
+static uint32_t r_spudelay(void) { return g_spu_delay; }
+static int w_spudelay(uint32_t v) { g_spu_delay = v; return 1; }
+/* DMA channel 4 (SPU): register file and transfer start live in pe_spu_dma.c. */
+static uint32_t r_d4madr(void) { return PE_SpuDma_Dma4Load(0); }
+static int w_d4madr(uint32_t v) { PE_SpuDma_Dma4Store(0, v); return 1; }
+static uint32_t r_d4bcr(void) { return PE_SpuDma_Dma4Load(1); }
+static int w_d4bcr(uint32_t v) { PE_SpuDma_Dma4Store(1, v); return 1; }
+static uint32_t r_d4chcr(void) { return PE_SpuDma_Dma4Load(2); }
+static int w_d4chcr(uint32_t v) { PE_SpuDma_Dma4Store(2, v); return 1; }
+
 /* THE table of modelled registers.  Keep pe_mmio.h's list in sync. */
 static const PeMmioReg g_pe_mmio_regs[] = {
     {0x1F801040u, 1, "SIO0 DATA",   r_s0data, p_s0data, w_s0data},
@@ -70,6 +82,10 @@ static const PeMmioReg g_pe_mmio_regs[] = {
     {0x1F80104Eu, 2, "SIO0 BAUD",   r_s0baud, r_s0baud, w_s0baud},
     {0x1F801070u, 2, "I_STAT",      r_istat,  r_istat,  w_istat},
     {0x1F801074u, 2, "I_MASK",      r_imask,  r_imask,  w_imask},
+    {0x1F801014u, 4, "SPU_DELAY",   r_spudelay, r_spudelay, w_spudelay},
+    {0x1F8010C0u, 4, "DMA4 MADR",   r_d4madr, r_d4madr, w_d4madr},
+    {0x1F8010C4u, 4, "DMA4 BCR",    r_d4bcr,  r_d4bcr,  w_d4bcr},
+    {0x1F8010C8u, 4, "DMA4 CHCR",   r_d4chcr, r_d4chcr, w_d4chcr},
     {0x1F8010F0u, 4, "DPCR",        r_dpcr,   r_dpcr,   w_dpcr},
     {0x1F8010F4u, 4, "DICR",        r_dicr,   r_dicr,   w_dicr},
     {0x1F801110u, 2, "RCNT1 count", r_t1cnt,  r_t1cnt,  w_t1cnt},
@@ -480,6 +496,7 @@ void *PE_MMIO_Translate(pe_addr_t address, size_t size)
 
 void PE_MMIO_Reset(void)
 {
+    g_spu_delay = 0;
     g_spu_shadow_live = 0;
     g_shadow_live = 0;
     memset(g_shadow, 0xDE, sizeof(g_shadow));

@@ -717,10 +717,10 @@ PE_PLAT_REPLACED = {
     "func_8007A214": "pc_port/platform/pe_plat2_gpuprim.c",  # record-pool initialiser (clean-room, gpu2c)
     "func_8007A244": "pc_port/platform/pe_plat2_gpuprim_poolw.c",  # record-pool worker (clean-room, gpu2c)
     "func_8007CE80": "pc_port/game/boot/cd_stream_port.c",  # stream word copy
-    "func_8007D15C": "pc_port/platform/pe_libsnd.c",  # SPU DMA event installer
+    "func_8007D15C": "pc_port/platform/pe_plat2_cdx_spu.c",  # SPU DMA event installer
     "func_8007DCAC": "pc_port/platform/pe_plat2_spu_a.c",  # SPU modeled delay
-    "func_8007D054": "pc_port/platform/pe_libsnd.c",  # SPU default initialization
-    "func_8007D074": "pc_port/platform/pe_libsnd.c",  # SPU initialization wrapper
+    "func_8007D054": "pc_port/platform/pe_plat2_cdx_spu.c",  # SPU default initialization
+    "func_8007D074": "pc_port/platform/pe_plat2_cdx_spu.c",  # SPU initialization wrapper
     "func_8007D1D4": "pc_port/platform/pe_plat2_spu_a.c",  # SPU model initialization
     "func_8007D454": "pc_port/platform/pe_plat2_spu_a.c",  # SPU programmed I/O write
     "func_80085984": "pc_port/platform/pe_plat2_spu_a.c",  # SPU shutdown wrapper
@@ -738,8 +738,11 @@ PE_PLAT_REPLACED = {
     "func_80085D84": "pc_port/platform/pe_plat2_spu_b.c",  # SPU IRQ callback setter
     "func_80085DC4": "pc_port/platform/pe_plat2_spu_b.c",  # SPU IRQ callback forwarding
     "func_80085F14": "pc_port/platform/pe_plat2_spu_b.c",  # SPU transfer mode
-    "func_80085E54": "pc_port/game/boot/func_800850F4_port.c",  # existing SPU write adapter
-    "func_80085DF4": "pc_port/game/boot/func_800850F4_port.c",  # SPU read adapter
+    "func_80085E54": "pc_port/platform/pe_plat2_cdx_spu.c",  # existing SPU write adapter
+    "func_80085DF4": "pc_port/platform/pe_plat2_cdx_spu.c",  # SPU read adapter
+    "func_8008CB54": "pc_port/platform/pe_plat2_cdx_spu.c",  # SPU reverb mode transition
+    "func_8008CBA8": "pc_port/platform/pe_plat2_cdx_spu.c",  # stream command dispatcher
+    "func_80085644": "pc_port/platform/pe_plat2_cdx_spu.c",  # stream bring-up
     "func_8007BDDC": "pc_port/platform/pe_plat_cd_sync.c",  # CD data sync
     "func_8007A910": "pc_port/platform/pe_plat_cd_sync.c",  # CD sync forwarding ABI
     "func_80080B24": "pc_port/platform/pe_plat_cd_sync.c",  # DS sync forwarding ABI
@@ -1140,13 +1143,12 @@ PE_PLAT_HEADERS = {
     "pc_port/platform/pe_plat2_spu_b.c": "pc_port/include/pe_plat/spu_b.h",
     "pc_port/platform/pe_plat_mdec_io_host.c": "pc_port/include/pe_plat/mdec_io_host.h",
     "pc_port/platform/pe_plat_vlc_frame.c": "pc_port/include/pe_plat/vlc_frame.h",
-    "pc_port/game/boot/func_80076C34_port.c": "pc_port/include/psx_compat.h",
+    "pc_port/platform/pe_plat2_gpuprim_clearrect.c": "pc_port/include/pe_plat/gpuprim_clearrect.h",
                    "pc_port/platform/pe_plat_gpu_clear_worker_host.c": "pc_port/include/psx_compat.h",
                    "pc_port/platform/pe_plat2_gpuq.c": "pc_port/include/pe_plat/gpuq.h",
                    "pc_port/platform/pe_plat2_gpuimg.c": "pc_port/include/pe_plat/gpuimg.h",
                    "pc_port/platform/pe_plat2_gpuimg_rect.c": "pc_port/include/pe_plat/gpuimg.h",
                    "pc_port/platform/pe_plat2_gpuimg_work.c": "pc_port/include/pe_plat/gpuimg.h",
-                   "pc_port/platform/pe_libsnd.c": "pc_port/include/pe_plat/state.h",
                    "pc_port/game/boot/cd_stream_port.c": "pc_port/include/pe_plat/cd_stream.h",
                    "pc_port/platform/pe_plat_cd.c": "pc_port/include/pe_plat/cd.h",
                    "pc_port/game/boot/func_800850F4_port.c": "pc_port/include/pe_plat/state.h",
@@ -1247,6 +1249,7 @@ PE_PLAT_HEADERS = {
                    "pc_port/platform/pe_plat2_press.c": "pc_port/include/pe_plat/press.h",
                    "pc_port/platform/pe_plat_state.c": "pc_port/include/pe_plat/state.h",
                    "pc_port/platform/pe_plat2_spu_a.c": "pc_port/include/pe_plat/spu_a.h",
+                   "pc_port/platform/pe_plat2_cdx_spu.c": "pc_port/include/pe_plat/cdx_spu.h",
                    "pc_port/platform/pe_plat_libc.c": "pc_port/include/pe_plat/libc.h",
                    "pc_port/platform/pe_plat_hostfb_forward.c": "pc_port/include/pe_plat/hostfb_forward.h",
                    "pc_port/platform/pe_bios_card.c": "pc_port/include/pe_plat/bios_file.h",
