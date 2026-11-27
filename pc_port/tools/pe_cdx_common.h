@@ -63,7 +63,10 @@ static void rd(pe_addr_t a, unsigned n)
 {
     unsigned j;
     if (in_frame(a)) return;
-    for (j = 0; j < n; j++) if (readable[(a + j) & (MEM - 1)] != cur) bad_read = 1;
+    for (j = 0; j < n; j++) if (readable[(a + j) & (MEM - 1)] != cur) {
+        if (!bad_read && getenv("CDX_DEBUG")) fprintf(stderr, "  first read outside original loads: %08X size %u\n", (unsigned)a, n);
+        bad_read = 1;
+    }
 }
 static void wr(pe_addr_t a, unsigned n)
 {
@@ -100,12 +103,15 @@ void PE_GuestFrame_Leave(pe_addr_t base, uint32_t size) { (void)size; frame_top 
 /* ---- callee stand-ins ------------------------------------------------ */
 #define MAX_CALLS 2048
 static char got_calls[MAX_CALLS][256]; static unsigned ngot;
-static uint32_t rets_fn[64], rets_val[64]; static unsigned nrets_t;
+static uint32_t rets_fn[64], rets_val[64][8]; static unsigned rets_len[64], rets_ctr[64]; static unsigned nrets_t;
 static uint32_t want_fbase, got_fbase; static int want_fset, got_fset;
 static uint32_t ret_of(uint32_t fn)
 {
     unsigned i;
-    for (i = 0; i < nrets_t; i++) if (rets_fn[i] == fn) return rets_val[i];
+    for (i = 0; i < nrets_t; i++) if (rets_fn[i] == fn) {      /* a per-call sequence `a/b/c`; the last value repeats */
+        unsigned k = rets_ctr[i]++;
+        return rets_val[i][k < rets_len[i] ? k : rets_len[i] - 1];
+    }
     return 0;
 }
 static void fmt_got(char *o, size_t n, uint32_t v)
@@ -136,6 +142,7 @@ static uint32_t cdx_callee(uint32_t fn, unsigned n, uint32_t a0, uint32_t a1, ui
     snprintf(sfx, sizeof sfx, "@%u", nwlog);
     if (ngot < MAX_CALLS) { memcpy(got_calls[ngot], t, strlen(t) + 1); strncat(got_calls[ngot], sfx, sizeof got_calls[ngot] - strlen(t) - 1); }
     ngot++;
+    if (escape_armed && ngot > 50000u) longjmp(case_escape, 1);   /* a native stuck in a retry loop around a stand-in */
     return ret_of(fn);
 }
 #define CALLEE(sym, fn, n) \
@@ -144,7 +151,9 @@ static uint32_t cdx_callee(uint32_t fn, unsigned n, uint32_t a0, uint32_t a1, ui
 /* A symbol the code under test must not reach: a call fails the case. */
 #define TRAP(sym) \
     uint32_t sym(uintptr_t a, uintptr_t b, uintptr_t c, uintptr_t d, uintptr_t e) \
-    { (void)a; (void)b; (void)c; (void)d; (void)e; bad_call = 1; trap_name = #sym; return 0; }
+    { (void)a; (void)b; (void)c; (void)d; (void)e; bad_call = 1; trap_name = #sym; \
+      if (escape_armed && ++runaway > 100000ul) { longjmp(case_escape, 1); } \
+      return 0; }
 
 /* A host-only effect with no retail counterpart (a host stream feed closing, ...): counted, not compared. */
 static unsigned host_only_calls;
@@ -152,6 +161,9 @@ static unsigned host_only_calls;
     uint32_t sym(uintptr_t a, uintptr_t b, uintptr_t c, uintptr_t d, uintptr_t e) \
     { (void)a; (void)b; (void)c; (void)d; (void)e; host_only_calls++; return 0; }
 
+/* Optional (a checker sets it from call(), before the first comparison): normalise an expected callee argument
+ * (retail value, 32-bit) to the width of the public prototype's parameter.  Default: compared as is. */
+static uint32_t (*want_norm)(uint32_t fn, unsigned idx, uint32_t v);
 static int call(uint32_t entry, const uint32_t *a, uint32_t *ret);   /* batch dispatcher: 1 = returns a value, 0 = void, -1 unknown */
 static int mutant;   /* 0 native, 1 noop, 2 flip */
 
@@ -170,6 +182,10 @@ static void apply_seed(const char *t)
         ram[b] = (uint8_t)(val >> (8 * i)); readable[b] = cur;
     }
 }
+/* failure categories (printed with CDX_CATEGORIES=1): a case can fail several */
+static const char *const cat_name[] = {"return", "read-outside-original-loads", "trap-call", "register-read-replay", "ram-image", "register-stores", "callee-sequence", "callee-write-timing"};
+static unsigned cat_count[8]; static int cat_hit[8];
+#define FAILC(k) do { cat_hit[k] = 1; ok = 0; } while (0)
 static unsigned entries_seen[256]; static uint32_t entry_id[256]; static unsigned entry_bad[256]; static unsigned nentry;
 static unsigned entry_slot(uint32_t e)
 {
@@ -211,8 +227,24 @@ int main(int argc, char **argv)
         nrets_t = 0;
         if (strcmp(tok[ti + 1], "-"))
             for (k = (unsigned)ti + 1; k < (unsigned)ci; k++) {
-                char *e = tok[k], *eq = strchr(e, '=');
-                if (eq && nrets_t < 64) { rets_fn[nrets_t] = (uint32_t)strtoul(e, 0, 16); rets_val[nrets_t++] = (uint32_t)strtoul(eq + 1, 0, 16); }
+                char *e = tok[k];
+                while (e && *e) {              /* a RETS token is a comma-separated list `fn=v,fn=v/v/v,..` */
+                    char *eq = strchr(e, '='), *comma;
+                    if (!eq) break;
+                    if (nrets_t < 64) {
+                        char *q = eq + 1; unsigned nv = 0;
+                        rets_fn[nrets_t] = (uint32_t)strtoul(e, 0, 16);
+                        for (;;) {
+                            char *end; unsigned long val = strtoul(q, &end, 16);
+                            if (nv < 8) rets_val[nrets_t][nv++] = (uint32_t)val;
+                            if (*end != '/') break;
+                            q = end + 1;
+                        }
+                        rets_len[nrets_t] = nv; rets_ctr[nrets_t] = 0; nrets_t++;
+                    }
+                    comma = strchr(eq, ',');
+                    e = comma ? comma + 1 : NULL;
+                }
             }
         for (k = (unsigned)si + 1; k < (unsigned)ti; k++) {          /* the original's final stores */
             unsigned addr, size, val, b;
@@ -224,17 +256,19 @@ int main(int argc, char **argv)
         else { escape_armed = 1; has = call(entry, a, &got); escape_armed = 0; }
         if (has < 0) { fprintf(stderr, "unknown entry %08X\n", entry); return 2; }
         if (mutant == 2) { if (has) got ^= 1u; if (last_w_size) ram[last_w_addr & (MEM - 1)] ^= 1u; else ram[0x1000] ^= 1; }
-        if (has && got != wret) ok = 0;
-        if (bad_read || bad_call) ok = 0;
-        if (rq_pos != nrq) ok = 0;
+        memset(cat_hit, 0, sizeof cat_hit);
+        if (has && got != wret) FAILC(0);
+        if (bad_read) FAILC(1);
+        if (bad_call) FAILC(2);
+        if (rq_pos != nrq) FAILC(3);
         {   /* final RAM image (the native's frame arena and the original's stack are out) */
             uint32_t lo = PE_GUEST_FRAME_LO & (MEM - 1), hi = PE_GUEST_FRAME_HI & (MEM - 1);
-            for (k = 0; k < MEM && ok; k += 4) {
+            for (k = 0; k < MEM && !cat_hit[4]; k += 4) {
                 if (memcmp(ram + k, expect + k, 4)) {
                     unsigned j;
                     for (j = 0; j < 4; j++)
                         if (ram[k + j] != expect[k + j] && !((k + j) >= lo && (k + j) < hi) &&
-                            !((k + j) >= 0x1FE000u && (k + j) < 0x1FF000u)) ok = 0;
+                            !((k + j) >= 0x1FE000u && (k + j) < 0x1FF000u)) FAILC(4);
                 }
             }
         }
@@ -243,10 +277,10 @@ int main(int argc, char **argv)
             for (k = (unsigned)si + 1; k < (unsigned)ti; k++) {
                 if (sscanf(tok[k], "%x:%u=%x", &addr, &size, &val) != 3 || !is_reg(addr)) continue;
                 if (want_m >= nmlog || mlog[want_m][0] != addr || mlog[want_m][1] != size ||
-                    mlog[want_m][2] != (val & (size == 4 ? 0xFFFFFFFFu : (1u << (8 * size)) - 1u))) ok = 0;
+                    mlog[want_m][2] != (val & (size == 4 ? 0xFFFFFFFFu : (1u << (8 * size)) - 1u))) FAILC(5);
                 want_m++;
             }
-            if (want_m != nmlog) ok = 0;
+            if (want_m != nmlog) FAILC(5);
         }
         {   /* callee calls */
             unsigned want_c = 0;
@@ -268,19 +302,33 @@ int main(int argc, char **argv)
                     cnt = seen; *at = 0;
                 }
                 w[0] = 0;
+                {   unsigned ai = 0; uint32_t fnv = 0;
                 for (p = strtok(tk, ","); p; p = strtok(NULL, ",")) {
                     char o[24];
                     if (w[0]) strncat(w, ",", sizeof w - strlen(w) - 1);
-                    if (!w[0] && p == tk) snprintf(o, sizeof o, "%08X", (unsigned)strtoul(p, 0, 16));
-                    else fmt_want(o, sizeof o, (uint32_t)strtoul(p, 0, 16));
+                    if (!w[0] && p == tk) { fnv = (uint32_t)strtoul(p, 0, 16); snprintf(o, sizeof o, "%08X", (unsigned)fnv); }
+                    else {
+                        uint32_t av = (uint32_t)strtoul(p, 0, 16);
+                        if (want_norm) av = want_norm(fnv, ai, av);   /* cdgen46: compare a typed (narrow) argument at its public width */
+                        ai++;
+                        fmt_want(o, sizeof o, av);
+                    }
                     strncat(w, o, sizeof w - strlen(w) - 1);
-                }
+                } }
                 { char sfx[24]; snprintf(sfx, sizeof sfx, "@%u", cnt); strncat(w, sfx, sizeof w - strlen(w) - 1); }
-                if (want_c >= ngot || (want_c < MAX_CALLS && strcmp(got_calls[want_c], w))) ok = 0;
+                if (want_c >= ngot) FAILC(6);
+                else if (want_c < MAX_CALLS && strcmp(got_calls[want_c], w)) {
+                    /* same callee, order and arguments but a different count of distinct bytes written before the call:
+                     * category 7 (write timing); anything else: category 6 */
+                    const char *ga = strchr(got_calls[want_c], '@'), *wa = strchr(w, '@');
+                    if (ga && wa && (size_t)(ga - got_calls[want_c]) == (size_t)(wa - w) &&
+                        !strncmp(got_calls[want_c], w, (size_t)(wa - w))) FAILC(7); else FAILC(6);
+                }
                 want_c++;
             }
-            if (want_c != ngot) ok = 0;
+            if (want_c != ngot) FAILC(6);
         }
+        { unsigned q; for (q = 0; q < 8; q++) cat_count[q] += (unsigned)cat_hit[q]; }
         if (!ok) {
             entry_bad[slot]++;
             if (bad++ < 8 && !mutant) {
@@ -288,7 +336,7 @@ int main(int argc, char **argv)
                 fprintf(stderr, "MISMATCH line %u entry %08X (%s%s%s) %.160s\n", n, entry, bad_read ? "read outside original loads; " : "",
                         bad_call ? "unexpected call; " : "", "stores/return/calls/regs", line);
                 if (bad_call) fprintf(stderr, "  trap: %s\n", trap_name ? trap_name : "?");
-                { const char *cp = strstr(line, " CALL "); if (cp) fprintf(stderr, "  want%.300s\n", cp + 5); }
+                { const char *cp = strstr(line, " CALL "); if (cp) fprintf(stderr, "  want%.*s\n", getenv("CDX_ALLCALLS") ? 100000 : 300, cp + 5); }
                 if (getenv("CDX_DEBUG")) {
                     unsigned q;
                     fprintf(stderr, "  native wrote bytes:");
@@ -297,12 +345,13 @@ int main(int argc, char **argv)
                     for (q = (unsigned)si + 1; q < (unsigned)ti && q < (unsigned)si + 40; q++) fprintf(stderr, "%s ", tok[q]);
                     fprintf(stderr, "\n");
                 }
-                for (q = 0; q < ngot && q < 6 && q < MAX_CALLS; q++) fprintf(stderr, "  got %s\n", got_calls[q]);
+                for (q = 0; q < ngot && q < (getenv("CDX_ALLCALLS") ? MAX_CALLS : 6u) && q < MAX_CALLS; q++) fprintf(stderr, "  got %s\n", got_calls[q]);
             }
         }
     }
     printf("mode=%s checked %u cases, %u mismatches (host-only calls ignored: %u)\n", mutant == 1 ? "noop" : mutant == 2 ? "flip" : "native", n, bad, host_only_calls);
     for (i = 0; i < nentry; i++) printf("  %08X cases=%u mismatches=%u\n", entry_id[i], entries_seen[i], entry_bad[i]);
+    if (getenv("CDX_CATEGORIES")) for (i = 0; i < 8; i++) printf("  category %-28s %u cases\n", cat_name[i], cat_count[i]);
     return mutant ? 0 : bad != 0;
 }
 #endif

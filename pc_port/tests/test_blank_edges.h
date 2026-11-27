@@ -50,5 +50,17 @@ static void test_DAY1_blank_edges(void)
     ASSERT(!bios.pad_clear_mode,"PAD clear setter not reflected");
     PE_Sdk_ResetState();
     ASSERT(func_80073C84(0,1)==0 && func_80073C84(3,1)==0,"SDK reset must clear timer policies");
+    /* cdx-etc BIOS model (psx-spx SYSCALL 01h/02h): Enter returns 1 only when both SR bits were set, Exit re-enables. */
+    ASSERT(pe_plat_cdxetc_interrupts_enabled() && func_80072714()==1 && !pe_plat_cdxetc_interrupts_enabled(),
+           "EnterCriticalSection must return 1 from the power-on state and disable interrupts");
+    ASSERT(func_80072714()==0 && func_80072714()==0,"nested EnterCriticalSection must return 0");
+    func_80072724();
+    ASSERT(pe_plat_cdxetc_interrupts_enabled() && func_80072714()==1,"one ExitCriticalSection re-enables regardless of depth");
+    func_80072724();
+    { uint32_t flushed=pe_plat_cdxetc_flush_count(); func_800726C4();
+      ASSERT(pe_plat_cdxetc_flush_count()==flushed+1u,"FlushCache not counted"); }
+    PE_Sdk_ResetState();
+    ASSERT(pe_plat_cdxetc_interrupts_enabled() && pe_plat_cdxetc_flush_count()==0u && pe_plat_cdxetc_pad_policy()==0u,
+           "SDK reset must restore the BIOS model");
     PASS();
 }

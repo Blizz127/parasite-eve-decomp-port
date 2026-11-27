@@ -25,10 +25,13 @@
 #include "pe_plat/cd.h"
 #include "pe_plat/state.h"
 #include "pe_plat/ctl.h"
+#include "pe_plat/cdx_save.h"
 #include "pe_plat/gpu_address.h"
+#include "pe_plat/gpuaddr.h"
 #include "pe_plat/gpu_primitive.h"
 #include "pe_plat/gpuenv.h"
 #include "pe_plat/gpupkt.h"
+#include "pe_plat/cdx_etc.h"
 #include "pe_plat/gte.h"
 #include "pe_plat/libc.h"
 #include "pe_plat/bios_file.h"
@@ -36,11 +39,13 @@
 #include "pe_plat/bios_string.h"
 #include "pe_plat/bios_rand.h"
 #include "pe_plat/bios_event.h"
+#include "pe_plat/bios_intrp.h"
 #include "pe_plat/bios_sys.h"
 #include "pe_plat/gpu_status.h"
 #include "pe_plat/gpu_area.h"
 #include "pe_plat/irq_callback.h"
 #include "pe_plat/mdec_callback.h"
+#include "pe_plat/press.h"
 #include "pe_plat/pad.h"
 #include "pe_plat/audio.h"
 
@@ -240,12 +245,7 @@ pe_addr_t func_80074924(pe_addr_t env, int x, int y, int w, int h); /* SetDefDra
 pe_addr_t func_800749D8(pe_addr_t pe_env, int x, int y, int w, int h); /* SetDefDispEnv */
 int       func_80074A44(int mode);   /* ResetGraph */
 unsigned char func_80074BB8(unsigned char a0);  /* SetGraphDebug */
-uint32_t pe_plat_gpu_put_draw_env_host(uint32_t env);
-#define func_80075424 pe_plat_gpu_put_draw_env_host
-pe_addr_t func_80075424(pe_addr_t env); /* PutDrawEnv */
-void pe_plat_gpu_draw_otag_env_host(uint32_t ot,uint32_t env);
-#define func_800754E4 pe_plat_gpu_draw_otag_env_host
-void      func_800754E4(pe_addr_t ot, pe_addr_t env); /* DrawOTagEnv software */
+#include "pe_plat/gpuprim.h" /* PutDrawEnv / DrawOTagEnv (clean-room) */
 
 /* ── libsnd (pc_port/platform/pe_libsnd.c) ──────────────────────────── */
 void func_8007D054(void);            /* SsInit wrapper (tail-call 7D074(0)) */

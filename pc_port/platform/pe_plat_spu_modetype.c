@@ -53,7 +53,7 @@ int pe_plat_spu_set_reverb_mode_type(int mode)
     if (m >= MODE_COUNT)
         return -1;
     size = PE_LoadU32(SIZE_TABLE + m * 4u);
-    if (pe_plat_spu_heap_contains(size))
+    if (func_80085BB4(size))
         return -1;
 
     PE_StoreU32(STATE_MODE, m);

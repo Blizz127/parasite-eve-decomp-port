@@ -80,9 +80,54 @@ def load_specs(m, batch):
         s(0x80085E54, 'spu_write', 'pw', {}, batch=b, regonly=True, inline=(0x8007D9F8,), bios=True, bios_silent=((0xA0, 0x3F), (0xB0, 0x3F)))
         s(0x80085DF4, 'spu_read', 'pw', {}, batch=b, regonly=True, inline=(0x8007DA7C,), bios=True, bios_silent=((0xA0, 0x3F), (0xB0, 0x3F)))
         s(0x80085644, 'stream_bringup', '', {0x80072714: 0, 0x80072724: 0}, batch=b, void=True, regonly=True, n=64, bios=True,
-          unsupported='inline libspu code executes DIVU; the shared test interpreter has no DIV/DIVU', bios_silent=((0xA0, 0x3F), (0xB0, 0x3F)),
+          unsupported='superseded by batch cdgen46 (the interpreter gained DIV/DIVU/BREAK, see pe_battle_hud_oracle); kept out of cdgen44 so its vector hashes do not change', bios_silent=((0xA0, 0x3F), (0xB0, 0x3F)),
           inline=(0x8007D15C, 0x80085A04, 0x80085F14, 0x80085EB4, 0x800850F4, 0x80085174, 0x80085290, 0x80085C44,
                   0x80085D84, 0x80085814, 0x800858E8, 0x800726E4, 0x80072704))
+    if batch == 'cdgen46':
+        b = 'cdgen46'
+        # 0x80085644: stream (SPU) bring-up; inline libspu code runs DIV/DIVU (interpreter support: pe_battle_hud_oracle).
+        # Stopped = bound host symbol in the current pe_stream.o's nm -u (header bindings: pe_plat/state.h, ctl.h, spu_a.h,
+        # audio.h); everything else (SpuSetTransferMode 85F14 .. SpuSetIRQCallback 85D84, heap configure 85A04, ...) runs
+        # inline as original code, so its register accesses are part of the entry's observable behaviour.
+        s(0x80085644, 'stream_bringup', '',
+          {0x8007D15C: 0, 0x800850F4: 2, 0x80085814: 3, 0x800858E8: 1, 0x800726E4: 4, 0x80072704: 1,
+           0x80072714: 0, 0x80072724: 0, 0x80085A64: 1, 0x8008CF70: 1, 0x80085BB4: 1, 0x80085F74: 1,
+           0x800862F4: 5, 0x80085084: 1},
+          batch=b, void=True, n=64, bios=True, mips_div=True, bios_silent=((0xA0, 0x3F), (0xB0, 0x3F)),
+          inline=(0x80085A04, 0x80085F14, 0x80085EB4, 0x80085174, 0x80085290, 0x80085C44, 0x80085D84))
+        gv46 = m.gv
+
+        def retry_hook(ram, x, args, rets, seed):
+            # The bring-up retries each of four calls until it succeeds: the counter setup 85814 and start 858E8
+            # until nonzero, BIOS OpenEvent 726E4 while it returns -1 (the handle is stored at 0x800A CDE0), EnableEvent
+            # 72704 until nonzero.  Per-call return sequences: k failures (k = 0..3, edge cases up to 5) then a success;
+            # the checker replays them per call (RETS token fn=a/b/c, last value repeats).
+            models = {}
+            x = gv46.xs32(x)
+            for i, (fn, fail) in enumerate(((0x80085814, 0), (0x800858E8, 0), (0x800726E4, 0xFFFFFFFF), (0x80072704, 0))):
+                x = gv46.xs32(x)
+                k = (x >> 8) % 4 if seed % 7 else 4 + (x >> 12) % 2
+                if getattr(m, 'EDGE46', False):
+                    # -edge set: retail only tests zero / -1, so any other word is a success; a native that tests
+                    # `== 1` / `> 0` diverges here (documented in the REPORT, not a modelling claim)
+                    good = (2, 0x7FFFFFFF, 0x80000000, 0xFFFFFFFE, 0xF2000002, gv46.xs32(x) | 1)[(x >> 16) % 6]
+                    if fail == 0xFFFFFFFF and good == 0xFFFFFFFF:
+                        good = 0xFFFFFFFE
+                else:
+                    # main set: the documented success values (psx-spx): SetRCnt / StartRCnt / EnableEvent return 1,
+                    # OpenEvent returns a handle 0xF1000000 + n
+                    good = 0xF1000000 + (x >> 16) % 8 if fail == 0xFFFFFFFF else 1
+                seq = [fail] * k + [good]
+                rets[fn] = list(seq)
+                st = [0]
+
+                def model(ram_, r, seq=seq, st=st):
+                    v_ = seq[min(st[0], len(seq) - 1)]
+                    st[0] += 1
+                    return v_
+                models[fn] = model
+            return x, models
+        m.HOOKS[0x80085644] = retry_hook
     if batch == 'cdgen45':
         b = 'cdgen45'
         # libpad bring-up wrappers bound in platform/pe_save.c (audit conflict: the file header calls them game

@@ -18,9 +18,9 @@ CALLEE(pe_plat_bios_enter_critical, 0x80072714u, 0)
 CALLEE(pe_plat_bios_exit_critical, 0x80072724u, 0)
 CALLEE(pe_plat_reset_callback, 0x80073C94u, 0)
 CALLEE(pe_plat_spu_initialize, 0x8007D1D4u, 1)
-CALLEE(pe_plat_spu_register_dma_callback, 0x8007DD14u, 1)
+CALLEE(pe_plat_spua_register_dma_callback, 0x8007DD14u, 1)
 CALLEE(pe_plat_spu_store_value, 0x8007DAE0u, 3)
-CALLEE(pe_plat_spu_set_reverb_enabled, 0x80085A64u, 1)
+CALLEE(pe_plat_spua_set_reverb_enabled, 0x80085A64u, 1)
 CALLEE(pe_plat_spu_set_reverb_mode_type, 0x8008CF70u, 1)
 CALLEE(func_80085084, 0x80085084u, 1)
 /* Host IRQ hook for the SPU DMA completion: no retail counterpart, effect not compared.  Its result is part of
@@ -29,8 +29,8 @@ CALLEE(func_80085084, 0x80085084u, 1)
 uint32_t PE_SpuDma_InstallIrq(uintptr_t a, uintptr_t b, uintptr_t c, uintptr_t d, uintptr_t e)
 { (void)a; (void)b; (void)c; (void)d; (void)e; host_only_calls++; return 1; }
 /* host seams not reached by these entries: a call fails the case */
-TRAP(func_800850F4) TRAP(PE_Event_ConsumeSpuDma) TRAP(PE_Event_SpuDmaEnabled) TRAP(pe_plat_counter_setup)
-TRAP(pe_plat_counter_start) TRAP(pe_plat_spu_heap_contains) TRAP(pe_plat_spu_set_common_attributes)
+TRAP(func_800850F4) TRAP(PE_Event_ConsumeSpuDma) TRAP(PE_Event_SpuDmaEnabled) TRAP(pe_plat_ctl_counter_setup)
+TRAP(pe_plat_ctl_counter_start) TRAP(pe_plat_spu_heap_contains) TRAP(pe_plat_spu_set_common_attributes)
 TRAP(pe_plat_spu_voice_volume) TRAP(PE_SpuDma_Begin) TRAP(PE_SpuDma_DeliverPending) TRAP(PE_SpuDma_Service)
 TRAP(PE_SpuDma_WaitForCompletion) TRAP(PE_SpuRegister_LoadU16) TRAP(PE_SpuRegister_StoreU16)
 int PE_Port_ShouldStop(void) { return 0; }

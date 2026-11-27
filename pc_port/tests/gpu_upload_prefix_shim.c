@@ -12,7 +12,7 @@ uint32_t UploadTest_DMABCR(void) { return dma_bcr; }
 int pe_plat_gpu_upload_span_existing(pe_addr_t source,uint32_t words)
 { return PE_RangeIsRam(source,(size_t)words*4u); }
 int pe_plat_gpu_upload_wait_existing(void) { return 1; }
-uint32_t pe_plat_gpu_seed_deadline_host(void) { return 0; }
+uint32_t pe_plat_gpuq_seed_deadline(void) { return 0; }
 int PE_GPU_CanBeginImageLoad(int needs_dma) { (void)needs_dma; return 1; }
 int PE_GPU_WriteGP0(uint32_t value) { (void)value; gp0_calls++; return 1; }
 int PE_GPU_WriteGP1(uint32_t value) { (void)value; return 1; }

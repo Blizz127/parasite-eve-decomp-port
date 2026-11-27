@@ -5,6 +5,12 @@
  * BUILD-LIBETC: cc -std=gnu11 -Wall -Wextra -Werror -DCDX43_LIBETC -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/tools/pe_cdx_cdgen43_check.c build/vec/CMakeFiles/pe_field_runtime.dir/platform/pe_libetc.c.o -o check43a
  * BUILD-IRQ: cc -std=gnu11 -Wall -Wextra -Werror -DCDX43_IRQ -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/tools/pe_cdx_cdgen43_check.c build/vec/CMakeFiles/pe_field_runtime.dir/platform/pe_plat_irq_callback.c.o -o check43b
  * BUILD-VSYNC: cc -std=gnu11 -Wall -Wextra -Werror -DCDX43_VSYNC -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/tools/pe_cdx_cdgen43_check.c build/vec/CMakeFiles/pe_field_runtime.dir/platform/pe_libetc.c.o build/vec/CMakeFiles/pe_field_runtime.dir/platform/pe_plat_irq_callback.c.o -o check43c
+ * BUILD-ETC-LIBETC: cc -std=gnu11 -Wall -Wextra -Werror -DCDX43_LIBETC -DCDX43_ETC -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/tools/pe_cdx_cdgen43_check.c build/vec/CMakeFiles/pe_field_runtime.dir/platform/pe_plat2_cdx_etc.c.o -o check43a
+ * BUILD-ETC-VSYNC: cc -std=gnu11 -Wall -Wextra -Werror -DCDX43_VSYNC -DCDX43_ETC -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/tools/pe_cdx_cdgen43_check.c build/vec/CMakeFiles/pe_field_runtime.dir/platform/pe_plat2_cdx_etc.c.o build/vec/CMakeFiles/pe_field_runtime.dir/platform/pe_plat_irq_callback.c.o -o check43c
+ *   (the legacy BUILD-LIBETC / BUILD-VSYNC lines above link the translated pe_libetc.c.o, which no longer carries the nine entries
+ *    under test and now references pe_plat_cdxetc_reset_state; pe_cdx_run_all.sh uses the ETC lines.  -DCDX43_ETC: the libetc/VSync entries under test are the clean-room cdx-etc symbols pe_plat_cdxetc_*, pe_plat2_cdx_etc.c;
+ *    PE_Sdk_ResetState is stood in by the checker and resets that model; the old pe_plat_bios_* host seams the veneers forward
+ *    to (and the IRQ provider calls) are inert stand-ins.)
  * Run: ./check43a vectors.txt build/disc1.candidate.exe [noop|flip]   (vectors: the libetc families; ./check43b: dispatcher families)
  * Contract: ordered event trace per case: register stores (MMIO), guest callback invocations (CB, by target),
  * returns (RET), dispatch-table stores (STORE, in order and width) and the final value of every RAM word the
@@ -15,6 +21,9 @@
  * Controls: argv[3] = noop (entry replaced by a stub returning 0) / flip (native result corrupted by one bit):
  * both must FAIL.  Host stand-ins: guest RAM, the register bus (I_STAT write acknowledges; DICR flag rules after
  * psx-spx), PE_IRQ_ExchangeMask / PE_Callback_SetSlot expressed as register / table accesses. */
+#ifdef CDX43_ETC
+#define PE_CDXETC_HOST_SEAMS 1   /* the checker stands the raw host seams in; the veneers under test are the cdxetc symbols */
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -32,6 +41,24 @@ int pe_plat_bios_enter_critical(void); void pe_plat_bios_exit_critical(void); vo
 uint16_t pe_plat_irq_set_mask(uint16_t); uint32_t pe_plat_vsync_callback(uint32_t); uint32_t pe_plat_vsync_callbacks(uint32_t, uint32_t);
 #endif
 
+#ifdef CDX43_ETC
+#include "pe_plat/cdx_etc.h"
+/* The old host bookkeeping seams (called by the clean-room veneers for IRQ-gate / diagnostics state, and by the IRQ provider)
+ * are inert stand-ins here: the veneers' BIOS events are dropped in these builds, the results are ignored. */
+void pe_plat_bios_flush_cache(void) {}
+void pe_plat_bios_change_clear_pad(uint32_t flag) { (void)flag; }
+uint32_t pe_plat_bios_change_clear_rcnt(uint32_t t, uint32_t flag) { (void)t; (void)flag; return 0; }
+int pe_plat_bios_enter_critical(void) { return 0; }
+void pe_plat_bios_exit_critical(void) {}
+#define pe_plat_bios_flush_cache pe_plat_cdxetc_flush_cache
+#define pe_plat_bios_change_clear_pad pe_plat_cdxetc_change_clear_pad
+#define pe_plat_bios_change_clear_rcnt pe_plat_cdxetc_change_clear_rcnt
+#define pe_plat_bios_enter_critical pe_plat_cdxetc_enter_critical
+#define pe_plat_bios_exit_critical pe_plat_cdxetc_exit_critical
+#define pe_plat_irq_set_mask pe_plat_cdxetc_set_intr_mask
+#define pe_plat_vsync_callback pe_plat_cdxetc_vsync_callback
+#define pe_plat_vsync_callbacks pe_plat_cdxetc_vsync_callbacks
+#endif
 static uint8_t ram[0x200000], init_ram[0x200000], touched[0x200000];
 static char got[40000][64]; static unsigned ngot;
 static uint32_t reg_istat, reg_imask, reg_dpcr, reg_dicr, reg_t[16];
@@ -155,6 +182,9 @@ uint8_t g_pe_gte[65536];
 
 #if defined(CDX43_LIBETC) || defined(CDX43_VSYNC)
 void PE_Sdk_ResetState(void);
+#ifdef CDX43_ETC
+void PE_Sdk_ResetState(void) { pe_plat_cdxetc_reset_state(); }   /* the SDK host state under test is the cdx-etc BIOS model */
+#endif
 #endif
 static int mutant;   /* 0 native, 1 noop, 2 flip */
 static unsigned ent_cases[32], ent_bad[32]; static char ent_name[32][48]; static unsigned nent, cur_ent, case_bad;
@@ -170,7 +200,12 @@ static uint32_t run_kind(const char *kind, uint32_t a, uint32_t b)
 #elif defined(CDX43_VSYNC)
     r = !strcmp(kind, "RESET") ? pe_plat_reset_callback()
       : !strcmp(kind, "VSCB") ? (mutant == 1 ? 0 : pe_plat_vsync_callback(a))
+#ifdef CDX43_ETC
+      : !strcmp(kind, "VSCBS") ? (mutant == 1 ? 0 : pe_plat_vsync_callbacks(a, b))
+      : !strcmp(kind, "VSTBL") ? (mutant == 1 ? 0 : pe_plat_cdxetc_vsync_table_write(a, b)) : (known = 0);
+#else
       : !strcmp(kind, "VSCBS") || !strcmp(kind, "VSTBL") ? (mutant == 1 ? 0 : pe_plat_vsync_callbacks(a, b)) : (known = 0);
+#endif
 #else
     if (mutant == 1) return 0;
     r = !strcmp(kind, "FLUSH") ? (pe_plat_bios_flush_cache(), 0u)
@@ -180,7 +215,12 @@ static uint32_t run_kind(const char *kind, uint32_t a, uint32_t b)
       : !strcmp(kind, "EXIT") ? (pe_plat_bios_exit_critical(), 0u)
       : !strcmp(kind, "SETMASK") ? pe_plat_irq_set_mask((uint16_t)a)
       : !strcmp(kind, "VSCB") ? pe_plat_vsync_callback(a)
+#ifdef CDX43_ETC
+      : !strcmp(kind, "VSCBS") ? pe_plat_vsync_callbacks(a, b)
+      : !strcmp(kind, "VSTBL") ? pe_plat_cdxetc_vsync_table_write(a, b) : (known = 0);
+#else
       : !strcmp(kind, "VSCBS") || !strcmp(kind, "VSTBL") ? pe_plat_vsync_callbacks(a, b) : (known = 0);
+#endif
 #endif
     if (!known) { fprintf(stderr, "unknown kind %s\n", kind); exit(2); }
     return mutant == 2 ? r ^ 1u : r;

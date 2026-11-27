@@ -379,12 +379,20 @@ static void test_PA_cd_irq(void)
            "80082CF0 kernel words -2 and |= 1");
     ASSERT(PE_LoadU32(0x800A5AC0u) == 0u && PE_LoadU32(0x800A5AC4u) == 0u &&
            PE_LoadU32(0x8009B75Cu) == 1u, "80082CF0 zeroes counters, re-arms");
-    ASSERT(g_bootstrap_arg4_call_count == 4 &&
-           pacd_call(0, "func_8007E1F4", 0x8007E1F4u, 2u, 0x800A5AB0u, 0u) &&
-           pacd_call(1, "func_8007E1E4", 0x8007E1E4u, 2u, 0x800A5AB0u, 0u) &&
-           pacd_call(2, "D_8009B728 (card record reset)", PACD_UNK, PACD_R, 0u, 0u) &&
-           pacd_call(3, "D_8009B728 (card record reset)", PACD_UNK, PACD_R + 0xF0u, 0u, 0u),
-           "80082CF0 dequeue/enqueue then reset both records");
+    /* The two kernel queue calls are host services now (pe_plat_bios_intrp.c):
+     * no boundary is recorded for them, only the two card record resets. */
+    ASSERT(g_bootstrap_arg4_call_count == 2 &&
+           pacd_call(0, "D_8009B728 (card record reset)", PACD_UNK, PACD_R, 0u, 0u) &&
+           pacd_call(1, "D_8009B728 (card record reset)", PACD_UNK, PACD_R + 0xF0u, 0u, 0u),
+           "80082CF0 resets both records");
+    {
+        unsigned bi, queue_boundary = 0u;
+        for (bi = 0u; bi < PE_Decomp_BoundaryCount(); bi++)
+            if (strstr(PE_Decomp_BoundaryName(bi), "8007E1") != NULL) queue_boundary++;
+        ASSERT(queue_boundary == 0u, "80082CF0 recorded a boundary for a kernel queue service");
+    }
+    ASSERT(pe_plat_bios_intrp_head(2u) == 0x800A5AB0u && PE_LoadU32(0x800A5AB0u) == 0u,
+           "80082CF0 left the queue record as the head of chain 2");
     PASS();
 }
 

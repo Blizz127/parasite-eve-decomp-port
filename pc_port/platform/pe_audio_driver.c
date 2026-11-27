@@ -22,7 +22,10 @@
 #include <string.h>
 #include <time.h>
 #ifdef _WIN32
-#include <windows.h>
+/* Not <windows.h>: its RECT typedef collides with the libgpu RECT (pe_plat/rect.h) that pe_sdk.h pulls in above.
+ * Only the performance counter is needed (kernel32; LARGE_INTEGER is a 64-bit integer). */
+__declspec(dllimport) int __stdcall QueryPerformanceFrequency(long long *frequency);
+__declspec(dllimport) int __stdcall QueryPerformanceCounter(long long *counter);
 #endif
 
 /* The native AKAO driver tick (game/decomp_hand/akao_tick_port.c). */
@@ -163,10 +166,10 @@ void PE_AudioDriver_SetVBlankPacer(PeVBlankPacer pacer) { g_vblank_pacer = pacer
 static double pace_time_seconds(void)
 {
 #ifdef _WIN32
-    LARGE_INTEGER counter, frequency;
-    if (!QueryPerformanceFrequency(&frequency) || frequency.QuadPart <= 0 ||
+    long long counter, frequency;
+    if (!QueryPerformanceFrequency(&frequency) || frequency <= 0 ||
         !QueryPerformanceCounter(&counter)) return 0.0;
-    return (double)counter.QuadPart / (double)frequency.QuadPart;
+    return (double)counter / (double)frequency;
 #else
     struct timespec ts;
     if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) return 0.0;

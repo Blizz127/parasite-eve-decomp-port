@@ -19,25 +19,20 @@ uint16_t pe_plat_irq_set_mask(uint16_t new_mask);
 uint32_t pe_plat_vsync_callback(uint32_t handler);
 uint32_t pe_plat_vsync_callbacks(uint32_t slot, uint32_t handler);
 #define func_800719E4 pe_plat_bios_exit
-#define func_800726C4 pe_plat_bios_flush_cache
-#define func_80073C74 pe_plat_bios_change_clear_pad
-#define func_80073C84 pe_plat_bios_change_clear_rcnt
-#define func_80072714 pe_plat_bios_enter_critical
-#define func_80072724 pe_plat_bios_exit_critical
-#define func_80073E10 pe_plat_irq_set_mask
-#define func_80073D24 pe_plat_vsync_callback
-#define func_80073D58 pe_plat_vsync_callbacks
-#define func_80074478 pe_plat_vsync_callbacks   /* VSyncCallbacks' jump-table target; same on every vector */
 /* Canonical guest prototypes (read by the port generators; they expand to
  * the pe_plat declarations above). */
 uint32_t func_800719E4(uint32_t mode);
-void func_800726C4(void);
-void func_80073C74(uint32_t flag);
-uint32_t func_80073C84(uint32_t counter, uint32_t flag);
-int func_80072714(void);
-void func_80072724(void);
-uint16_t func_80073E10(uint16_t new_mask);
-uint32_t func_80073D24(uint32_t handler);
-uint32_t func_80073D58(uint32_t slot, uint32_t handler);
-uint32_t func_80074478(uint32_t slot, uint32_t handler);
+/* Host callers of the five BIOS veneers (IRQ provider, pad bring-up, ...) reach the clean-room BIOS model so the guest
+ * and host views of ChangeClearRCnt/Enter/ExitCriticalSection state stay one model (pe_plat2_cdx_etc.c forwards to the
+ * raw host seams below for the IRQ-gate/diagnostics bookkeeping).  The two TUs that need the raw names define
+ * PE_CDXETC_HOST_SEAMS before including this header. */
+#ifndef PE_CDXETC_HOST_SEAMS
+#define pe_plat_bios_flush_cache pe_plat_cdxetc_flush_cache
+#define pe_plat_bios_change_clear_pad pe_plat_cdxetc_change_clear_pad
+#define pe_plat_bios_change_clear_rcnt pe_plat_cdxetc_change_clear_rcnt
+#define pe_plat_bios_enter_critical pe_plat_cdxetc_enter_critical
+#define pe_plat_bios_exit_critical pe_plat_cdxetc_exit_critical
+#endif
+/* The nine libetc/VSync leaves re-derived clean-room (cdx-etc, cdgen43) bind in pe_plat/cdx_etc.h. */
+#include "pe_plat/cdx_etc.h"
 #endif

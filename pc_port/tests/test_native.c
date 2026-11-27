@@ -563,6 +563,8 @@ static void FT1_SeedOtcJtb(void)
     PE_StoreU32(0x80095744u, 0x80095704u);
     PE_StoreU32(0x80095730u, 0x80076354u); /* jtb[11]: OTC1 worker */
     PE_StoreU32(0x8009571Cu, 0x80076B98u); /* jtb[6]: chain-walk worker */
+    PE_StoreU32(0x800957F8u, 0x04FFFFFFu); /* retail static data (EXE image): the node the ClearOTagR terminator links to (len 4, end) */
+    PE_StoreU32(0x80095810u, 0x80000000u); /* retail static data: the terminator node's first data word (no-op VRAM copy) */
     /* OT[0]/OT[1] at the retail arena addresses 6E9A0 publishes
      * (0x80120D08 + 0x1C98 / + 0x5C98), so the clear has a real table. */
     PE_StoreU32(0x800B0E38u, 0x801229A0u);
@@ -574,11 +576,14 @@ static void B54KR_SeedGpuStatic(void)
     DAY1_SeedDisplayDispatch();
     DAY1_SeedClearDispatch();
     PE_StoreU32(0x80095744u, 0x80095704u);
+    PE_StoreU32(0x800957F8u, 0x04FFFFFFu); /* retail static data (EXE image): the node the ClearOTagR terminator links to (len 4, end) */
+    PE_StoreU32(0x80095810u, 0x80000000u); /* retail static data: the terminator node's first data word (no-op VRAM copy) */
     /* ResetGraph light path uses jtb[13] and these retail MMIO pointers. */
     PE_StoreU32(0x80095738u, 0x80077144u);
     PE_StoreU32(0x80095860u, 0x1F8010A8u);
     PE_StoreU32(0x80095870u, 0x1F8010F0u);
     PE_StoreU32(0x80095854u, 0x1F801814u);
+    PE_StoreU32(0x80095850u, 0x1F801810u); /* GP0 data pointer word: the clean-room func_80076B58 (slot 5) reads it (ResetGraph sets it) */
     PE_StoreU32(0x8009570Cu, 0x80076C34u); /* target at jtb + 8 */
     PE_StoreU32(0x80095718u, 0x80076B58u); /* worker at jtb + 0x14 */
     PE_StoreU32(0x8009571Cu, 0x80076B98u); /* worker at jtb + 0x18 */
@@ -1186,7 +1191,8 @@ static void test_B54KR_801909B4_prefix_effects_and_canary(void)
     ASSERT(PE_Port_GetStopReason() == PE_PORT_STOP_UNRESOLVED_BOUNDARY,
            "prefix did not stop at title-loop input pump 3EB04");
     HostFB_GetState(&vsync, &drawsync, &presented, &mask);
-    ASSERT(mask == 1 && vsync == 487 && drawsync == 1445 &&
+    ASSERT(mask == 1 && vsync == 487 && drawsync == 485 &&   /* gpu2c: DrawPrim calls table slot 15 (the queue run), not HostFB DrawSync: 2 fewer counts per DrawPrim (was 1445) */
+          
            presented == 482,
            "display synchronization call counts differ");
     ASSERT(PE_LoadU32(0x801D136Cu) == 0x801D1200u &&
@@ -1269,23 +1275,8 @@ static void test_B54KR_801909B4_title_input_pump_with_pad(void)
     PASS();
 }
 
-extern int PE_GPU_WaitTimedOut(uint32_t now, uint32_t deadline, uint32_t polls);
-static void test_GPU_wait_timeout_counter(void)
-{
-    TEST("GPU_wait_timeout_counter");
-    ResetTestState();
-    PE_StoreU32(0x8009588Cu, 17u);
-    ASSERT(PE_GPU_WaitTimedOut(10u, 9u, 17u) && PE_LoadU32(0x8009588Cu) == 17u,
-           "expired deadline modified the poll counter");
-    PE_StoreU32(0x8009588Cu, 0xF0000u);
-    ASSERT(!PE_GPU_WaitTimedOut(10u, 10u, 0xF0000u) &&
-           PE_LoadU32(0x8009588Cu) == 0xF0001u,
-           "threshold poll did not increment and continue");
-    ASSERT(PE_GPU_WaitTimedOut(10u, 10u, 0xF0001u) &&
-           PE_LoadU32(0x8009588Cu) == 0xF0002u,
-           "count timeout did not increment before stopping");
-    PASS();
-}
+/* test_GPU_wait_timeout_counter removed (gpu2c): it exercised PE_GPU_WaitTimedOut, an internal helper of the translated
+ * pe_libgpu.c that the clean-room gpu2c providers replace; the poll/timeout behaviour is now covered by the gpu2c vectors. */
 
 static void test_cd_command_stop_before_poll(void)
 {
@@ -1487,7 +1478,7 @@ static void test_B54KT_80190660_two_images_packets_and_boundary(void)
            PE_LoadU32(0x801D11C4u) == 0x80110000u,
            "environment disable/toggle/current state differs");
     HostFB_GetState(&vsync, &drawsync, &presented, &mask);
-    ASSERT(vsync == 480 && drawsync == 1441 && presented == 480 && mask == 0,
+    ASSERT(vsync == 480 && drawsync == 481 && presented == 480 && mask == 0,
            "func_80190660 host synchronization telemetry differs");
     PASS();
 }
@@ -1558,7 +1549,7 @@ static void test_GPU_drawprim_guest_packet_validation(void)
            state.gp0_state == PE_GPU_GP0_IDLE && state.gp1_dma_direction == 0u,
            "guest packet did not reach real GPU command path");
     HostFB_GetState(&vsync, &drawsync, &presented, &mask);
-    ASSERT(drawsync == 1 && presented == 0, "guest packet sync differs");
+    ASSERT(drawsync == 0 && presented == 0, "guest packet sync differs");   /* gpu2c: slot 15 is the queue run, no HostFB DrawSync count */
     PE_Port_RunControlReset();
     ASSERT(func_80075358(0x80200000u) == -1 &&
            PE_Port_GetStopReason() == PE_PORT_STOP_UNRESOLVED_BOUNDARY,
@@ -1570,11 +1561,12 @@ static void test_GPU_drawprim_guest_packet_validation(void)
            "guest payload beyond RAM did not stop");
     PE_GPU_GetState(&state);
     HostFB_GetState(&vsync, &drawsync, &presented, &mask);
-    ASSERT(state.draw_mode_count == 1u && drawsync == 1,
+    ASSERT(state.draw_mode_count == 1u && drawsync == 0,
            "invalid packet reached GPU or synchronization");
     PASS();
 }
 
+extern void PE_Decomp_SetBoundaryStop(int stop);
 static void test_B54KU_drawprim_wrapper_e1_and_indirect_fence(void)
 {
     uint32_t command = 0xE1000018u;
@@ -1594,20 +1586,27 @@ static void test_B54KU_drawprim_wrapper_e1_and_indirect_fence(void)
            state.gp1_dma_direction == 0u,
            "DrawPrim E1 command or GP1 DMA-off effect differs");
     HostFB_GetState(&vsync, &drawsync, &presented, &mask);
-    ASSERT(vsync == 0 && drawsync == 1 && presented == 0 && mask == 0,
-           "DrawPrim wrapper did not call DrawSync exactly once");
+    ASSERT(vsync == 0 && drawsync == 0 && presented == 0 && mask == 0,   /* gpu2c: was drawsync == 1 (translation counted a HostFB DrawSync) */
+           "DrawPrim wrapper changed the HostFB counters");
 
     PE_Port_RunControlReset();
     Bootstrap_ResetArg4CallLog();
     PE_StoreU32(0x80095718u, 0xF1234567u);
-    ASSERT(PE_func_80075358_Transient(&command, 1u) == -1 &&
-           PE_Port_GetStopReason() == PE_PORT_STOP_UNRESOLVED_BOUNDARY &&
-           g_bootstrap_arg4_call_count == 1 &&
-           strcmp(g_bootstrap_arg4_calls[0].symbol, "func_80076B58") == 0 &&
-           g_bootstrap_arg4_calls[0].target == 0xF1234567u &&
-           g_bootstrap_arg4_calls[0].arg1 == 1u &&
-           g_bootstrap_arg4_calls[0].payload_size == 4u,
-           "dirty slot-5 identity was not an inert typed boundary");
+    {   /* gpu2c: the transient words go through a guest-RAM frame and the clean-room DrawPrim, so an unregistered slot 5 is the
+         * guest-code registry's boundary for site func_80075358 with (packet + 4, count) - a guest address, no host payload. */
+        int policy = PE_Decomp_BoundaryStopEnabled();
+        int result;
+        PE_Decomp_SetBoundaryStop(1);
+        result = PE_func_80075358_Transient(&command, 1u);
+        PE_Decomp_SetBoundaryStop(policy);
+        ASSERT(result == -1 &&
+               PE_Port_GetStopReason() == PE_PORT_STOP_UNRESOLVED_BOUNDARY &&
+               g_bootstrap_arg4_call_count == 1 &&
+               strcmp(g_bootstrap_arg4_calls[0].symbol, "func_80075358") == 0 &&
+               g_bootstrap_arg4_calls[0].target == 0xF1234567u &&
+               g_bootstrap_arg4_calls[0].arg1 == 1u,
+               "dirty slot-5 identity was not an inert typed boundary");
+    }
     PASS();
 }
 
@@ -1882,7 +1881,7 @@ static void test_B54KX_overlay_loop_cardinality_and_endpoint(void)
                   PE_TranslateConst(0x80110000u, 0x5Cu), 0x5Cu) == 0,
            "even loop endpoint, display flags, or final cache differs");
     HostFB_GetState(&vsync, &drawsync, &presented, &mask);
-    ASSERT(vsync == 480 && drawsync == 1441 && presented == 480 && mask == 0,
+    ASSERT(vsync == 480 && drawsync == 481 && presented == 480 && mask == 0,
            "complete-loop host call cardinality differs");
     PASS();
 }
@@ -10793,7 +10792,7 @@ static void test_FD1_6E9A0_real_loop_fills_arena_ot(void) {
     ASSERT(ot == 0x801229A0u, "arena OT pointer differs");
     ASSERT(PE_LoadU32(ot) == 0x0009580Cu, "arena OT head not terminated");
     ASSERT(PE_LoadU32(ot + 4u) == (ot & 0x00FFFFFFu), "arena OT chain differs");
-    ASSERT(PE_LoadU32(0x8009580Cu) == 0x004957F8u, "stub node differs");
+    ASSERT(PE_LoadU32(0x8009580Cu) == 0x040957F8u, "stub node differs");
     ASSERT(PE_LoadU8(0x800BCFEEu) == 1u, "fade did not complete");
     ASSERT(D_8009D280 == 0u, "arg 0 dispatched");
     ASSERT(CountOrderLog("func_800752AC_null_ot_skip") == 0,
@@ -32106,8 +32105,12 @@ static void test_B53E_platform_preflight_is_mutation_free(void)
     ASSERT(func_80076664(B53E_RECT, B53E_SOURCE) == -1,
            "dirty parser prerequisite was accepted");
     PE_GPU_GetState(&after);
-    ASSERT(memcmp(&before, &after, sizeof(before)) == 0,
-           "dirty parser rejection changed GPU state");
+    /* gpu2b (docs/evidence/native-gpu2-20261126/gpu2b): the LoadImage worker now follows the retail wait, whose
+     * not-ready GPUSTAT ends in the timeout check's GPU reset (GP1 02h/01h) and -1; that reset also returns the
+     * dirty parser to idle.  Nothing is issued: no image, no DMA, no pixel. */
+    ASSERT(after.gp0_state == PE_GPU_GP0_IDLE && !after.dma2_active &&
+           after.image_remaining_pixels == 0u && B53B_Pixel(0, 0) == 0u,
+           "dirty parser rejection issued or left work behind");
 
     /* An active DMA descriptor must survive an attempted second issue. */
     ResetTestState();
@@ -32118,11 +32121,14 @@ static void test_B53E_platform_preflight_is_mutation_free(void)
            "cannot seed active DMA prerequisite");
     B53E_StoreRect(0, 0, 1, 1);
     PE_GPU_GetState(&before);
-    ASSERT(func_80076664(B53E_RECT, B53E_SOURCE) == -1,
-           "active DMA prerequisite was accepted");
+    /* gpu2b: the worker follows the retail wait on GPUSTAT bit 26 (the vectors never look at the DMA channel); each
+     * failed poll lets the host DMA transfer progress, so the earlier image completes first and the new one is then
+     * issued, instead of the second issue being rejected with -1. */
+    ASSERT(func_80076664(B53E_RECT, B53E_SOURCE) == 0,
+           "second issue behind an active DMA was not completed after the wait");
     PE_GPU_GetState(&after);
-    ASSERT(memcmp(&before, &after, sizeof(before)) == 0,
-           "second issue changed active DMA descriptor");
+    ASSERT(!after.dma2_active && after.dma_event_count == before.dma_event_count + 1u,
+           "earlier DMA was not completed before the second issue");
     PASS();
 }
 
@@ -32140,11 +32146,11 @@ static void test_B53E_gpustat_wait_boundary_and_explicit_transition(void)
     ASSERT(func_80076664(B53E_RECT, B53E_SOURCE) == -1,
            "held-not-ready prefix did not stop at recovery boundary");
     PE_GPU_GetState(&after);
-    ASSERT(CountOrderLog("func_80077404") == 1 &&
-           PE_Port_GetStopReason() == PE_PORT_STOP_UNRESOLVED_BOUNDARY &&
-           PE_LoadU32(B53C_TIMEOUT_POLLS) == 0x000F0002u,
+    /* gpu2b: the worker follows the retail wait loop (timeout check after each failed poll, -1 when it fires, the
+     * check's own GPU reset included) instead of stopping at a recovery boundary just before the reset. */
+    ASSERT(PE_LoadU32(B53C_TIMEOUT_POLLS) == 0x000F0002u && !PE_Port_ShouldStop(),
            "GPUSTAT wait did not use exact finite software timeout prefix");
-    ASSERT(memcmp(&before, &after, sizeof(before)) == 0,
+    ASSERT(!after.dma2_active && after.image_remaining_pixels == 0u && B53B_Pixel(0, 0) == 0u,
            "GPUSTAT polls made hardware progress");
 
     PE_Port_RunControlReset();
@@ -34092,11 +34098,14 @@ static void test_B53I_C_gpustat_hold_and_explicit_transition(void)
         signal(SIGALRM, SIG_DFL);
         alarm(1);
         (void)PE_func_80076EE4_Pump(&returned);
-        _exit(9);
+        /* gpu2a: the clean-room pump bounds the GPUSTAT wait (stuck-wait budget): it requests an
+         * unresolved-boundary stop and does not return through its normal exit, instead of
+         * spinning until killed.  Exit 7 = stopped without a normal return. */
+        _exit(PE_Port_ShouldStop() && returned == 0 ? 7 : 9);
     }
     ASSERT(waitpid(pid, &status, 0) == pid &&
-           WIFSIGNALED(status) && WTERMSIG(status) == SIGALRM,
-           "GPUSTAT-clear poll returned or auto-readied");
+           WIFEXITED(status) && WEXITSTATUS(status) == 7,
+           "GPUSTAT-clear poll returned, auto-readied or was not bounded");
 
     /* GPUSTAT bit 13 is always set outside interlace (8fde610b4); the
      * held state is "no ready/DMA-request bits". */
@@ -37008,6 +37017,7 @@ static void test_ATK3_retail_attack_initialization(void)
 #include "test_card_operation_frame.h"
 #include "test_memcard.h"
 #include "test_bios_card.h"
+#include "test_bios_intrp.h"
 #include "test_dispenv.h"
 #include "test_camera_target.h"
 #include "test_transition_gte.h"
@@ -39740,6 +39750,8 @@ static void DRW1_SeedDispatch(void)
     PE_StoreU32(0x8009570Cu, 0x80076C34u); /* jtb[2] dispatch */
     PE_StoreU32(0x8009571Cu, 0x80076B98u); /* jtb[6] worker */
     PE_StoreU32(0x80095730u, 0x80076354u); /* jtb[11] OTC worker */
+    PE_StoreU32(0x800957F8u, 0x04FFFFFFu); /* retail static data (EXE image): the node the ClearOTagR terminator links to (len 4, end) */
+    PE_StoreU32(0x80095810u, 0x80000000u); /* retail static data: the terminator node's first data word (no-op VRAM copy) */
     PE_StoreU8(0x8009574Eu, 0u);
 }
 
@@ -39768,7 +39780,7 @@ static void test_DRW1_drawotag_empty_chain(void)
     /* Read-only walk: the guest table is byte-identical. */
     ASSERT(PE_LoadU32(ot) == 0x0009580Cu, "OT head moved");
     ASSERT(PE_LoadU32(ot + 4u) == (ot & 0x00FFFFFFu), "OT link moved");
-    ASSERT(PE_LoadU32(0x8009580Cu) == 0x004957F8u, "stub node moved");
+    ASSERT(PE_LoadU32(0x8009580Cu) == 0x040957F8u, "stub node moved");
     ASSERT(PE_LoadU32(0x80095874u) == 0u && PE_LoadU32(0x80095878u) == 0u,
            "direct issue touched the ring");
     PASS();
@@ -39824,7 +39836,10 @@ static void test_DRW1_drawotag_dispatch_boundary(void)
     ASSERT(g_bootstrap_arg4_call_count == 1, "dispatch not recorded");
 
     ResetTestState();
+    stop_policy = PE_Decomp_BoundaryStopEnabled();
+    PE_Decomp_SetBoundaryStop(1);   /* gpu2c: a null slot is the registry's boundary (production policy), no longer a special case */
     ASSERT(func_800753B4(DRW1_OT_BASE) == 0, "null jtb result differs");
+    PE_Decomp_SetBoundaryStop(stop_policy);
     ASSERT(PE_Port_GetStopReason() == PE_PORT_STOP_UNRESOLVED_BOUNDARY,
            "null jtb did not stop");
     PASS();
@@ -40017,7 +40032,7 @@ static void test_DRW1_754e4_level2_prints(void)
     ASSERT(!PE_Port_ShouldStop() && g_bootstrap_arg4_call_count == 0,
            "native debug draw stopped or used a stub");
     ASSERT(PE_Bios_PrintfLog(&fmt, args) == 1u && fmt == 0x80011954u &&
-           args[0] == DRW1_OT_BASE && args[1] == env, "print arguments differ");
+           args[0] == DRW1_OT_BASE, "print arguments differ");   /* gpu2c: the vectors show only (format, ot) as set by DrawOTagEnv; a2 is a leftover register */
     ASSERT(PE_LoadU32(0x8009575Cu) == PE_LoadU32(env), "draw did not cache env");
     ASSERT((PE_LoadU32(env + 0x1Cu) & 0x00FFFFFFu) == (DRW1_OT_BASE & 0x00FFFFFFu),
            "draw did not splice OT after printing");
@@ -40463,7 +40478,7 @@ static void test_OTC1_clearotagr_fill_and_tail(void)
     ASSERT(g_stub_order_count == 0, "production-shape clear logged a stub");
     /* Terminator tail: OT[0] links the stub node; the node is the end. */
     ASSERT(PE_LoadU32(ot) == 0x0009580Cu, "OT[0] stub link differs");
-    ASSERT(PE_LoadU32(0x8009580Cu) == 0x004957F8u, "stub node differs");
+    ASSERT(PE_LoadU32(0x8009580Cu) == 0x040957F8u, "stub node differs");
     /* OTC pattern: every entry above the base points at its predecessor. */
     for (i = 1; i < n; i++) {
         uint32_t want = (ot + (uint32_t)(i - 1) * 4u) & 0x00FFFFFFu;
@@ -40478,26 +40493,29 @@ static void test_OTC1_clearotagr_fill_and_tail(void)
     /* Non-memory retail effects: DPCR enable, deadline, one wait poll. */
     ASSERT(PE_GPU_ReadDPCR() == (0x33333333u | 0x08000000u), "DPCR RMW differs");
     ASSERT(PE_LoadU32(0x80095888u) == q0 + 0xF0u, "deadline differs");
-    ASSERT(PE_LoadU32(0x8009588Cu) == 1u, "wait-poll count differs");
+    /* gpu2c: the original calls the timeout function (which counts the poll) only after reading a busy CHCR; the native
+     * DMA6 model is idle at the first read, so no poll is counted (vector set gpu2c: 333 of 488 worker cases end idle without it). */
+    ASSERT(PE_LoadU32(0x8009588Cu) == 0u, "wait-poll count differs");
     PASS();
 }
 
 static void test_OTC1_clearotagr_null_ot_skip(void)
 {
+    /* gpu2c: the translated adapter skipped the fill for a NULL table (host-only; the gpu2c vectors never contain it).
+     * The clean-room ClearOTagR has no such skip: the clear runs with the given address (low guest RAM), the DPCR enable is
+     * set, and the terminator tail is written. */
     TEST("OTC1_clearotagr_null_ot_skip");
     ResetTestState();
     OTC1_SeedDispatch();
     PE_GPU_WriteDPCR(0x33333333u);
     PE_StoreU32(0x8009580Cu, 0u);
-    func_800752AC(0u, OTC1_OT_N);
+    func_800752AC(0u, 0x10);
     ASSERT(PE_Port_GetStopReason() == PE_PORT_STOP_NONE,
-           "adapter NULL-OT skip stopped production");
-    ASSERT(CountOrderLog("func_800752AC_null_ot_skip") == 1,
-           "adapter NULL-OT skip not logged");
+           "NULL-OT clear stopped production");
     ASSERT(PE_GPU_ReadDPCR() == (0x33333333u | 0x08000000u),
-           "skip dropped the DPCR enable");
-    ASSERT(PE_LoadU32(0x8009588Cu) == 1u, "skip dropped the wait poll");
-    ASSERT(PE_LoadU32(0x8009580Cu) == 0u, "skip fabricated the tail");
+           "NULL-OT clear dropped the DPCR enable");
+    ASSERT(PE_LoadU32(0x8009580Cu) == 0x040957F8u, "NULL-OT clear did not write the terminator node");
+    ASSERT(PE_LoadU32(0u) == 0x0009580Cu, "NULL-OT clear did not link OT[0]");
     PASS();
 }
 
@@ -41382,7 +41400,7 @@ static void test_spu_voice_volume_native(void)
     PE_SpuDma_Reset();
     PE_StoreU32(0x8009B3FCu, 0x1F801C00u);
     for (unsigned i = 0; i < sizeof cases / sizeof cases[0]; ++i) {
-        pe_plat_spu_voice_volume(cases[i].voice, cases[i].left, cases[i].right,
+        pe_plat_spub_voice_volume(cases[i].voice, cases[i].left, cases[i].right,
                                  cases[i].lm, cases[i].rm);
         ASSERT(!PE_Port_ShouldStop() &&
                PE_SpuRegister_LoadU16((uint32_t)cases[i].voice * 16u) == cases[i].lw &&
@@ -41785,6 +41803,8 @@ int main(void)
     test_spu_shutdown_guest_dispatch();
     test_bios_deliver_event_and_err_math();
     test_bios_event_services();
+    test_bios_intrp_chain();
+    test_bios_intrp_no_boundary();
     test_bios_card_thunks();
     test_spu_init_reverb_register();
     test_spu_init_callback_registration();
@@ -41830,7 +41850,6 @@ int main(void)
     test_B54KR_801909B4_prefix_effects_and_canary();
     test_B54KR_801909B4_dirty_repeat_and_alternate_cut();
     test_B54KR_801909B4_title_input_pump_with_pad();
-    test_GPU_wait_timeout_counter();
     test_cd_command_stop_before_poll();
     test_B54KS_drawsync_idle_and_poll_mode();
     test_B54KS_drawsync_completes_direct_dma();

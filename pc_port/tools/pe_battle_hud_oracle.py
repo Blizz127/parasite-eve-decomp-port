@@ -34,7 +34,33 @@ def signed(n):
     return n - 0x100000000 if n & 0x80000000 else n
 
 
-def execute(ram, entry, args=(), *, stop_at=(), initial_regs=None, initial_cop_control=None, initial_cop_data=None, bios_seed=1, instruction_budget=100000, strict_gte_flags=False, final_gte=None, visited_pcs=None, scratchpad=None):
+class MipsBreak(AssertionError):
+    """A BREAK instruction was reached (the R3000 raises an exception; the oracle cannot continue).
+    Subclasses AssertionError so callers that treat any unsupported instruction as an assertion still do."""
+
+
+def mips_div(n, d):
+    """R3000 DIV: returns (lo, hi) as unsigned 32-bit words.  Quotient truncates toward zero, remainder takes the
+    dividend's sign.  Division by zero does not trap: HI = dividend, LO = 1 if the dividend is negative else
+    0xFFFFFFFF; 0x80000000 / -1 gives LO = 0x80000000, HI = 0 (psx-spx / MIPS R3000 documentation)."""
+    n, d = signed(n), signed(d)
+    if d == 0:
+        return (1 if n < 0 else 0xFFFFFFFF), n & 0xFFFFFFFF
+    q = abs(n) // abs(d)
+    if (n < 0) != (d < 0):
+        q = -q
+    return q & 0xFFFFFFFF, (n - q * d) & 0xFFFFFFFF
+
+
+def mips_divu(n, d):
+    """R3000 DIVU: returns (lo, hi).  Division by zero gives LO = 0xFFFFFFFF, HI = dividend."""
+    n, d = n & 0xFFFFFFFF, d & 0xFFFFFFFF
+    if d == 0:
+        return 0xFFFFFFFF, n
+    return n // d, n % d
+
+
+def execute(ram, entry, args=(), *, stop_at=(), initial_regs=None, initial_cop_control=None, initial_cop_data=None, bios_seed=1, instruction_budget=100000, strict_gte_flags=False, final_gte=None, visited_pcs=None, scratchpad=None, div_zero_traps=True):
     r = [0] * 32
     r[28], r[29] = 0x8009CD70, 0x801FF000
     r[4:4+min(len(args),4)] = args[:4]
@@ -43,6 +69,7 @@ def execute(ram, entry, args=(), *, stop_at=(), initial_regs=None, initial_cop_c
     if initial_regs:
         for index, value in initial_regs.items(): r[index] = value
     hi = lo = 0
+    def d_ok(divisor): return (divisor & 0xFFFFFFFF) != 0 or not div_zero_traps
     cop_data, cop_control = [0]*32, [0]*32
     flags_valid=True
     if initial_cop_data:
@@ -227,10 +254,16 @@ def execute(ram, entry, args=(), *, stop_at=(), initial_regs=None, initial_cop_c
                 prod = r[rs] * r[rt]
                 hi, lo = prod >> 32 & 0xFFFFFFFF, prod & 0xFFFFFFFF
             elif fn == 26:
-                n, d = signed(r[rs]), signed(r[rt])
-                assert d, ('division by zero in original fixture',hex(pc),n)
-                q = (abs(n) // abs(d)) * (-1 if (n < 0) != (d < 0) else 1)
-                lo, hi = q & 0xFFFFFFFF, (n-q*d) & 0xFFFFFFFF
+                # div_zero_traps=True (default, relied on by the fixture oracles that expect the assertion):
+                # a zero divisor is a fixture error.  False: R3000 behaviour (no trap), see mips_div.
+                assert d_ok(r[rt]), ('division by zero in original fixture',hex(pc),signed(r[rs]))
+                lo, hi = mips_div(r[rs], r[rt])
+            elif fn == 27:
+                assert d_ok(r[rt]), ('division by zero in original fixture',hex(pc),r[rs])
+                lo, hi = mips_divu(r[rs], r[rt])
+            elif fn == 17: hi = r[rs]
+            elif fn == 19: lo = r[rs]
+            elif fn == 13: raise MipsBreak((hex(pc), hex(w)))
             elif fn in (32,34):
                 result=signed(r[rs])+signed(r[rt])*(1 if fn==32 else -1)
                 assert -(1<<31)<=result<(1<<31),'retail signed arithmetic overflow'

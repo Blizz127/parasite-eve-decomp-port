@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Black-box vectors for the CD-stream / IRQ-delivery / libetc / libsnd /
-save-manager family (batches cdgen42 .. cdgen45).
+save-manager family (batches cdgen42 .. cdgen46; cdgen46 = func_80085644 stream bring-up, needs DIV/DIVU in the interpreter).
 
 Original code from the user's EXE runs under the test-only interpreter that
 pe_cd_leaf_vectors.py builds on (this file imports it and reuses its case
@@ -30,9 +30,10 @@ arguments are only those the spec says the callee takes (leftover argument
 registers are not compared) and n is how many stores the original had made
 before the call (the checker compares distinct bytes).
 
-Usage: pe_cdx_vectors.py OUT.txt BATCH [ENTRY ...] [-n N] [-regonly]
+Usage: pe_cdx_vectors.py OUT.txt BATCH [ENTRY ...] [-n N] [-regonly] [-edge]
+       (-edge: cdgen46 only; the retry callees return arbitrary nonzero success values instead of the documented 1 / 0xF1000000+n)
        (-regonly: the register-level-only entries of the batch, which have no smoke checker; see REPORT)
-       BATCH in cdgen42, cdgen44, cdgen45 (cdgen43 is split between this file
+       BATCH in cdgen42, cdgen44, cdgen45, cdgen46 (cdgen43 is split between this file
        for the libetc veneers and pe_cdx_irq_vectors.py for the IRQ dispatcher).
 """
 import os
@@ -41,6 +42,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pe_cd_leaf_vectors as c   # noqa: E402  (monkey-patches the shared interpreter hooks)
+from pe_battle_hud_oracle import MipsBreak   # noqa: E402  (BREAK reached: the original traps; not reproducible)
 
 gv = c.gv
 pl = c.pl
@@ -125,12 +127,13 @@ def run_case(ram, entry, args, rets, sp, sysc, models=None):
     regs[31] = v.RET
     pc = entry
     silent = [0]
+    xkw = {'div_zero_traps': False} if sp.get('mips_div') else {}   # R3000 divide-by-zero (no trap), cdgen46
     pcs = set(sp['callees']) | {v.RET} | set(sysc)
     if sp['bios']:
         pcs |= set(BIOS_STOPS)
     for _ in range(c.CALL_CAP[0]):
         st = Stops(pcs)
-        r = v.execute(ram, pc, (), stop_at=st, initial_regs=regs, instruction_budget=100000)
+        r = v.execute(ram, pc, (), stop_at=st, initial_regs=regs, instruction_budget=100000, **xkw)
         hit = st.hit
         if hit == v.RET or hit is None:
             return r[2] & 0xFFFFFFFF, list(pl.LOADS), list(pl.STORES), calls
@@ -172,7 +175,9 @@ def run_case(ram, entry, args, rets, sp, sysc, models=None):
             pc = r[31]
             continue
         n = sp['callees'][hit]
-        rec = [canon(hit)] + [x & 0xFFFFFFFF for x in r[4:4 + (n or 0)]]
+        rec = [canon(hit)] + [x & 0xFFFFFFFF for x in r[4:4 + min(n or 0, 4)]]
+        for k in range(4, n or 0):          # o32: arguments 5.. are in the caller's outgoing area at sp+0x10 (cdgen46)
+            rec.append(struct.unpack_from('<I', ram, (r[29] + 0x10 + 4 * (k - 4)) & 0x1FFFFF)[0])
         m = (models or {}).get(hit)
         calls.append((rec, len(pl.STORES)))
         r[2] = (m(ram, r) if m else rets.get(canon(hit), 0)) & 0xFFFFFFFF
@@ -183,6 +188,12 @@ def run_case(ram, entry, args, rets, sp, sysc, models=None):
 
 # ------------------------------------------------- discovery and seeding
 DISC = {}
+BREAKS = {}     # per entry: cases dropped because the original reached BREAK (reported by main)
+
+
+def fmt_ret(val):
+    """RETS token value: one word, or a per-call sequence `a/b/c` (the last value repeats once exhausted)."""
+    return '/'.join('%X' % q for q in val) if isinstance(val, list) else '%X' % val
 
 
 def _is_state(a):
@@ -211,7 +222,7 @@ def discover(base, entry, sp, pilots=100):
             x, models = hook(ram, x, args, rets, seed)
         try:
             r = run_case(ram, entry, args, rets, sp, sysc, models)
-        except (AssertionError, struct.error, IndexError):
+        except (AssertionError, struct.error, IndexError):   # includes MipsBreak
             continue
         finally:
             c.MEMSEQ.clear()
@@ -310,6 +321,10 @@ def cases(base, entry, n=200, extra=None):
         except (struct.error, IndexError):
             dropped += 1                   # wild pointer outside the 2 MiB RAM image
             continue
+        except MipsBreak:
+            BREAKS[entry] = BREAKS.get(entry, 0) + 1   # retail raises a BREAK exception (e.g. divide by a zero word)
+            dropped += 1
+            continue
         except AssertionError as e:
             if 'instruction budget' not in str(e):
                 raise
@@ -325,7 +340,7 @@ def cases(base, entry, n=200, extra=None):
         text = ' '.join(','.join('%08X' % y for y in rec) + '@%d' % m for rec, m in calls) or '-'
         order = tuple(dict.fromkeys(canon(k) for k in sp['callees'])) + tuple(k for k in rets if k not in {canon(q) for q in sp['callees']})
         out.append(gv.line(entry, s, 0, args, (ret, loads, stores)) +
-                   ' RETS %s CALL %s' % (','.join('%08X=%X' % (k, rets[k]) for k in order) or '-', text))
+                   ' RETS %s CALL %s' % (','.join('%08X=%s' % (k, fmt_ret(rets[k])) for k in order) or '-', text))
     return out, spun, dropped
 
 
@@ -336,6 +351,10 @@ def main():
         i = argv.index('-n')
         n = int(argv[i + 1])
         del argv[i:i + 2]
+    EDGE46 = '-edge' in argv          # cdgen46: success values other than the documented ones (see pe_cdx_specs)
+    if EDGE46:
+        argv.remove('-edge')
+        globals()['EDGE46'] = True
     regonly = '-regonly' in argv
     if regonly:
         argv.remove('-regonly')
@@ -350,8 +369,8 @@ def main():
     for e in entries:
         o, spun, dropped = cases(base, e, max(n, SPEC[e].get('n', 0)))
         lines += o
-        report.append('%08X %s cases=%d spun=%d dropped=%d discovered_words=%d' % (
-            e, SPEC[e]['name'], len(o), spun, dropped, len(DISC[e])))
+        report.append('%08X %s cases=%d spun=%d dropped=%d (break=%d) discovered_words=%d' % (
+            e, SPEC[e]['name'], len(o), spun, dropped, BREAKS.get(e, 0), len(DISC[e])))
     open(outp, 'w').write('\n'.join(lines) + '\n')
     print('\n'.join(report))
 

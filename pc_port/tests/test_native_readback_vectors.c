@@ -18,7 +18,7 @@ uint32_t PE_MMIO_Load(pe_addr_t a,size_t n) { (void)a;(void)n;abort(); }
 void PE_MMIO_Store(pe_addr_t a,size_t n,uint32_t v) { (void)a;(void)n;(void)v;abort(); }
 int pe_plat_gpu_readback_wait_existing(uint32_t ready)
 { if(ready!=(nwait==0?0x04000000u:0x08000000u)) abort(); nwait++;return fail_stage!=nwait; }
-uint32_t pe_plat_gpu_seed_deadline_host(void) { return 0; }
+uint32_t pe_plat_gpuq_seed_deadline(void) { return 0; }
 int PE_GPU_CanBeginImageLoad(int needs_dma) { (void)needs_dma;return 1; }
 int PE_GPU_WriteGP0(uint32_t value) { if(ngp0>=8) abort();gp0[ngp0++]=value;return 1; }
 int PE_GPU_WriteGP1(uint32_t value) { if(ngp1>=4) abort();gp1[ngp1++]=value;return 1; }

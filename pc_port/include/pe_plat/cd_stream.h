@@ -5,8 +5,6 @@
 /* Guest word copy used by the CD stream; overlap copies forward. */
 void pe_plat_cd_stream_copy_words(uint32_t dst, uint32_t src, uint32_t words);
 #define func_8007CE80 pe_plat_cd_stream_copy_words
-void pe_plat_cd_stream_set_range(uint32_t mode, uint32_t start, uint32_t end);
-#define func_8007C544 pe_plat_cd_stream_set_range
 void pe_plat_cd_decode_status(int status, uint32_t response);
 #define func_8008080C pe_plat_cd_decode_status
 void pe_plat_cd_command_progress(unsigned char status, int response);
@@ -32,7 +30,6 @@ void pe_plat_cd_initialize_state(void);
 /* Canonical guest-name prototypes for the bindings above (generated
  * from the pe_plat prototypes; tools read callee signatures from these). */
 void func_8007CE80(uint32_t dst, uint32_t src, uint32_t words);
-void func_8007C544(uint32_t mode, uint32_t start, uint32_t end);
 void func_8008080C(int status, uint32_t response);
 void func_80080404(unsigned char status, int response);
 void func_8007A3CC(void);

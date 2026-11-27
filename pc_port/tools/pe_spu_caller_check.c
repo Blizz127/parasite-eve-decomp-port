@@ -139,7 +139,7 @@
  *   cc -std=c99 -Wall -Wextra -Werror -DCHK_HAVE_CD_GEN32 -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/tools/pe_spu_caller_check.c pc_port/platform/pe_plat_cd_gen32.c -o check
  *   cc -std=c99 -Wall -Wextra -Werror -DCHK_HAVE_PAD_GEN34 -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/tools/pe_spu_caller_check.c pc_port/platform/pe_plat_pad_gen34.c -o check
  *     (cdgen34 vectors, libpad PadStartCom 0x80082CF0: the five callees are stubbed here, each making the absolute
- *      write its RETS code selects; 0x8007E1E4 / 0x8007E1F4 reach PE_Decomp_BoundaryFrom with two arguments; the slot
+ *      write its RETS code selects; 0x8007E1E4 / 0x8007E1F4 are the pe_plat_bios_sys_enq/deq_int_rp host services, stubbed with two arguments; the slot
  *      word 0x8009B728 reaches PE_Card_ICall with one argument)
  *   cc -std=c99 -Wall -Wextra -Werror -DCHK_HAVE_PAD_GEN35 -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/tools/pe_spu_caller_check.c pc_port/platform/pe_plat_pad_gen35.c -o check
  *     (cdgen35 vectors, SIO0 start routine 0x80082E00: the slots 0x8009B744 / 0x8009B748 go through PE_Card_ICall
@@ -464,6 +464,8 @@ void pe_plat_cd_set_guarded_state(unsigned int a){char t[64];snprintf(t,sizeof t
 
 int pe_plat_spu_heap_contains(uint32_t address)
 { char t[64]; snprintf(t, sizeof t, "80085BB4,%08X", address); note(t); return (int)rets_val; }
+/* pe_plat_spu_modetype.c reaches func_80085BB4 through the clean-room binding (spu_b.h). */
+int pe_plat_spub_heap_contains(uint32_t address) { return pe_plat_spu_heap_contains(address); }
 void pe_plat_spu_set_reverb_attr(uint32_t attr)
 {
     char t[256]; unsigned k, o;
@@ -764,8 +766,8 @@ int pe_plat_cd_acknowledge_host(void)
 #endif
 #ifdef CHK_HAVE_CD_GEN32
 void pe_plat_cd_set_stream(uint32_t mode, int32_t start, int32_t end, uint32_t callback, uint32_t auxiliary);
-void pe_plat_cd_stream_set_range(uint32_t mode, uint32_t start, uint32_t end);
-void pe_plat_cd_stream_set_range(uint32_t mode, uint32_t start, uint32_t end)
+void pe_plat_gpuprim_stream_set_range(uint32_t mode, uint32_t start, uint32_t end);
+void pe_plat_gpuprim_stream_set_range(uint32_t mode, uint32_t start, uint32_t end)
 { char t[80]; snprintf(t, sizeof t, "8007C544,%08X,%08X,%08X", mode, start, end); note(t); }
 #endif
 #ifdef CHK_HAVE_DS_GEN31
@@ -929,6 +931,14 @@ void pe_plat_bios_exit_critical(void) { note("80072724"); write34(1, 0x80072724u
 #endif
 uint32_t pe_plat_bios_change_clear_rcnt(uint32_t counter, uint32_t flag)
 { char t[64]; snprintf(t, sizeof t, "80073C84,%08X,%08X", counter, flag); note(t); write34(2, 0x80073C84u, 0); return 0; }
+/* The kernel interrupt-chain services C(02h) 0x8007E1E4 / C(03h) 0x8007E1F4 are bound host services
+ * (pe_plat_bios_intrp.c): stubbed here, recorded with their two arguments like the boundary calls they
+ * replaced, each making the RETS-selected write of the original's call. */
+#include "pe_plat/bios_intrp.h"
+static void intrp34(uint32_t vma, unsigned k, uint32_t pri, uint32_t rec)
+{ char t[64]; snprintf(t, sizeof t, "%08X,%08X,%08X", vma, pri, rec); note(t); write34(k, vma, 0); }
+int pe_plat_bios_sys_enq_int_rp(uint32_t priority, uint32_t record) { intrp34(0x8007E1E4u, 3u, priority, record); return 0; }
+int pe_plat_bios_sys_deq_int_rp(uint32_t priority, uint32_t record) { intrp34(0x8007E1F4u, 4u, priority, record); return 0; }
 int pe_plat_pad_start_com(void);
 #endif
 uint32_t PE_Card_ICall(const char *slot, pe_addr_t fn, unsigned arity, uint32_t a0, uint32_t a1, uint32_t a2)

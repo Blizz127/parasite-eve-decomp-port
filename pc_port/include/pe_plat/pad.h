@@ -8,9 +8,7 @@
 #define PE_PLAT_PAD_H
 #include <stdint.h>
 void pe_plat_pad_initialize_host(void);
-#define func_80082534 pe_plat_pad_initialize_host
 void pe_plat_pad_records_initialize_host(uint32_t first,uint32_t second);
-#define func_800844E4 pe_plat_pad_records_initialize_host
 int pe_plat_pad_get_state(uint32_t port);
 uint32_t pe_plat_pad_info_mode(uint32_t port, int32_t term, int32_t offs);
 void pe_plat_pad_set_act(uint32_t port, uint32_t data, uint32_t count);
@@ -137,10 +135,8 @@ void func_80083014(uint32_t obj);
 void func_80084C4C(uint32_t obj);
 /* Canonical guest-name prototypes for the bindings above (generated
  * from the pe_plat prototypes; tools read callee signatures from these). */
-void func_80082534(void);
 /* Canonical guest-name prototypes for the bindings above (generated
  * from the pe_plat prototypes; tools read callee signatures from these). */
-void func_800844E4(uint32_t first,uint32_t second);
 /* Canonical guest-name prototype for the PadStartCom binding. */
 int func_80082CF0(void);
 /* Canonical guest-name prototype for the binding above. */

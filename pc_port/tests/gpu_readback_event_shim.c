@@ -15,7 +15,7 @@ uint32_t ReadEvents_Address(unsigned i) { if(i>=event_count) abort();return even
 uint32_t ReadEvents_Value(unsigned i) { if(i>=event_count) abort();return events[i].value; }
 int pe_plat_gpu_readback_wait_existing(uint32_t ready)
 { if(ready!=0x04000000u && ready!=0x08000000u) abort();event(0,0x1f801814u,ready==0x04000000u?0x04000000u:0x0c000000u);return 1; }
-uint32_t pe_plat_gpu_seed_deadline_host(void) { return 0; }
+uint32_t pe_plat_gpuq_seed_deadline(void) { return 0; }
 int PE_GPU_CanBeginImageLoad(int needs_dma) { (void)needs_dma;return 1; }
 int PE_GPU_WriteGP0(uint32_t value) { event(1,0x1f801810u,value);return 1; }
 int PE_GPU_WriteGP1(uint32_t value) { event(1,0x1f801814u,value);return 1; }

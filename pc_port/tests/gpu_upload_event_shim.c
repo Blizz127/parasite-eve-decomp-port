@@ -13,7 +13,7 @@ uint32_t UploadEvents_Value(unsigned i) { if(i>=event_count) abort();return even
 int pe_plat_gpu_upload_span_existing(pe_addr_t source,uint32_t words)
 { return PE_RangeIsRam(source,(size_t)words*4u); }
 int pe_plat_gpu_upload_wait_existing(void) { return 1; }
-uint32_t pe_plat_gpu_seed_deadline_host(void) { return 0; }
+uint32_t pe_plat_gpuq_seed_deadline(void) { return 0; }
 int PE_GPU_CanBeginImageLoad(int needs_dma) { (void)needs_dma;return 1; }
 int PE_GPU_WriteGP0(uint32_t value) { event(0x1f801810u,value);return 1; }
 int PE_GPU_WriteGP1(uint32_t value) { event(0x1f801814u,value);return 1; }

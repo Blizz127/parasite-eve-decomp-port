@@ -37,7 +37,8 @@
 #define PC_PORT_ROUTE_DAY3_PILOT_H
 
 typedef struct { int x, z, r, act, tmo, dn, run; unsigned pm; } D3Wp;   /* tmo: give up after N frames (~N); dn: 1 = ^N pulses Down, 2 = %N waits, 3 = *N pulses Circle, 4 = $HEX[:N] holds raw pad HEX N frames (e.g. turn in place) */
-typedef struct { uint32_t token, story, flags, slot; int visit, n; D3Wp wp[24]; } D3Entry;
+#define D3_MAX_WP 48   /* per-room waypoint capacity; an entry with more is a loud parse error (was a silent cap of 24) */
+typedef struct { uint32_t token, story, flags, slot; int visit, n; D3Wp wp[D3_MAX_WP]; } D3Entry;
 static D3Entry g_d3[160];
 static int g_d3_n = -1;
 
@@ -63,7 +64,15 @@ static void D3Parse(void)
             continue;
         }
         s++;
-        while (*s && *s != '|' && e->n < 24) {
+        while (*s && *s != '|') {
+            if (e->n >= D3_MAX_WP) {   /* loud overflow: never truncate a route entry silently */
+                int total = e->n + 1;
+                for (const char *c = s; *c && *c != '|'; c++) if (*c == ';') total++;
+                fprintf(stderr, "[D3PILOT] FATAL: waypoint entry room token=%08X story=%X has %d waypoints, capacity D3_MAX_WP=%d; raise D3_MAX_WP or split the entry\n",
+                        (unsigned)e->token, (unsigned)e->story, total, D3_MAX_WP);
+                fflush(stderr);
+                exit(97);
+            }
             D3Wp *w = &e->wp[e->n];
             w->x = (int)strtol(s, &end, 10); s = end;
             if (*s != ',') break;
@@ -372,7 +381,7 @@ static uint16_t RouteDay3Pilot(uint16_t script_mask)
         fprintf(stderr, "[D3PILOT] frame=%d token=%08X idle pos=%d,%d mode=%X d1a0=%X\n", g_frame, (unsigned)tok,
                 (int)((int32_t)PE_LoadU32(aya + 40u) >> 16), (int)((int32_t)PE_LoadU32(aya + 48u) >> 16), mode, d1a0);
     }
-    if (ent < 0 || !aya || (mode != 0u && mode != 9u) || (d1a0 & 4u)) return script_mask;    /* window/menu: text pad; 9 = field after a battle */
+    if (ent < 0 || !aya || (mode != 0u && mode != 9u && mode != 0xCu) || (d1a0 & 4u)) return script_mask;    /* window/menu: text pad; 9 = field after a Disc-1 battle, 0xC = field after a Disc-2 battle (Aya is controllable in both) */
     if (idx >= g_d3[ent].n) {
         if (!done_logged) { done_logged = 1;
             fprintf(stderr, "[D3PILOT] frame=%d token=%08X waypoints done\n", g_frame, (unsigned)tok); }

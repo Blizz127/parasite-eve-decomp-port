@@ -7,6 +7,7 @@
 #include "psx_compat.h"
 #include "pe_plat/bios_rand.h"   /* BIOS rand/srand -> pe_plat names */
 #include "pe_plat/bios_event.h"  /* BIOS event services -> pe_plat names */
+#include "pe_plat/bios_intrp.h"  /* BIOS C(02h)/C(03h) interrupt-chain services -> pe_plat names */
 #include "pe_plat/bios_card.h"   /* BIOS card services -> pe_plat names */
 #include "pe_plat/bios_sys.h"    /* BIOS exit/FlushCache/ChangeClear* -> pe_plat names */
 #include "pe_plat/gpu_status.h"  /* GetODE -> pe_plat name */
@@ -20,6 +21,7 @@
 #include "pe_plat/gpu_swap.h" /* GPU enqueue/immediate issue (0x80076C34) -> pe_plat name */
 #include "pe_plat/irq_callback.h" /* ResetCallback/InterruptCallback -> pe_plat names */
 #include "pe_plat/pad.h"          /* PadGetState -> pe_plat name */
+#include "pe_plat/cdx_save.h"     /* PadStartCom wrapper / PadInitDirect -> pe_plat_cdxsave_ */
 
 int func_801216C4(int mode, pe_addr_t buffers);
 void func_801223A8(int mode);

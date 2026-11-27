@@ -112,10 +112,18 @@ set(PLATFORM_SRCS
     platform/pe_plat2_gpuenv.c
     platform/pe_plat_gpu_primitive.c
     platform/pe_plat2_gpupkt.c
-    platform/pe_plat_gpu_address.c
+    platform/pe_plat2_press.c
+    platform/pe_plat2_gpuaddr.c
+    platform/pe_plat2_gpuprim.c
+    platform/pe_plat2_gpuprim_otcw.c
+    platform/pe_plat2_gpuprim_poolw.c
+    platform/pe_plat2_gpuprim_setenv.c
+    platform/pe_plat2_gpuprim_host.c
     platform/pe_plat_state.c
     platform/pe_plat2_ctl.c
+    platform/pe_plat2_cdx_save.c
     platform/pe_plat2_spu_a.c
+    platform/pe_plat2_spu_b.c
     platform/host_framebuffer.c
     platform/pe_dispenv.c
     platform/pe_timer1.c
@@ -124,6 +132,7 @@ set(PLATFORM_SRCS
     platform/pe_bios_string.c
     platform/pe_bios_rand.c
     platform/pe_plat_bios_event.c
+    platform/pe_plat_bios_intrp.c
     platform/pe_plat_gpu_status.c
     platform/pe_plat_gpu_area.c
     platform/pe_plat_gpu_timeout.c
@@ -157,11 +166,13 @@ set(PLATFORM_SRCS
     platform/pe_libpress.c
     platform/pe_str_feed.c
     platform/pe_libetc.c
-    platform/pe_libgpu.c
+    platform/pe_plat2_cdx_etc.c
     platform/pe_plat_gpu_clear_worker_host.c
     platform/pe_plat_gpu_upload_worker_host.c
     platform/pe_plat_gpu_readback_worker_host.c
     platform/pe_plat_gpu_queue_pump_host.c
+    platform/pe_plat2_gpuq.c
+    platform/pe_plat2_gpuq_host.c
     platform/pe_plat_resetgraph_light_host.c
     platform/pe_libsnd.c
     platform/pe_spu_dma.c
@@ -544,6 +555,37 @@ set(GAME_SRCS
     game/boot/func_80191B64_port.c
     game/boot/func_8010BD4C_port.c
 )
+# gpu2a (sw-gpu2a-20261127): the queue pump func_80076EE4 and the deadline seed func_800773D0 are the
+# clean-room pe_plat2_gpuq.c; the published host file and the translated pump file are no longer built
+# (func_80076C34_port.c stays: it still carries PE_DispatchClearRect for pe_libgpu.c).
+list(REMOVE_ITEM PLATFORM_SRCS platform/pe_plat_gpu_queue_pump_host.c)
+list(REMOVE_ITEM GAME_SRCS game/boot/func_80076EE4_port.c)
+# DecDCToutCallback (func_8010C0D8) is now the clean-room pe_plat2_press.c; the old
+# boot translation file is excluded (the lead removes the file).
+list(REMOVE_ITEM GAME_SRCS game/boot/func_8010BE3C_port.c)
+# Clean-room gpu2c providers (platform/pe_plat2_gpuprim*.c, pe_plat2_gpuaddr.c) own these symbols now: the translated
+# boot files stay in the tree for the lead's later removal but are not built.  (platform/pe_libgpu.c and
+# platform/pe_plat_gpu_address.c are no longer in PLATFORM_SRCS.)
+list(REMOVE_ITEM GAME_SRCS
+    game/boot/func_80075358_port.c
+    game/boot/func_800753B4_port.c
+    game/boot/func_800752AC_port.c
+    game/boot/func_8007A214_port.c)
+
+# gpu2b (docs/evidence/native-gpu2-20261126/gpu2b/AUTHOR-REPORT.md): the clean-room image-transfer providers replace two
+# host worker files and four translated boot files; the lead removes the superseded files.
+list(APPEND PLATFORM_SRCS
+    platform/pe_plat2_gpuimg.c
+    platform/pe_plat2_gpuimg_rect.c
+    platform/pe_plat2_gpuimg_work.c)
+list(REMOVE_ITEM PLATFORM_SRCS
+    platform/pe_plat_gpu_upload_worker_host.c
+    platform/pe_plat_gpu_readback_worker_host.c)
+list(REMOVE_ITEM GAME_SRCS
+    game/boot/func_8007506C_port.c
+    game/boot/func_8007512C_port.c
+    game/boot/func_80076664_port.c
+    game/boot/func_800768A0_port.c)
 
 # Decomp-derived port TUs (pc_port/game/decomp/*.c).  They are generated from
 # the verified matching C leaves in src/ by tools/analysis/gen_decomp_ports.py;
@@ -807,6 +849,8 @@ set(FIELD_RUNTIME_SRCS
 # point or the X11 presentation adapter.  Creating this target does not claim
 # that the currently translated graph is a complete Day 1 field runtime.
 add_library(pe_field_runtime STATIC ${FIELD_RUNTIME_SRCS})
+# cdx-etc: the translated libetc host seams keep their raw names (see pe_plat/bios_sys.h)
+set_source_files_properties(platform/pe_libetc.c PROPERTIES COMPILE_DEFINITIONS PE_CDXETC_HOST_SEAMS=1)
 target_include_directories(pe_field_runtime PUBLIC
     ${CMAKE_SOURCE_DIR}
     ${CMAKE_SOURCE_DIR}/include

@@ -55,19 +55,6 @@ uint32_t pe_plat_spu_read(int guest_destination, unsigned int size);
 #define func_8007D15C pe_plat_spu_install_dma_event
 #define func_8007D054 pe_plat_spu_init_default
 #define func_8007D074 pe_plat_spu_init_wrapper
-#define func_80085C44 pe_plat_spu_set_control_bit
-#define func_80085EB4 pe_plat_spu_set_transfer_address
-#define func_80085B34 pe_plat_spu_heap_contains_raw
-#define func_80085BB4 pe_plat_spu_heap_contains
-#define func_80085D84 pe_plat_spu_set_irq_callback
-#define func_80085DC4 pe_plat_spu_register_irq
-#define func_80085F14 pe_plat_spu_set_transfer_mode
-#define func_80085F44 pe_plat_spu_set_callback
-#define func_80085F74 pe_plat_spu_set_common_attributes
-#define func_800862F4 pe_plat_spu_voice_volume
-#define func_80089EB8 pe_plat_spu_set_control_level
-#define func_80089F28 pe_plat_spu_set_pair
-#define func_80089F08 pe_plat_spu_copy_voice_field
 #define func_80085E54 pe_plat_spu_write
 #define func_80085DF4 pe_plat_spu_read
 /* Canonical guest-name prototypes for the bindings above (generated
@@ -75,22 +62,11 @@ uint32_t pe_plat_spu_read(int guest_destination, unsigned int size);
 void func_8007D15C(void);
 void func_8007D054(void);
 void func_8007D074(int mode);
-int func_80085C44(int mode);
-uint32_t func_80085EB4(uint32_t address);
-int func_80085B34(uint32_t address);
-int func_80085BB4(uint32_t address);
-int func_80085D84(int callback);
-void func_80085DC4(int callback);
-int func_80085F14(int mode);
-void func_80085F44(int callback);
-void func_80085F74(uint32_t attrs);
-void func_800862F4(int voice, uint16_t left, uint16_t right, int16_t left_mode, int16_t right_mode);
-int func_80089EB8(int level);
-void func_80089F28(uint16_t left, uint16_t right);
-void func_80089F08(unsigned int index, uint32_t dest);
 uint32_t func_80085E54(uint32_t source, uint32_t size);
 uint32_t func_80085DF4(int guest_destination, unsigned int size);
 /* The SPU leaves re-derived clean-room (state60a) bind in pe_plat/spu_a.h; users of these guest
  * names keep seeing the bindings through this include. */
 #include "pe_plat/spu_a.h"
+/* bindings for the state60a rows 14-26 leaves (clean-room provider pe_plat2_spu_b.c) */
+#include "pe_plat/spu_b.h"
 #endif

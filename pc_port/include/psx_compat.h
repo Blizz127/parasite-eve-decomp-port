@@ -19,7 +19,7 @@
 #include <string.h>
 
 /* ── Retail PS1 types ─────────────────────────────────────────────── */
-typedef struct { int16_t x, y, w, h; } RECT;
+#include "pe_plat/rect.h" /* RECT */
 typedef struct { uint8_t disp[20]; } DISP_ENV;
 
 /* ── Guest-RAM-resident named globals ─────────────────────────────────
@@ -103,20 +103,7 @@ extern unsigned short D_80093164[];
 /* ── SDK IMPLEMENTED ──────────────────────────────────────────────── */
 #include "pe_plat/hostfb_forward.h" /* func_80073A44 / func_80074D28 -> host framebuffer forwards */
 int func_80074DC0(int mode);
-int pe_plat_gpu_draw_prim_host(uint32_t packet);
-#define func_80075358 pe_plat_gpu_draw_prim_host
-int func_80075358(pe_addr_t packet);
-int pe_plat_gpu_draw_otag_host(uint32_t ot);
-#define func_800753B4 pe_plat_gpu_draw_otag_host
-int func_800753B4(pe_addr_t ot);
-int PE_func_80075358_Transient(const uint32_t *words, uint8_t count);
-void pe_plat_gpu_draw_otag_env_host(uint32_t ot,uint32_t env);
-#define func_800754E4 pe_plat_gpu_draw_otag_env_host
-uint32_t pe_plat_gpu_put_draw_env_host(uint32_t env);
-#define func_80075424 pe_plat_gpu_put_draw_env_host
-int pe_plat_gpu_clear_rect_host(RECT *rect,uint8_t red,uint8_t green,uint8_t blue);
-#define func_80074F44 pe_plat_gpu_clear_rect_host
-int func_80074F44(RECT *rect, uint8_t red, uint8_t green, uint8_t blue);
+#include "pe_plat/gpuprim.h" /* DrawPrim/DrawOTag/ClearOTagR/ClearImage/PutDrawEnv/DrawOTagEnv/record pool (clean-room) */
 int pe_plat_gpu_clear_inline_host(uint32_t words[2], uint32_t color);
 #define PE_ClearImageInline8 pe_plat_gpu_clear_inline_host
 int PE_ClearImageInline8(uint32_t words[2], uint32_t color);
@@ -166,7 +153,6 @@ extern void func_8019319C(pe_addr_t node);
 #include "pe_plat/mdec_expand.h" /* DecDCToutCallback */
 #include "pe_plat/mdec_io_host.h" /* DecDCTin / DecDCTout wrappers */
 #include "pe_plat/vlc_frame.h"     /* DecDCTvlc-role frame decoder */
-extern void func_8007A214(pe_addr_t record_base, uint32_t record_count);
 extern void func_8007C304(uint32_t mode, int32_t start,
                           int32_t end, pe_addr_t callback, uint32_t auxiliary);
 extern void func_8007C394(uint32_t sector);
@@ -227,41 +213,13 @@ extern int  func_800698D4(void);
 extern void func_8006A9E4(void);
 extern int  func_8006AD40(void);
 extern int  func_8006E1C0(pe_addr_t entry, pe_addr_t base);
-void pe_plat_gpu_report_rect_host(uint32_t name, const RECT *rect);
-#define func_80074E28 pe_plat_gpu_report_rect_host
-extern void func_80074E28(pe_addr_t name, const RECT *rect);
-int pe_plat_gpu_move_image_host(const RECT *rect,int destination_x,int destination_y);
-#define func_8007512C pe_plat_gpu_move_image_host
-extern int  func_8007512C(const RECT *rect, int destination_x,
-                          int destination_y);
-int pe_plat_gpu_load_rect_host(const RECT *rect,uint32_t data);
-#define func_8007506C pe_plat_gpu_load_rect_host
-extern int  func_8007506C(const RECT *rect, pe_addr_t data);
-int pe_plat_gpu_store_rect_host(const RECT *rect,uint32_t data);
-#define func_800750CC pe_plat_gpu_store_rect_host
-extern int  func_800750CC(const RECT *rect, pe_addr_t data);
+#include "pe_plat/gpuimg.h"   /* LoadImage/StoreImage/MoveImage wrappers, rect report, image workers (clean-room, docs/evidence/native-gpu2-20261126) */
 /* func_800718D0: clean-room provider pe_plat_gpu_tim.c (docs/evidence/native-tim-20261125). */
 uint32_t pe_plat_gpu_load_tim(uint32_t tim);
 #define func_800718D0 pe_plat_gpu_load_tim
 extern pe_addr_t func_800718D0(pe_addr_t tim);
 extern void PE_func_8006AD40_PackFontRecords(void);
-int pe_plat_gpu_upload_worker_host(pe_addr_t rect, pe_addr_t source);
-#define func_80076664 pe_plat_gpu_upload_worker_host
-extern int  func_80076664(pe_addr_t rect, pe_addr_t source);
-int pe_plat_gpu_readback_worker_host(pe_addr_t rect,pe_addr_t destination);
-#define func_800768A0 pe_plat_gpu_readback_worker_host
-extern int func_800768A0(pe_addr_t rect,pe_addr_t destination);
-int pe_plat_gpu_readback_inline_host(uint32_t position,uint32_t size,pe_addr_t destination);
-#define PE_StoreImageInline8 pe_plat_gpu_readback_inline_host
-extern int PE_StoreImageInline8(uint32_t position,uint32_t size,pe_addr_t destination);
-int pe_plat_gpu_upload_inline_host(uint32_t rect_word0,uint32_t rect_word1,pe_addr_t source);
-#define PE_func_80076664_Inline8 pe_plat_gpu_upload_inline_host
-extern int  PE_func_80076664_Inline8(uint32_t rect_word0,
-                                     uint32_t rect_word1,
-                                     pe_addr_t source);
-uint32_t pe_plat_gpu_seed_deadline_host(void);
-#define func_800773D0 pe_plat_gpu_seed_deadline_host
-extern uint32_t func_800773D0(void);
+#include "pe_plat/gpuq.h"   /* func_80076EE4 pump, func_800773D0 seed, PE_func_80076EE4_Pump (clean-room) */
 /* Immediate (non-queued) libgpu entry points, platform/pe_libgpu.c. */
 #include "pe_plat/bios_sys.h"  /* SetIntrMask 0x80073E10 -> pe_plat_irq_set_mask */
 #include "pe_plat/irq_callback.h"
@@ -269,14 +227,10 @@ extern uint32_t func_800773D0(void);
 extern pe_addr_t PE_DMA_CallbackSlotAddress(uint32_t dma_channel);
 extern pe_addr_t PE_DMA_DicrPointerAddress(void);
 extern uint32_t  PE_DMA_DicrMmioAddress(void);
-int pe_plat_gpu_queue_pump_host(void);
-#define func_80076EE4 pe_plat_gpu_queue_pump_host
-extern int  func_80076EE4(void);
 /* Internal pump entry: *retail_returned is 1 only when translated retail
  * control flow reached the shared epilogue, and 0 when a nested typed
  * boundary did not return.  Callers must not infer that distinction from
  * the host stop reason, which keeps only the first reason requested. */
-extern int  PE_func_80076EE4_Pump(int *retail_returned);
 /* Read-only names for the retail authority the pump prefix uses. */
 extern pe_addr_t PE_Pump_Dma2ChcrPointerAddress(void);
 extern uint32_t  PE_Pump_Dma2ChcrMmioAddress(void);
@@ -311,12 +265,6 @@ typedef struct {
 extern void      PE_Pump_TraceReset(void);
 extern uint64_t  PE_Pump_EntryCount(void);
 extern void      PE_Pump_GetTrace(PeGpuPumpTrace *out);
-void pe_plat_gpu_clear_otag_reverse_host(uint32_t ot,int count);
-#define func_800752AC pe_plat_gpu_clear_otag_reverse_host
-extern void func_800752AC(pe_addr_t ot, int n);
-void pe_plat_gpu_clear_ot_worker_host(pe_addr_t ot, int n);
-#define func_80076354 pe_plat_gpu_clear_ot_worker_host
-extern void func_80076354(pe_addr_t ot, int n);
 extern void func_80042798(void);
 #include "pe_plat/gpu_swap.h" /* func_80076C34 + PE_func_80076C34_Inline8 -> pe_plat names (clean-room) */
 extern int  func_80076B98(pe_addr_t packet, uint32_t auxiliary);

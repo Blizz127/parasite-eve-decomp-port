@@ -206,7 +206,7 @@ static void test_GPUJTB_drawprim_registry_dispatch(void)
     GJT_PlantFormat(GJT_PACKET + 4u, "Prim %x\n");
     PE_Bios_PrintfLogReset();
     result = func_80075358(GJT_PACKET);
-    ASSERT(result == 0 && !PE_Port_ShouldStop() &&
+    ASSERT(result == (int)strlen("Prim 2\n") && !PE_Port_ShouldStop() &&   /* gpu2c: the result is slot 5's (printf's character count), as in the vectors (was 0) */
            g_bootstrap_arg4_call_count == 0,
            "registered DrawPrim slots stopped or used a stub");
     ASSERT(PE_LoadU32(GJT_CB_SLOT) == 0u, "slot 15 was not called with 0");
@@ -260,7 +260,7 @@ static void test_GPUJTB_drawprim_registry_dispatch(void)
     result = PE_func_80075358_Transient(&command, 1u);
     PE_Decomp_SetBoundaryStop(policy);
     ASSERT(result == -1 &&
-           GJT_RegistryStop("func_80190660", GJT_UNREG, 0u, 0u, 0u),
+           GJT_RegistryStop("func_80075358", GJT_UNREG, 0u, 0u, 0u),
            "transient caller's unregistered slot 15 was not the registry's STOP");
     GJT_Finish();
     PASS();
