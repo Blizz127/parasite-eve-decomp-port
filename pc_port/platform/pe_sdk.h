@@ -26,6 +26,7 @@
 #include "pe_plat/state.h"
 #include "pe_plat/gpu_address.h"
 #include "pe_plat/gpu_primitive.h"
+#include "pe_plat/gpuenv.h"
 #include "pe_plat/gte.h"
 #include "pe_plat/libc.h"
 #include "pe_plat/bios_file.h"

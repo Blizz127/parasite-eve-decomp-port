@@ -103,6 +103,7 @@
 #include "retail_transition_view_cases.h"
 #include "retail_vblank_cases.h"
 #include "pe_spu_dma.h"
+#include "pe_plat_spu_dma_addrs.h"
 #include "pe_gpu.h"
 #include "pe_cdreg.h"
 #include "pe_irq.h"

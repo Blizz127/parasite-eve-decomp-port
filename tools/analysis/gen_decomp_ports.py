@@ -743,7 +743,7 @@ PE_PLAT_REPLACED = {
     "func_80089F08": "pc_port/platform/pe_plat_state.c",  # SPU voice field
     "func_8007DC04": "pc_port/platform/pe_plat_state.c",  # DMA control priority
     "func_8007DAE0": "pc_port/platform/pe_plat_state.c",  # SPU value write
-    "func_80075C04": "pc_port/platform/pe_plat_gpu_primitive.c",  # draw-offset packet
+    "func_80075C04": "pc_port/platform/pe_plat2_gpuenv.c",  # draw-offset packet (clean-room, state60d)
     "func_8007FBC0": "pc_port/platform/pe_plat_cd.c",  # CD handler slot
     "func_8007FBCC": "pc_port/platform/pe_plat_cd.c",  # CD handler slot
     "func_8007FBD8": "pc_port/platform/pe_plat_cd.c",  # CD handler slot
@@ -940,7 +940,7 @@ PE_PLAT_REPLACED = {
     "func_80080AE4": "pc_port/platform/pe_plat_cd.c",  # DS get sector
     "func_80080B04": "pc_port/platform/pe_plat_cd.c",  # DS get sector 2
     "func_800816F4": "pc_port/platform/pe_plat_cd.c",  # fixed-length filename match
-    "func_800749D8": "pc_port/platform/pe_plat_gpu_primitive.c",  # display environment
+    "func_800749D8": "pc_port/platform/pe_plat2_gpuenv.c",  # display environment (clean-room, state60d)
     "func_80077CB4": "pc_port/platform/pe_plat_gpu_primitive.c",  # packet append
     "func_80077A28": "pc_port/platform/pe_plat_libc.c",  # byte fill
     "func_80074330": "pc_port/platform/pe_plat_libc.c",  # word clear
@@ -952,8 +952,8 @@ PE_PLAT_REPLACED = {
     "func_80077BE4": "pc_port/platform/pe_plat_gpu_primitive.c",  # poly GT4
     "func_80077C24": "pc_port/platform/pe_plat_gpu_primitive.c",  # tile 1
     "func_80077C84": "pc_port/platform/pe_plat_gpu_primitive.c",  # draw page
-    "func_80076150": "pc_port/platform/pe_plat_gpu_primitive.c",  # draw mode
-    "func_800762A0": "pc_port/platform/pe_plat_gpu_primitive.c",  # draw offset
+    "func_80076150": "pc_port/platform/pe_plat2_gpuenv.c",  # draw mode (clean-room, state60d)
+    "func_800762A0": "pc_port/platform/pe_plat2_gpuenv.c",  # draw offset (clean-room, state60d)
     "func_80077B64": "pc_port/platform/pe_plat_gpu_primitive.c",  # poly F3
     "func_80077BA4": "pc_port/platform/pe_plat_gpu_primitive.c",  # poly FT4
     "func_80077BC4": "pc_port/platform/pe_plat_gpu_primitive.c",  # poly G4
@@ -1103,6 +1103,8 @@ PE_PLAT_REPLACED = {
     "func_80036DC8": "pc_port/platform/pe_plat_libc.c",  # sound startup
     "func_80072334": "pc_port/platform/pe_plat_libc.c",  # guest byte copy
     "func_800725DC": "pc_port/platform/pe_plat_libc.c",  # startup guard
+    "func_80073A44": "pc_port/platform/pe_plat_hostfb_forward.c",  # VSync host forward
+    "func_80074D28": "pc_port/platform/pe_plat_hostfb_forward.c",  # SetDispMask host forward
     "func_8007A930": "pc_port/platform/pe_plat_cd.c",   # CdIntToPos
     "func_8007AA34": "pc_port/platform/pe_plat_cd.c",   # CdPosToInt
     "func_8007A324": "pc_port/platform/pe_plat_cd.c",   # CdStatus
@@ -1220,11 +1222,13 @@ PE_PLAT_HEADERS = {
                    "pc_port/platform/pe_plat_card_gen8.c": "pc_port/include/pe_plat/bios_file.h",
                    "pc_port/platform/pe_plat_gpu_words.c": "pc_port/include/pe_plat/gpu_primitive.h",
                    "pc_port/platform/pe_plat_gpu_drawenv.c": "pc_port/include/pe_plat/gpu_primitive.h",
+                   "pc_port/platform/pe_plat2_gpuenv.c": "pc_port/include/pe_plat/gpuenv.h",
                    "pc_port/platform/pe_plat_gpu_tim.c": "pc_port/include/pe_plat/gpu_primitive.h",
                    "pc_port/platform/pe_plat_gpu_primitive.c": "pc_port/include/pe_plat/gpu_primitive.h",
                    "pc_port/platform/pe_plat_gpu_address.c": "pc_port/include/pe_plat/gpu_address.h",
                    "pc_port/platform/pe_plat_state.c": "pc_port/include/pe_plat/state.h",
                    "pc_port/platform/pe_plat_libc.c": "pc_port/include/pe_plat/libc.h",
+                   "pc_port/platform/pe_plat_hostfb_forward.c": "pc_port/include/pe_plat/hostfb_forward.h",
                    "pc_port/platform/pe_bios_card.c": "pc_port/include/pe_plat/bios_file.h",
                    "pc_port/platform/pe_bios_string.c": "pc_port/include/pe_plat/bios_string.h",
                    "pc_port/platform/func_80071A24_port.c": "pc_port/include/pe_plat/bios_string.h",

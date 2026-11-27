@@ -44,6 +44,7 @@
  * the retail no-op (docs/evidence/native-spudma-20261026/REPORT.md).
  */
 #include "pe_spu_dma.h"
+#include "pe_plat_spu_dma_addrs.h"
 #include "pe_spu.h"
 #include "psx_compat.h"
 #include "pe_sdk.h"

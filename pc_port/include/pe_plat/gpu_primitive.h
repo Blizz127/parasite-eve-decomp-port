@@ -31,9 +31,6 @@ void pe_plat_gpu_add_prim(uint32_t ot, uint32_t prim);
 uint32_t pe_plat_gpu_set_def_draw_env(uint32_t env, int x, int y, int w, int h);
 
 #define func_80077B64 pe_plat_gpu_poly_f3
-#define func_80076150 pe_plat_gpu_draw_mode
-#define func_800762A0 pe_plat_gpu_draw_offset
-#define func_80075C04 pe_plat_gpu_draw_offset_packet
 #define func_80077BA4 pe_plat_gpu_poly_ft4
 #define func_80077BC4 pe_plat_gpu_poly_g4
 #define func_80077C04 pe_plat_gpu_sprite
@@ -46,7 +43,6 @@ uint32_t pe_plat_gpu_set_def_draw_env(uint32_t env, int x, int y, int w, int h);
 #define func_80077B04 pe_plat_gpu_set_semitrans
 #define func_80077B34 pe_plat_gpu_set_shade_texture
 #define func_80077CB4 pe_plat_gpu_append_packet
-#define func_800749D8 pe_plat_gpu_display_env
 #define func_80076170 pe_plat_gpu_draw_area_tl_word
 #define func_80076208 pe_plat_gpu_draw_area_br_word
 #define func_800762BC pe_plat_gpu_tex_window_word
@@ -55,9 +51,6 @@ uint32_t pe_plat_gpu_set_def_draw_env(uint32_t env, int x, int y, int w, int h);
 /* Canonical guest-name prototypes for the bindings above (generated
  * from the pe_plat prototypes; tools read callee signatures from these). */
 void func_80077B64(uint32_t packet);
-uint32_t func_80076150(int dither, int draw_to_display, uint32_t page);
-int func_800762A0(int x, int y);
-void func_80075C04(uint32_t packet, uint32_t coords);
 void func_80077BA4(uint32_t packet);
 void func_80077BC4(uint32_t packet);
 void func_80077C04(uint32_t packet);
@@ -70,7 +63,6 @@ uint32_t func_80077C84(uint32_t packet, uint32_t dither, uint32_t draw_to_displa
 void func_80077B04(uint32_t packet, int enabled);
 void func_80077B34(uint32_t packet, int enabled);
 int func_80077CB4(uint32_t head, uint32_t tail);
-uint32_t func_800749D8(uint32_t env, int x, int y, int width, int height);
 uint32_t func_80076170(short x, short y);
 uint32_t func_80076208(short x, short y);
 uint32_t func_800762BC(uint32_t rect);

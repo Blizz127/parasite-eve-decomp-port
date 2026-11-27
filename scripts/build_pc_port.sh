@@ -16,7 +16,9 @@
 #   2. verify    — the same tool re-checks that every emitted TU matches src/
 #   3. configure — cmake -S pc_port -B <build dir>
 #   4. build     — cmake --build <build dir>
-#   5. test      — ./<build dir>/pe-native-tests
+#   5. test      — ./<build dir>/pe-native-tests (skipped with a NOTE, exit 0,
+#                  when the tree lacks the retail-derived test vectors, e.g.
+#                  the published source tree; the port itself is still built)
 #   guard        — tools/analysis/retail_data_guard.py: no retail disc bytes in
 #                  tracked files (runs after stage 2; uses the user's disc via
 #                  the git-ignored disc cache when present, else signatures)
@@ -217,6 +219,14 @@ if [[ "$RUN_TESTS" -eq 0 ]]; then
 fi
 
 TESTS="$BUILD_DIR/pe-native-tests"
+# A tree without the retail-derived test vectors (the published source tree)
+# configures with those test targets skipped; cmake records why.  That is not
+# a failed build, but it is also not a passed suite: say so and stop.
+if [[ ! -x "$TESTS" && -f "$BUILD_DIR/pe-tests-skipped.txt" ]]; then
+    echo "NOTE: $TESTS was not built; the native suite was NOT run." >&2
+    echo "      $(cat "$BUILD_DIR/pe-tests-skipped.txt")" >&2
+    exit 0
+fi
 if [[ ! -x "$TESTS" ]]; then
     echo "ERROR: $TESTS was not produced by the build." >&2
     exit 1
