@@ -7,8 +7,8 @@
  *   - the SPU transfer address register and the SPU register file the guest reads and writes (the audio lane observes
  *     every store, pe_spu.h);
  *   - the 512 KiB SPU RAM image; the 16-bit transfer address counts 8-byte units and wraps at the end of SPU RAM;
- *   - the host request API (PE_SpuDma_Begin / BeginRead) used by the host tests, with the guest-visible bookkeeping
- *     words a request leaves.
+ *   - the own-model request recording entry PE_SpuDma_RecordRequest (the host request API PE_SpuDma_Begin / BeginRead
+ *     lives in pe_spu_dma_request.c, a test/tool-only TU not linked into the game binary).
  *
  * A request is recorded at issue time.  The data moves in one atomic, deterministic block copy when the controlled event
  * pump PE_SpuDma_Service runs (the host stand-in for the DMA4 interrupt opportunity); it then ends the transfer and
@@ -36,9 +36,6 @@ void PE_Decomp_NoteStopDetail(const char *text);   /* pe_guest_decomp.c */
 
 #define GA_D_8009D24C 0x8009D24Cu
 #define GA_D_8009B434 0x8009B434u
-#define GA_D_8009B44C 0x8009B44Cu
-#define GA_D_8009B450 0x8009B450u
-#define GA_D_8009B454 0x8009B454u
 
 static uint8_t g_spu_ram[PE_SPU_RAM_SIZE];
 static uint16_t g_spu_registers[0x100];
@@ -108,46 +105,18 @@ static uint32_t dma_sum(pe_addr_t src, uint32_t n)
 }
 
 static uint32_t g_dma_issue_sum;
-static int SpuDma_BeginChecked(pe_addr_t source, uint32_t destination,
-                               uint32_t requested_size, pe_addr_t callback,
-                               int read_direction);
-
-int PE_SpuDma_Begin(pe_addr_t source, uint32_t destination,
-                    uint32_t requested_size, pe_addr_t callback)
+/* Own-model recording entry: validates a request, records it in g_dma and logs the issue.  It leaves no guest-visible
+ * bookkeeping word; the host request API (pe_spu_dma_request.c, tests and tools only) layers those on top. */
+int PE_SpuDma_RecordRequest(pe_addr_t source, uint32_t destination,
+                            uint32_t requested_size, pe_addr_t callback,
+                            int read_direction)
 {
     uint32_t dma_size;
-    int ok = SpuDma_BeginChecked(source, destination, requested_size, callback, 0);
-    FILE *f = dma_log();
-    if (f) {
-        dma_size = 0;
-        (void)RoundDmaSize(requested_size, &dma_size);
-        g_dma_issue_sum = ok ? dma_sum(source, dma_size) : 0;
-        fprintf(f, "BEGIN %s src=%08X dst=%05X req=%X size=%X cb=%08X irq=%d/%08X pending=%d sum=%08X\n",
-                ok ? "ok" : "REJECT", source, destination, requested_size,
-                dma_size, callback, g_dma.irq_installed, g_dma.irq_handler,
-                ok ? 0 : g_dma.pending, g_dma_issue_sum);
-        fflush(f);
-    }
-    return ok;
-}
-
-int PE_SpuDma_BeginRead(pe_addr_t guest_destination, uint32_t spu_source,
-                        uint32_t requested_size, pe_addr_t callback)
-{
-    if (requested_size == 0u)
-        return 0;
-    return SpuDma_BeginChecked(guest_destination, spu_source, requested_size,
-                               callback, 1);
-}
-
-static int SpuDma_BeginChecked(pe_addr_t source, uint32_t destination,
-                               uint32_t requested_size, pe_addr_t callback,
-                               int read_direction)
-{
-    uint32_t dma_size;
+    FILE *f;
 
     /* `callback` is recorded only: an issue never reads the live callback slot D_8009B434; the completion handler
      * dispatches whatever the slot holds at that time. */
+    f = dma_log();
     if (!g_dma.irq_installed ||
         g_dma.irq_handler != PE_SPU_DMA_IRQ_HANDLER ||
         g_dma.pending ||
@@ -158,6 +127,15 @@ static int SpuDma_BeginChecked(pe_addr_t source, uint32_t destination,
         !PE_RangeIsRam(source, dma_size) ||
         destination >= PE_SPU_RAM_SIZE ||
         dma_size > PE_SPU_RAM_SIZE) {
+        if (f && !read_direction) {
+            dma_size = 0;
+            (void)RoundDmaSize(requested_size, &dma_size);
+            g_dma_issue_sum = 0;
+            fprintf(f, "BEGIN REJECT src=%08X dst=%05X req=%X size=%X cb=%08X irq=%d/%08X pending=%d sum=%08X\n",
+                    source, destination, requested_size, dma_size, callback,
+                    g_dma.irq_installed, g_dma.irq_handler, g_dma.pending, g_dma_issue_sum);
+            fflush(f);
+        }
         return 0;
     }
 
@@ -170,17 +148,18 @@ static int SpuDma_BeginChecked(pe_addr_t source, uint32_t destination,
     g_dma.callback_at_issue = callback;
     g_dma.data_order = 0;
     g_dma.callback_order = 0;
-
-    /* Guest-visible bookkeeping words a request leaves (directions 0 / 1, the source, the block count).  BCR's low half is
-     * the fixed 0x10 words per block; D_8009B454 holds the upper-half block count. */
-    PE_StoreU32(GA_D_8009B44C, read_direction ? 1u : 0u);
-    PE_StoreU32(GA_D_8009B450, source);
-    PE_StoreU32(GA_D_8009B454, dma_size / PE_SPU_DMA_BLOCK_SIZE);
+    if (f && !read_direction) {
+        g_dma_issue_sum = dma_sum(source, dma_size);
+        fprintf(f, "BEGIN ok src=%08X dst=%05X req=%X size=%X cb=%08X irq=%d/%08X pending=0 sum=%08X\n",
+                source, destination, requested_size, dma_size, callback,
+                g_dma.irq_installed, g_dma.irq_handler, g_dma_issue_sum);
+        fflush(f);
+    }
     return 1;
 }
 
 /* DMA channel 4 registers (pe_plat/spu_dma_hw.h).  The CHCR start records the transfer the registers
- * describe, with the same fields PE_SpuDma_Begin / BeginRead leave in g_dma; `source` stays the raw MADR
+ * describe, with the same fields PE_SpuDma_RecordRequest leaves in g_dma; `source` stays the raw MADR
  * value and the request-size cap of the call API does not apply (the size is BCR's block count). */
 static void Dma4Refuse(const char *why)
 {

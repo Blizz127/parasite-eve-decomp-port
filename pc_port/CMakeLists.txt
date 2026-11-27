@@ -1033,7 +1033,7 @@ if(BUILD_TESTS)
     # the port binary is native only (no MIPS execution, 2026-10-07).
     pe_test_inputs_present(_pe_ok pe-native-tests tests/test_native.c tests/pe_akao_interp_oracle.c)
     if(_pe_ok)
-        add_executable(pe-native-tests tests/test_native.c tests/pe_akao_interp_oracle.c ${PE_GUESTCODE_REGISTRY})
+        add_executable(pe-native-tests tests/test_native.c tests/pe_akao_interp_oracle.c platform/pe_spu_dma_request.c ${PE_GUESTCODE_REGISTRY})
     endif()
     # Differential check of hand adapters vs the matched C compiled for the
     # PSX (pc_port/tools/build_leaf_oracle.py writes build/leaf-oracle/,

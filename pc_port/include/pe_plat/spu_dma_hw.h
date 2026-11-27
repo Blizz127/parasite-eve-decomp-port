@@ -40,7 +40,14 @@ void PE_SpuDma_Reset(void);
  * on success, 0 otherwise. */
 int PE_SpuDma_InstallIrq(pe_addr_t handler);
 
-/* Record one mode-0 DMA4 transfer.  Returns 0 without mutation if the IRQ
+/* Own-model recording entry (platform/pe_spu_dma.c, part of the game binary): the validation ladder and the transfer
+ * record of PE_SpuDma_Begin / BeginRead, without any guest bookkeeping word.  Returns 1 if recorded, 0 otherwise. */
+int PE_SpuDma_RecordRequest(pe_addr_t source, uint32_t destination,
+                            uint32_t requested_size, pe_addr_t callback,
+                            int read_direction);
+
+/* Host test/tool request API (platform/pe_spu_dma_request.c; NOT linked into the game binary).
+ * Record one mode-0 DMA4 transfer.  Returns 0 without mutation if the IRQ
  * is absent, another transfer is pending, an address is unaligned/out of
  * range, or the rounded DMA byte count cannot be represented safely.  The
  * 16-bit SPU transfer address wraps modulo the 512 KiB SPU RAM size.
