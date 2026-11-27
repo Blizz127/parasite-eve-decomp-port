@@ -299,7 +299,7 @@ static void test_DECOMPPTR_overlay_handler_prelude(void)
 {
     DiscFixture fx;
 
-    TEST("DECOMPPTR_overlay_handler_prelude");
+    TEST_RETAIL_DISC1("DECOMPPTR_overlay_handler_prelude");
     ResetTestState();
 
     ASSERT(FxBuild(&fx, 0), "fixture build failed");

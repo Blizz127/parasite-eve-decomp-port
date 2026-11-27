@@ -201,7 +201,9 @@ Details and the full list of what was checked:
   ResetGraph light path) and `pc_port/platform/pe_plat2_libc_format.c` (the
   sprintf formatter). The translated interrupt tail in `pe_spu_dma.c` is
   delegated to the existing clean-room provider. This tree still does not
-  build the port.
+  build the port. History policy (owner decision, 2026-11-27): forward only —
+  the earlier translated files remain in past history and the removal commits
+  are the record; no history rewrite.
 - `configs/`: splat and symbol configuration (addresses and names only).
 - `tools/`, `scripts/`, `dev/`: the analysis tools, including the retail-data
   and Psy-Q guards, the build scripts and the build container.

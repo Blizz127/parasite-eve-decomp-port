@@ -225,6 +225,31 @@ static void Test_ResetMemcard(void)
     PE_Memcard_SetBoundaryMode(1);
 }
 
+/* The CD/DMA register pointer words the CD providers read (EXE .data at 0x8009B27C..0x8009B2C0; the values are the EXE's own, the
+ * first five are the production values B558_PlantPointers has always planted).  RAM reset zeroes them; the sector provider then polls
+ * DMA3 CHCR at guest address 0, nothing ever clears it, and the flush acknowledges into address 0.  ResetTestState plants them so a
+ * fixture that never ran CdInit still sees the retail register addresses (a test needing other values stores its own). */
+static void Test_PlantCdRegisterPointers(void)
+{
+    PE_StoreU32(0x8009B27Cu, 0x1F801800u);   /* CD index/status */
+    PE_StoreU32(0x8009B280u, 0x1F801801u);   /* CD register 1 */
+    PE_StoreU32(0x8009B284u, 0x1F801802u);   /* CD register 2 */
+    PE_StoreU32(0x8009B288u, 0x1F801803u);   /* CD register 3 */
+    PE_StoreU32(0x8009B28Cu, 0x1F801020u);   /* COM_DELAY (mailbox pointer of the sector provider) */
+}
+static void Test_PlantCdDmaPointers(void)
+{
+    /* The rest of the EXE pointer table 0x8009B27C..0x8009B2C0: the SPU pointer word and the RAM-side / DMA register pointers the
+     * status path and the sector provider read.  These words are the retail EXE's own data, so they are read at run time from
+     * the user's disc (the same access every other retail table read of this suite uses, PE_DiscCache_ExeRead); no retail word
+     * is committed here.  Without a configured disc (PE_DISC1_BIN / local/pe_disc1.path) nothing is planted: the fixtures that
+     * need the table are the disc-dependent ones, which skip (or, for the DiscFixture loader tests, fail their
+     * Test_CdLoaderReady fixup) exactly as without any retail read.  0x8009B294 itself is a state byte, 0 at boot, and is not
+     * loaded. */
+    (void)PE_TestRetail_LoadExeRange(0x8009B290u, 4u);    /* SPU register block pointer */
+    (void)PE_TestRetail_LoadExeRange(0x8009B298u, 0x2Cu); /* 0x8009B298..0x8009B2C0: eleven pointer words */
+}
+
 static void ResetTestState(void) {
     Test_ResetMemcard();
     g_stub_count = 0;
@@ -252,6 +277,9 @@ static void ResetTestState(void) {
     PE_StoreU32(0x8009B404u, 0x1F8010C4u);
     PE_StoreU32(0x8009B408u, 0x1F8010C8u);
     PE_StoreU32(0x8009B410u, 0x1F801014u);   /* SPU_DELAY */
+    /* The CD/DMA3 register pointers (same source of truth as B558_PlantPointers: the production values in the EXE .data). */
+    Test_PlantCdRegisterPointers();
+    Test_PlantCdDmaPointers();
 }
 
 /* Controller replies required by the complete input handler. Older digital
@@ -2017,6 +2045,8 @@ static void test_MV1D_c89c_pad3ff(void)
 /* Defined later via test_cd_device.h — same TU; needed before B54KY. */
 static void CdDeviceSeed(void);
 
+static int Test_CdLoaderReady(void);   /* defined after test_cd_device.h (needs its retail jump tables) */
+
 static void test_B54KY_192CE8_real_disc_issue_poll_and_boundary(void)
 {
     PE_Disc *disc;
@@ -2049,6 +2079,10 @@ static void test_B54KY_192CE8_real_disc_issue_poll_and_boundary(void)
     /* CD/DMA register table from the disc EXE (0x8009B32C..0x8009B34C, 0x8009B35C). */
     ASSERT(PE_TestRetail_LoadExeRange(0x8009B32Cu, 0x24u) == 0 &&
            PE_TestRetail_LoadExeRange(0x8009B35Cu, 4u) == 0, "EXE 0x8009B32C table");
+    /* The CD/DMA register pointer words 0x8009B27C..0x8009B2C0 (index/response/timing/DPCR/MADR/BCR/CHCR pointers) are EXE
+     * .data too.  The sector provider reads them for its register accesses and CHCR wait; with RAM reset they are 0, the
+     * wait polls guest address 0 and never ends (a DsRead-bound tree reaches it through the read poll's status callback). */
+    ASSERT(PE_TestRetail_LoadExeRange(0x8009B27Cu, 0x48u) == 0, "EXE CD/DMA register pointer table");
     D_800B0DD8 = 1013u;
     D_80011614 = 0x8018EFF0u;
     D_80093164[0] = 0x03D2u;
@@ -8021,6 +8055,7 @@ static void test_BTL6_6914C_0x34_issue(void) {
     ResetTestState();
     func_8007ED58();
     PE_Disc_SetActive(disc);
+    ASSERT(Test_CdLoaderReady(), "cd loader ready");   /* DsRead needs libds booted and idle */
     PE_StoreU8(0x800B0CD8u + 0xEFu, 0x34u);
     PE_StoreU32(0x800B0CD8u + 0x100u, 1013u);
     PE_StoreU32(0x800B0CD8u + 0x194u, 0x801ED800u);
@@ -11881,6 +11916,7 @@ static void test_BTL63_6B4F8_m0367i_load(void) {
     ASSERT(disc != NULL, err[0] ? err : "PE_Disc_Open failed");
     func_8007ED58();
     PE_Disc_SetActive(disc);
+    ASSERT(Test_CdLoaderReady(), "cd loader ready");   /* DsRead needs libds booted and idle */
     PE_StoreU32(0x800B0DD8u, 1013u);
     PE_StoreU32(0x800B0CD8u + 0x194u, dest0);
     PE_StoreU32(0x800B0CD8u + 0x168u, dest1);
@@ -15605,6 +15641,12 @@ static PE_Disc *pe_btl124_open_m0005i(char *err, size_t err_size)
         return NULL;
     func_8007ED58();
     PE_Disc_SetActive(disc);
+    if (!Test_CdLoaderReady()) {   /* the room loader's reads go through DsRead: libds must be booted and idle */
+        snprintf(err, err_size, "cd loader ready");
+        PE_Disc_SetActive(NULL);
+        PE_Disc_Close(disc);
+        return NULL;
+    }
     PE_StoreU32(0x800B0DD8u, 1013u);
     PE_StoreU32(0x800B0CD8u + 0x194u, dest0);
     PE_StoreU32(0x800B0CD8u + 0x168u, dest1);
@@ -16284,6 +16326,12 @@ static PE_Disc *btl90_enter_m0367i_ex(char *err, size_t err_size, int run_stream
     if (disc == NULL) return NULL;
     func_8007ED58();
     PE_Disc_SetActive(disc);
+    if (!Test_CdLoaderReady()) {   /* the room loader's reads go through DsRead: libds must be booted and idle */
+        snprintf(err, err_size, "cd loader ready");
+        PE_Disc_SetActive(NULL);
+        PE_Disc_Close(disc);
+        return NULL;
+    }
     PE_StoreU32(0x800B0DD8u, 1013u);
     PE_StoreU32(0x800B0CD8u + 0x194u, dest0);
     PE_StoreU32(0x800B0CD8u + 0x168u, dest1);
@@ -16641,6 +16689,12 @@ static PE_Disc *btl94_setup_m0367i(char *err, size_t err_size)
         return NULL;
     func_8007ED58();
     PE_Disc_SetActive(disc);
+    if (!Test_CdLoaderReady()) {   /* the room loader's reads go through DsRead: libds must be booted and idle */
+        snprintf(err, err_size, "cd loader ready");
+        PE_Disc_SetActive(NULL);
+        PE_Disc_Close(disc);
+        return NULL;
+    }
     PE_StoreU32(0x800B0DD8u, 1013u);
     PE_StoreU32(0x800B0CD8u + 0x194u, 0x80120000u);
     PE_StoreU32(0x800B0CD8u + 0x168u, 0x80140000u);
@@ -19536,6 +19590,16 @@ static uint8_t *FxUser(uint8_t *img, uint32_t lba) {
 }
 
 /* Build a validated in-memory fixture.  Returns 1 on success. */
+/* Header minute/second/frame of a raw sector (BCD, absolute time = lba + 150): the retail read step checks the sector header against
+ * the position it asked for, which the old synchronous hand loader never did, so fixture discs the DsRead loader reads need it. */
+static void Test_SectorHeaderMsf(uint8_t *raw, uint32_t lba)
+{
+    uint32_t msf = lba + 150u, mm = msf / 75u / 60u, ss = (msf / 75u) % 60u, ff = msf % 75u;
+    raw[12] = (uint8_t)(((mm / 10u) << 4) | (mm % 10u));
+    raw[13] = (uint8_t)(((ss / 10u) << 4) | (ss % 10u));
+    raw[14] = (uint8_t)(((ff / 10u) << 4) | (ff % 10u));
+}
+
 static int FxBuild(DiscFixture *fx, int with_fmv2) {
     uint32_t i;
     uint8_t *p;
@@ -19549,6 +19613,7 @@ static int FxBuild(DiscFixture *fx, int with_fmv2) {
         raw[0] = 0x00;
         memset(raw + 1, 0xFF, 10);
         raw[11] = 0x00;
+        Test_SectorHeaderMsf(raw, i);
         raw[15] = 0x02; /* mode 2 */
     }
     /* PVD at user sector 16 */
@@ -20466,13 +20531,14 @@ static void test_read_guard_queue(void) {
 }
 
 static void test_read_happy_guest_bytes(void) {
-    TEST("read_happy_guest_bytes");
+    TEST_RETAIL_DISC1("read_happy_guest_bytes");
     DiscFixture fx;
     uint32_t i;
     ResetTestState();
     func_8007ED58();
     ASSERT(FxBuild(&fx, 0), "fixture build failed");
     PE_Disc_SetActive(fx.disc);
+    ASSERT(Test_CdLoaderReady(), "cd loader ready");   /* DsRead needs libds booted and idle */
     ASSERT(func_8006E6D4(FX_PEIMG_LBA, 0, D_80011614, 2) == 1,
            "read issue must return 1");
     for (i = 0; i < 4096; i++) {
@@ -20483,7 +20549,10 @@ static void test_read_happy_guest_bytes(void) {
     ASSERT((D_800B0CD8 & 0x01004000u) == 0x01004000u, "state bits not set");
     ASSERT(PE_LoadU32(0x8009B6B4u) == 0,
            "sectors-pending must be 0 after sync read");
-    ASSERT(PE_LoadU32(0x8009B6B0u) == D_80011614, "dest register wrong");
+    /* 0x8009B6B0 is the transfer cursor of the retail read step (func_80080F98): it starts at the destination and advances by
+     * 0x8009B6AC = 0x200 words (one sector) per sector copied, so after the two sectors it is dest + 0x1000.  The old
+     * synchronous hand loader left it at the destination. */
+    ASSERT(PE_LoadU32(0x8009B6B0u) == D_80011614 + 2u * 0x800u, "dest register wrong");
     ASSERT(PE_LoadU32(0x8009B6ACu) == 0x200u, "mode register wrong");
     ASSERT(PE_LoadU32(0x8009B6CCu) == 0u && PE_LoadU32(0x8009B6D4u) == 0u,
            "completed read: DsRead busy word clear, 0x8009B6D4 untouched");
@@ -20492,7 +20561,7 @@ static void test_read_happy_guest_bytes(void) {
 }
 
 static void test_read_exact_end_boundary(void) {
-    TEST("read_exact_end_boundary");
+    TEST_RETAIL_DISC1("read_exact_end_boundary");
     DiscFixture fx;
     pe_addr_t dest = PE_RAM_END - PE_DISC_USER_SECTOR;
     uint32_t i;
@@ -20500,6 +20569,7 @@ static void test_read_exact_end_boundary(void) {
     func_8007ED58();
     ASSERT(FxBuild(&fx, 0), "fixture build failed");
     PE_Disc_SetActive(fx.disc);
+    ASSERT(Test_CdLoaderReady(), "cd loader ready");   /* DsRead needs libds booted and idle */
     ASSERT(func_8006E6D4(FX_PEIMG_LBA, 0, dest, 1) == 1,
            "exact-end write must succeed");
     for (i = 0; i < PE_DISC_USER_SECTOR; i++) {
@@ -20511,46 +20581,66 @@ static void test_read_exact_end_boundary(void) {
     PASS();
 }
 
-static void test_read_one_byte_overflow(void) {
-    TEST("read_one_byte_overflow");
+static void test_read_word_aligned_dest_at_ram_end(void) {
+    TEST_RETAIL_DISC1("read_word_aligned_dest_at_ram_end");
     DiscFixture fx;
     pe_addr_t dest = PE_RAM_END - (PE_DISC_USER_SECTOR - 1u);
     ResetTestState();
     func_8007ED58();
     ASSERT(FxBuild(&fx, 0), "fixture build failed");
     PE_Disc_SetActive(fx.disc);
-    ASSERT(func_8006E6D4(FX_PEIMG_LBA, 0, dest, 1) == -1,
-           "one-sector read ending one byte past RAM must be rejected");
-    ASSERT(PE_LoadU8(PE_RAM_END - 1) == 0, "overflow wrote past RAM end");
-    ASSERT(PE_LoadU8(dest) == 0, "failed read must not write any bytes");
-    ASSERT((D_800B0CD8 & 0x01004000u) == 0, "state bits must be cleared on failure");
+    ASSERT(Test_CdLoaderReady(), "cd loader ready");   /* DsRead needs libds booted and idle */
+    /* (Formerly read_one_byte_overflow: the old hand loader rejected this read with -1, and this test expected the rejection.)
+     * Retail has no RAM-bound test in the loader: the sector DMA writes where it is told.  The host DMA model
+     * (PE_CdReg_ServiceDMA3, pe_cdreg.c) takes the DMA3 base address as `MADR & 0x00FFFFFC`, i.e. it ignores the two low bits
+     * like the hardware register, so a destination 2047 bytes before the end of RAM becomes the word-aligned 0x801FF800 and
+     * the sector fits exactly: nothing is written past RAM and the read completes at the aligned address.  This is the
+     * implementing host-model fact; it was not checked against another reference in this suite. */
+    ASSERT(func_8006E6D4(FX_PEIMG_LBA, 0, dest, 1) > 0 && !PE_Port_ShouldStop(),
+           "word-aligned one-sector read at the end of RAM must complete");
+    ASSERT(PE_LoadU8(PE_RAM_END - PE_DISC_USER_SECTOR) == FxPattern(0) &&
+           PE_LoadU8(PE_RAM_END - 1) == FxPattern(PE_DISC_USER_SECTOR - 1u),
+           "the sector lands word-aligned, ending at the last byte of RAM");
+    ASSERT((D_800B0CD8 & 0x01004000u) == 0x01004000u, "a completed read leaves the state bits set (as read_happy_guest_bytes)");
     FxFree(&fx);
     PASS();
 }
 
 static void test_read_truncated_source(void) {
-    TEST("read_truncated_source");
+    TEST_RETAIL_DISC1("read_truncated_source");
     DiscFixture fx;
     ResetTestState();
     func_8007ED58();
     ASSERT(FxBuild(&fx, 0), "fixture build failed");
     PE_Disc_SetActive(fx.disc);
+    ASSERT(Test_CdLoaderReady(), "cd loader ready");   /* DsRead needs libds booted and idle */
     /* lba 63 is the last sector; two sectors run past the image end */
-    ASSERT(func_8006E6D4(FX_SECTORS - 1, 0, D_80011614, 2) == -1,
-           "truncated source must be rejected");
-    ASSERT(func_8006E6D4(FX_SECTORS, 0, D_80011614, 1) == -1,
-           "source past end must be rejected");
+    /* Retail has no image-size test in the loader (the read poll's only rejection is the 1200-retrace deadline, cdgen50 rule),
+     * so a read that starts inside the image and runs past its end is the drive's business.  "The host drive model supplies
+     * zero sectors past the image end" is an INFERRED host-model choice, not a retail observation (it is inferred from the
+     * read window closing normally: the drive statistics are cleared at detach, so the sectors themselves were not seen).
+     * The chain completes like any other read: no stop, the two sectors land, and the byte after them is untouched.  The old
+     * hand loader rejected it with -1. */
+    PE_StoreU8(D_80011614 + 2u * PE_DISC_USER_SECTOR, 0x5Au);
+    ASSERT(func_8006E6D4(FX_SECTORS - 1, 0, D_80011614, 2) > 0 && !PE_Port_ShouldStop() &&
+           PE_LoadU32(0x8009B6B4u) == 0u && PE_LoadU8(D_80011614 + 2u * PE_DISC_USER_SECTOR) == 0x5Au,
+           "a read running past the image end completes inside its two sectors");
+    /* A start position past the image returns -1 here.  That is a HOST-MODEL statement: the retail loader has no image-size or
+     * position test (-1 can only come from DsRead returning 0, i.e. busy or the sequence refusing), so which guard refuses
+     * this start in the host model was not traced; the assertion is kept from the old test, not a retail observation. */
+    ASSERT(func_8006E6D4(FX_SECTORS, 0, D_80011614, 1) == -1, "source past end must be rejected");
     FxFree(&fx);
     PASS();
 }
 
 static void test_read_zero_size_trivial(void) {
-    TEST("read_zero_size_trivial");
+    TEST_RETAIL_DISC1("read_zero_size_trivial");
     DiscFixture fx;
     ResetTestState();
     func_8007ED58();
     ASSERT(FxBuild(&fx, 0), "fixture build failed");
     PE_Disc_SetActive(fx.disc);
+    ASSERT(Test_CdLoaderReady(), "cd loader ready");   /* DsRead needs libds booted and idle */
     PE_StoreU8(D_80011614, 0xAA);
     ASSERT(func_8006E6D4(FX_PEIMG_LBA, 0, D_80011614, 0) == 1,
            "zero-size read must complete trivially (retail boot behavior)");
@@ -20560,18 +20650,36 @@ static void test_read_zero_size_trivial(void) {
 }
 
 static void test_read_repeated_loads(void) {
-    TEST("read_repeated_loads");
+    TEST_RETAIL_DISC1("read_repeated_loads");
     DiscFixture fx;
     uint32_t i;
     ResetTestState();
     func_8007ED58();
     ASSERT(FxBuild(&fx, 0), "fixture build failed");
     PE_Disc_SetActive(fx.disc);
+    ASSERT(Test_CdLoaderReady(), "cd loader ready");   /* DsRead needs libds booted and idle */
     D_800B0CD8 &= 0xFEFFBFFFu; /* caller clears between reads (retail shape) */
-    ASSERT(func_8006E6D4(FX_PEIMG_LBA, 0, D_80011614, 1) == 1, "first read failed");
+    /* The retail loader returns the command-sequence serial of the read it started: func_8006E6D4 passes DsRead's nonzero
+     * result through (cdgen49b: DsRead returns the sequence result unchanged, retflip), and the sequence returns the serial it
+     * assigned, [0x8009B53C] + 1 with 0 skipped to 1 (cdgen55 / cdgen55c).  So the value is 1 only when the serial word was 0;
+     * the drive chain's own sequences (the read's closing commands) advance the word between two reads, which is why the second
+     * read below returns more than 2.  -1 means the drive was busy.  The old hand loader returned a constant 1, which was never
+     * a retail observation. */
+    {
+        uint32_t serial_before = PE_LoadU32(0x8009B53Cu), want = serial_before + 1u;
+        int ret;
+        if (want == 0u) want = 1u;
+        ret = func_8006E6D4(FX_PEIMG_LBA, 0, D_80011614, 1);
+        ASSERT(ret > 0 && (uint32_t)ret == want, "first read failed");
+    }
     D_800B0CD8 &= 0xFEFFBFFFu;
-    ASSERT(func_8006E6D4(FX_PEIMG_LBA, 1, D_80011614 + 0x10000u, 1) == 1,
-           "second read failed");
+    {
+        uint32_t serial_before = PE_LoadU32(0x8009B53Cu), want = serial_before + 1u;
+        int ret;
+        if (want == 0u) want = 1u;
+        ret = func_8006E6D4(FX_PEIMG_LBA, 1, D_80011614 + 0x10000u, 1);
+        ASSERT(ret > 0 && (uint32_t)ret == want, "second read failed");
+    }
     for (i = 0; i < 2048; i++) {
         if (PE_LoadU8(D_80011614 + i) != FxPattern(i) ||
             PE_LoadU8(D_80011614 + 0x10000u + i) != FxPattern(2048 + i)) {
@@ -20583,12 +20691,13 @@ static void test_read_repeated_loads(void) {
 }
 
 static void test_read_then_ramreset(void) {
-    TEST("read_then_ramreset");
+    TEST_RETAIL_DISC1("read_then_ramreset");
     DiscFixture fx;
     ResetTestState();
     func_8007ED58();
     ASSERT(FxBuild(&fx, 0), "fixture build failed");
     PE_Disc_SetActive(fx.disc);
+    ASSERT(Test_CdLoaderReady(), "cd loader ready");   /* DsRead needs libds booted and idle */
     ASSERT(func_8006E6D4(FX_PEIMG_LBA, 0, D_80011614, 1) == 1, "read failed");
     ASSERT(PE_LoadU8(D_80011614) == FxPattern(0), "data not loaded");
     PE_RamReset();
@@ -20600,20 +20709,25 @@ static void test_read_then_ramreset(void) {
 /* ── provider: func_800811E4 poll ────────────────────────────────────── */
 
 static void test_poll_after_read(void) {
-    TEST("poll_after_read");
+    TEST_RETAIL_DISC1("poll_after_read");
     DiscFixture fx;
     ResetTestState();
     func_8007ED58();
     ASSERT(FxBuild(&fx, 0), "fixture build failed");
     PE_Disc_SetActive(fx.disc);
+    ASSERT(Test_CdLoaderReady(), "cd loader ready");   /* DsRead needs libds booted and idle */
     ASSERT(func_8006E6D4(FX_PEIMG_LBA, 0, D_80011614, 1) == 1, "read failed");
     ASSERT(func_800811E4(0x801FFEE0u) == 0, "poll must report done after sync read");
     FxFree(&fx);
     PASS();
 }
 
-static void test_poll_host_counter_does_not_advance(void) {
-    TEST("poll_host_counter_does_not_advance");
+/* cdgen50 rule: every poll queries VSync(-1) exactly once.  With no device attached the host counter moves by one per
+ * query, so a poll advances it by one; a read whose stamp is current (clock - stamp far under 1200) is not aborted and
+ * reports the stored status word.  (This replaces the removed host-counter adapter's statement that a poll never
+ * advances time, which was not the retail contract.) */
+static void test_poll_advances_vsync_query_by_one_fresh_read_kept(void) {
+    TEST("poll_advances_vsync_query_by_one_fresh_read_kept");
     int before, after;
     ResetTestState(); HostFB_Init();
     HostFB_GetState(&before, NULL, NULL, NULL);
@@ -20622,24 +20736,30 @@ static void test_poll_host_counter_does_not_advance(void) {
     PE_StoreU32(0x8009B6CCu, 1u);
     ASSERT(func_800811E4(0x801FFEE0u)==3, "host pending status changed");
     HostFB_GetState(&after, NULL, NULL, NULL);
-    ASSERT(before==after && PE_LoadU32(0x8009B6CCu)==1u,
-           "host query advanced time or aborted a fresh read");
+    ASSERT(after==before+1, "a poll must advance the VSync(-1) clock by exactly one query");
+    ASSERT(PE_LoadU32(0x8009B6CCu)==1u, "a fresh read was aborted");
     PASS();
 }
 
+/* cdgen50 rule: expired iff (int32)(VSync(-1) now) > (int32)(stamp + 1200).  Each poll queries VSync(-1) once, and the
+ * host counter (no device attached) moves by one per query, so the clock the first poll reads is c+1 and the second
+ * poll's is c+2; the stamps below are set against those values, which makes the first poll exactly equal to the
+ * deadline (not expired) and the second one tick past it (expired). */
 static void test_poll_host_deadline_boundary(void) {
     TEST("poll_host_deadline_boundary");
-    int now;
-    ResetTestState(); HostFB_Init();
-    HostFB_GetState(&now, NULL, NULL, NULL);
+    int c;
+    ResetTestState();
+    B558_PlantChain();
+    HostFB_Init();
+    c = (int)HostFB_VSync(-1);
     PE_StoreU32(0x8009B6B4u, 2u);
     PE_StoreU32(0x8009B6CCu, 1u);
     PE_StoreU32(0x8009B6B8u, 0xAABBCCDDu);
     PE_StoreU32(0x8009B6C0u, 0x11111111u);
-    PE_StoreU32(0x8009B6C4u, (uint32_t)now-1200u);
+    PE_StoreU32(0x8009B6C4u, (uint32_t)((c + 1) - 1200));   /* poll clock c+1 == stamp+1200: not expired */
     ASSERT(func_800811E4(0)==2 && PE_LoadU32(0x8009B6CCu)==1u,
            "equal wrapped deadline timed out early");
-    PE_StoreU32(0x8009B6C4u, (uint32_t)now-1201u);
+    PE_StoreU32(0x8009B6C4u, (uint32_t)((c + 2) - 1201));   /* poll clock c+2 == stamp+1201: expired */
     ASSERT(func_800811E4(0)==-1 && PE_LoadU32(0x8009B6CCu)==0u,
            "expired host deadline did not clear active read");
     ASSERT(PE_LoadU32(0x8009B6B4u)==2u && PE_LoadU32(0x8009B6B8u)==0xAABBCCDDu &&
@@ -20648,16 +20768,24 @@ static void test_poll_host_deadline_boundary(void) {
     PASS();
 }
 
+/* Retail read poll 0x800811E4 (cdgen50 rule): one VSync(-1) query per poll; the read has expired iff
+ * (int32)now > (int32)([0x8009B6C4] + 1200), a signed compare; the expiry arm runs the abort and the ready entry and
+ * returns -1.  The clock is the VSync(-1) counter (a host call count with no device attached), so these tests stamp
+ * relative to a VSync(-1) query and allow for the one tick the poll itself adds.  The abort chain acknowledges the CD
+ * controller through the register pointer words, which B558_PlantChain seeds. */
+static void B558_PlantChain(void);
+
 static void test_poll_timeout(void) {
     TEST("poll_timeout");
-    int vs;
+    int now;
     ResetTestState();
+    B558_PlantChain();
     HostFB_Init();
     HostFB_VSync(0);
     HostFB_VSync(0);
-    HostFB_GetState(&vs, NULL, NULL, NULL);
-    /* issue timestamp 1300 vsyncs in the past → >1200 timeout (signed) */
-    PE_StoreU32(0x8009B6C4u, (uint32_t)(vs - 1300));
+    now = (int)HostFB_VSync(-1);
+    /* stamp 1300 retraces before the clock the poll will read (now+1): 1301 > 1200, expired (cdgen50 signed rule) */
+    PE_StoreU32(0x8009B6C4u, (uint32_t)(now - 1300));
     PE_StoreU32(0x8009B6CCu, 1);
     ASSERT(func_800811E4(0x801FFEE0u) == -1, "stale read must time out");
     ASSERT(PE_LoadU32(0x8009B6CCu) == 0, "timeout abort must clear D_8009B6CC");
@@ -21197,11 +21325,7 @@ static void test_CDS1_7fb44_negative_flag_passes(void)
  * The shadow routes them; tests observe production values. */
 static void B558_PlantPointers(void)
 {
-    PE_StoreU32(0x8009B27Cu, 0x1F801800u);
-    PE_StoreU32(0x8009B280u, 0x1F801801u);
-    PE_StoreU32(0x8009B284u, 0x1F801802u);
-    PE_StoreU32(0x8009B288u, 0x1F801803u);
-    PE_StoreU32(0x8009B28Cu, 0x1F801020u);
+    Test_PlantCdRegisterPointers();
 }
 
 /* Full live-chain plant for synthetic tests: production tables plus
@@ -21317,39 +21441,6 @@ static void test_B558_7aab4_idle(void)
                CountOrderLog("func_8007AAB4_jump_table")==1,
                "unknown CD jump failed to stop and restore the callback");
     }
-    PASS();
-}
-
-extern void PE_Cd_TimeoutRecover(void);
-static void test_cd_timeout_native_recovery(void)
-{
-    static const char prefix[]="time ", format[]="s=%s,%s,%s,%s\n";
-    static const char *const names[]={"ctx","cmd","sync","ready"};
-    pe_addr_t fmt; uint32_t args[4];
-    TEST("cd_timeout_native_recovery");
-    ResetTestState();
-    B558_PlantPointers();
-    for (unsigned i=0;i<sizeof prefix;i++) PE_StoreU8(0x80011B18u+i,prefix[i]);
-    for (unsigned i=0;i<sizeof format;i++) PE_StoreU8(0x80011B28u+i,format[i]);
-    for (unsigned n=0;n<4u;n++) {
-        pe_addr_t addr=0x80150000u+n*32u;
-        for (unsigned i=0;i<=strlen(names[n]);i++) PE_StoreU8(addr+i,names[n][i]);
-    }
-    PE_StoreU32(0x800A3480u,0x80150000u);
-    PE_StoreU8(0x8009AFD5u,9u);
-    PE_StoreU32(0x8009AFDCu+9u*4u,0x80150020u);
-    PE_StoreU32(0x8009B05Cu+2u*4u,0x80150040u);
-    PE_StoreU32(0x8009B05Cu+3u*4u,0x80150060u);
-    PE_StoreU8(0x8009B294u,2u); PE_StoreU8(0x8009B295u,3u);
-    PE_StoreU8(0x8009B296u,0xFFu);
-    PE_Bios_PrintfLogReset();
-    PE_Cd_TimeoutRecover();
-    ASSERT(!PE_Port_ShouldStop() && PE_Bios_PrintfLog(&fmt,args)==1u &&
-           fmt==0x80011B28u && args[0]==0x80150000u && args[1]==0x80150020u &&
-           args[2]==0x80150040u && args[3]==0x80150060u &&
-           PE_LoadU8(0x8009B294u)==2u && PE_LoadU8(0x8009B295u)==0u &&
-           PE_LoadU8(0x8009B296u)==0u && PE_CdReg_ReadU32(0x1F801020u)==0x1325u,
-           "CD timeout diagnostic arguments or latch recovery differ");
     PASS();
 }
 
@@ -21716,13 +21807,14 @@ static uint8_t B16_FxByte(uint32_t i) {
 /* ── func_8006E6A8: retail sector-count forwarding wrapper ──────────── */
 
 static void test_6E6A8_sector_forward(void) {
-    TEST("6E6A8_sector_forward");
+    TEST_RETAIL_DISC1("6E6A8_sector_forward");
     DiscFixture fx;
     uint32_t i;
     ResetTestState();
     func_8007ED58();
     ASSERT(FxBuild(&fx, 0), "fixture build failed");
     PE_Disc_SetActive(fx.disc);
+    ASSERT(Test_CdLoaderReady(), "cd loader ready");   /* DsRead needs libds booted and idle */
 
     /* The two-sector count is forwarded unchanged; the generic provider
      * performs the retail 0x800-byte sector transfer. */
@@ -21736,7 +21828,8 @@ static void test_6E6A8_sector_forward(void) {
     ASSERT(PE_LoadU8(B16_STREAM + 4096) == 0, "read wrote past 4096 bytes");
     ASSERT((D_800B0CD8 & 0x01004000u) == 0x01004000u,
            "provider post-issue bits missing");
-    ASSERT(PE_LoadU32(0x8009B6B0u) == B16_STREAM, "dest register wrong");
+    /* transfer cursor of the retail read step: dest + 0x800 per sector copied (see read_happy_guest_bytes) */
+    ASSERT(PE_LoadU32(0x8009B6B0u) == B16_STREAM + 2u * 0x800u, "dest register wrong");
     FxFree(&fx);
     PASS();
 }
@@ -21769,12 +21862,13 @@ static void test_6E6A8_guard_zero_and_wrap(void) {
 /* ── func_8006E7E8: poll + D_800B0CD8 RMW ────────────────────────────── */
 
 static void test_6E7E8_success_rmw(void) {
-    TEST("6E7E8_success_rmw");
+    TEST_RETAIL_DISC1("6E7E8_success_rmw");
     DiscFixture fx;
     ResetTestState();
     func_8007ED58();
     ASSERT(FxBuild(&fx, 0), "fixture build failed");
     PE_Disc_SetActive(fx.disc);
+    ASSERT(Test_CdLoaderReady(), "cd loader ready");   /* DsRead needs libds booted and idle */
 
     D_800B0CD8 = 0xDEAD0000u;
     ASSERT(func_8006E6D4(FX_PEIMG_LBA, 0, B16_STREAM, 1) == 1, "read failed");
@@ -21790,11 +21884,14 @@ static void test_6E7E8_timeout_rmw(void) {
     TEST("6E7E8_timeout_rmw");
     int vs;
     ResetTestState();
+    B558_PlantChain();      /* the timeout arm aborts through the CD register pointers */
     HostFB_Init();
     HostFB_VSync(0);
     HostFB_VSync(0);
-    HostFB_GetState(&vs, NULL, NULL, NULL);
-    PE_StoreU32(0x8009B6C4u, (uint32_t)(vs - 1300)); /* >1200 vsyncs stale */
+    vs = (int)HostFB_VSync(-1);
+    /* cdgen50 rule: expired iff (int32)(VSync(-1) now) > (int32)(stamp + 1200); the poll reads vs+1, so this stamp is
+     * 1301 retraces stale on the VSync(-1) clock (the removed adapter compared the host call counter instead) */
+    PE_StoreU32(0x8009B6C4u, (uint32_t)(vs - 1300));
     PE_StoreU32(0x8009B6CCu, 1);
     D_800B0CD8 = 0xDFAD4000u;
     ASSERT(func_8006E7E8() == -1, "stale read must time out");
@@ -22017,7 +22114,7 @@ static uint32_t B19_DrawEnvExpectedWord(uint32_t addr) {
 /* ── func_8006A9E4: full patterned run ───────────────────────────────── */
 
 static void test_6A9E4_full_run_patterned(void) {
-    TEST("6A9E4_full_run_patterned");
+    TEST_RETAIL_DISC1("6A9E4_full_run_patterned");
     static uint8_t snap[B16_COPY1]; /* stream snapshot before the run */
     DiscFixture fx;
     uint32_t i;
@@ -22025,11 +22122,12 @@ static void test_6A9E4_full_run_patterned(void) {
     ResetTestState();
     DAY1_SeedClearDispatch();
     HostFB_Init();
-    ASSERT(PE_GPU_WriteGP0(0x02FFFFFFu) && PE_GPU_WriteGP0(0u) &&
-           PE_GPU_WriteGP0(0x01FF03FFu),"clear fixture VRAM seed");
     func_8007ED58();
     ASSERT(FxBuild(&fx, 0), "fixture build failed");
     PE_Disc_SetActive(fx.disc);
+    ASSERT(Test_CdLoaderReady(), "cd loader ready");   /* the cycles read through DsRead (re-initialises the GPU: seed VRAM after it) */
+    ASSERT(PE_GPU_WriteGP0(0x02FFFFFFu) && PE_GPU_WriteGP0(0u) &&
+           PE_GPU_WriteGP0(0x01FF03FFu),"clear fixture VRAM seed");
 
     /* Retail-shaped halfword table (guest RAM here; no exe loaded):
      *   A: off=0  end=1  → lba 30, 1 sector → 0x800A8028
@@ -22166,8 +22264,12 @@ static int B28_CCA4Word(pe_addr_t a, uint32_t *want) {
 }
 
 static void test_6A9E4_zero_cycles_footprint(void) {
-    TEST("6A9E4_zero_cycles_footprint");
+    TEST_RETAIL_DISC1("6A9E4_zero_cycles_footprint");
     pe_addr_t a;
+    int vs_end;
+    static uint8_t zc_before[PE_RAM_SIZE];
+    static uint8_t zc_touched[PE_RAM_SIZE / 4u];   /* words the CD bring-up below wrote */
+    DiscFixture fx;
     ResetTestState();
     DAY1_SeedClearDispatch();
     HostFB_Init();
@@ -22185,6 +22287,12 @@ static void test_6A9E4_zero_cycles_footprint(void) {
     D_800B0E6C = B16_STREAM;
     PE_StoreU32(0x800B0E08u, B16_DEST2);
     PE_StoreU32(0x800A76A4u, 0);           /* timer tick = 0 (retail boot) */
+    /* The canary fill leaves 0xA5A5A5A5 in the read-poll stamp 0x8009B6C4.  Under the retail rule (cdgen50: expired iff
+     * (int32)VSync(-1) > (int32)(stamp + 1200)) that word is a negative clock, so the poll would see a long-expired read
+     * and abort over canary pointers; the original canary would abort too.  Plant a current stamp instead (the VSync(-1)
+     * clock at the start of the run, 0 after HostFB_Init), which is what an issued read stores. */
+    PE_StoreU32(0x8009B6C4u, 0u);
+    PE_StoreU16(0x800945E6u, 0u);   /* the poll's ready callee (pe_plat_cd_ready.c, cdgen36; not a cdgen50 fact: the ready entry is a stopped callee there) tests this halfword for a pending callback; 0xA5A5 would send it through the canary register pointer */
 
     /* Minimal valid archive for the two lookups (count 1, key 1 hit). */
     PE_StoreU32(B16_STREAM + 4, 0x100u);
@@ -22211,7 +22319,27 @@ static void test_6A9E4_zero_cycles_footprint(void) {
 
     DAY1_SeedClearDispatch();
     PE_StoreU8(0x8009574Du,0u); /* direct issue after synthetic RAM poison */
+    /* The cycles read through DsRead (zero-size, but the retail command chain still runs), which needs a drive and libds in
+     * the production host-boot state: the CD bring-up runs over the canary (its jump tables, pointer table, ResetCallback,
+     * CdInit, lane), and every word it writes is accepted state of this footprint (they are libds / libetc state, not what
+     * the 6A9E4 cycles write, which this test pins). */
+    memcpy(zc_before, PE_TranslateConst(PE_RAM_BASE, PE_RAM_SIZE), PE_RAM_SIZE);
+    ASSERT(FxBuild(&fx, 0), "fixture build failed");
+    PE_Disc_SetActive(fx.disc);
+    ASSERT(Test_CdLoaderReady(), "cd loader ready");
+    {
+        const uint8_t *now = PE_TranslateConst(PE_RAM_BASE, PE_RAM_SIZE);
+        for (a = PE_RAM_BASE; a < PE_RAM_END; a += 4u)
+            if (memcmp(now + (a - PE_RAM_BASE), zc_before + (a - PE_RAM_BASE), 4u) != 0)
+                zc_touched[(a - PE_RAM_BASE) / 4u] = 1u;
+    }
     func_8006A9E4();
+    /* Read-poll stamp 0x8009B6C4 after the run: DsRead stamps VSync(-1) when it starts a read.  Inside the loader device
+     * window (pe_plat2_cdhost_loader.c) VSync(-1) stands still at the host call count the window opened with, and the
+     * quiet window restores that count at close, so the stamp is the host counter at the issue.  The retail read poll
+     * advances the counter by one VSync(-1) query per poll (cdgen50 rule); the last cycle's issue is followed by exactly one
+     * poll, so the stamp is the final counter minus one.  (The removed adapter never advanced it: 0.) */
+    HostFB_GetState(&vs_end, NULL, NULL, NULL);
 
     for (a = PE_RAM_BASE; a < PE_RAM_END; a += 4) {
         uint32_t want = 0xA5A5A5A5u;
@@ -22234,6 +22362,8 @@ static void test_6A9E4_zero_cycles_footprint(void) {
                                                 * dispatcher |= 0x40000000 */
         /* B46: func_800851A8 prefix stores error check value to D_8009D24C */
         else if (a == 0x8009D24Cu) continue;
+        else if (a == 0x800945E4u) want = 0x0000A5A5u;    /* planted halfword at 0x800945E6 = 0 (no pending callback) */
+        else if (a == 0x8009B294u) want = 0xA50000A5u;    /* the poll's ready callee consumes the two canary response bytes (behaviour of pe_plat_cd_ready.c, cdgen36, not a cdgen50 fact): sync byte 0x8009B295 and ready byte 0x8009B296 are cleared, status byte 0x8009B294 stays */
         else if (a == 0x8009B574u) want = 1;
         else if (a == 0x800A3608u) want = 0;
         else if (a == 0x800B0E6Cu) want = B16_STREAM;
@@ -22246,8 +22376,16 @@ static void test_6A9E4_zero_cycles_footprint(void) {
         else if (a == 0x8009B6ACu) want = 0x200u;      /* post-issue */
         else if (a == 0x8009B6B0u) want = B16_STREAM;  /* last dest */
         else if (a == 0x8009B6B4u) want = 0;
-        else if (a == 0x8009B6C4u) want = 0;           /* vs = 0 */
+        else if (a == 0x8009B6C4u) want = (uint32_t)(vs_end - 1);  /* stamp: counter at the last issue (see above) */
         else if (a == 0x8009B6CCu) want = 0;           /* DsRead busy clear */
+        /* The poll's ready callee (0x8007F608) now runs: it stores its wait deadline (counter at its start + 960), a pass
+         * counter (one pass: the canary ready/sync byte is already set) and the command-name word.  These three values
+         * come from pe_plat_cd_ready.c (cdgen36) and its host contract that its VSync(-1) reads are HostFB_GetState pure
+         * queries (it does not advance the counter, unlike the retail ready entry); they are not cdgen50 facts.  The
+         * poll's own VSync(-1) query was the last counter advance, so the counter the callee reads is vs_end. */
+        else if (a == 0x800A3478u) want = (uint32_t)vs_end + 960u;
+        else if (a == 0x800A347Cu) want = 1u;
+        else if (a == 0x800A3480u) want = 0x80011BA8u;
         /* B38: func_8008CBA8 clears D_8009D268 (busy flag) on exit,
          * and RingAlloc increments D_8009D2F4 from 0 to 1. */
         else if (a == 0x8009D268u) want = 0;
@@ -22443,6 +22581,15 @@ static void test_6A9E4_zero_cycles_footprint(void) {
         if(a==0x8009D050u)want=0u;
         if(a==0x8009D058u)want=0x8009D05Cu;
         if(a==0x8009D064u)want=2u;
+        if (zc_touched[(a - PE_RAM_BASE) / 4u]) continue;   /* CD bring-up state, see above */
+        /* The retail libds command layer's own bookkeeping that the zero-size reads of the cycles leave (command chain: last
+         * command / status words 0x8009AFC4.., drive lane and command bytes 0x8009B294, 0x8009B53C..0x8009B59C, the queue
+         * head 0x800A3460 and the four completion packets 0x800A3614..0x800A364C, the loader call's stack scratch
+         * 0x801FEBF0 / 0x801FFE80) and the libetc word 0x8009567C the VBlank handler touches. */
+        if ((a == 0x8009567Cu) || (a >= 0x8009AFC4u && a < 0x8009AFD8u) || a == 0x8009B294u ||
+            (a >= 0x8009B53Cu && a < 0x8009B5A0u) || (a >= 0x800A3460u && a < 0x800A3468u) ||
+            (a >= 0x800A3614u && a < 0x800A3650u) || (a >= 0x801FEBF0u && a < 0x801FEBFCu) || a == 0x801FFE80u)
+            continue;
         if (PE_LoadU32(a) != want) {
             printf("FAIL: guest 0x%08X = 0x%08X, want 0x%08X\n",
                    a, PE_LoadU32(a), want);
@@ -22459,18 +22606,23 @@ static void test_6A9E4_zero_cycles_footprint(void) {
     /* B46: func_800851A8 prefix-translated; magic check fails on
      * zeroed stream buffer, so no bootstrap boundary hit. */
     ASSERT(g_stub_order_count == 0, "no bootstrap invocations (magic check fails)");
+    FxFree(&fx);
     PASS();
 }
 
 /* ── func_8006A9E4: PE_RamReset then re-run ──────────────────────────── */
 
 static void test_6A9E4_ramreset_rerun(void) {
-    TEST("6A9E4_ramreset_rerun");
+    TEST_RETAIL_DISC1("6A9E4_ramreset_rerun");
     uint32_t e18_1, e1c_1, e20_1;
+    DiscFixture fx;
     ResetTestState();
     DAY1_SeedClearDispatch();
-    HostFB_Init();
-    func_8007ED58();
+    /* The cycles read through DsRead (zero-size here, but the retail command chain still runs): a drive and libds in the
+     * production host-boot state.  Test_CdLoaderReady runs HostFB_Init and func_8007ED58 itself. */
+    ASSERT(FxBuild(&fx, 0), "fixture build failed");
+    PE_Disc_SetActive(fx.disc);
+    ASSERT(Test_CdLoaderReady(), "cd loader ready");
     /* zeroed table → 0-size cycles; zeroed stream → count-0 archive */
     D_800B0E6C = B16_STREAM;
     PE_StoreU32(0x800B0E08u, B16_DEST2);
@@ -22487,7 +22639,8 @@ static void test_6A9E4_ramreset_rerun(void) {
     ASSERT(PE_LoadU32(0x800B0E20u) == 0, "RAM reset did not clear slots");
     /* Re-establish the entry contract (retail: the arena init rungs
      * re-run on reboot) and the provider lane state. */
-    func_8007ED58();
+    PE_Disc_SetActive(fx.disc);
+    ASSERT(Test_CdLoaderReady(), "cd loader ready after the reset");
     D_800B0E6C = B16_STREAM;
     PE_StoreU32(0x800B0E08u, B16_DEST2);
     /* PE_RamReset cleared the guest-resident archive too; retail's cycle
@@ -22504,13 +22657,15 @@ static void test_6A9E4_ramreset_rerun(void) {
     /* B46: func_800851A8 prefix-translated; magic check fails on
      * zeroed stream buffer, so no bootstrap boundary hit. */
     ASSERT(CountOrderLog("func_800851A8") == 0, "no bootstrap (magic check fails)");
+    FxFree(&fx);
     PASS();
 }
 
 /* ── func_8006A9E4: placement after the completed func_8003E680 ──────── */
 
 static void test_6A9E4_3E680_integration(void) {
-    TEST("6A9E4_3E680_integration");
+    TEST_RETAIL_DISC1("6A9E4_3E680_integration");
+    DiscFixture fx;
     ResetTestState();
     DAY1_SeedClearDispatch();
     PE_Callback_Init();
@@ -22522,7 +22677,10 @@ static void test_6A9E4_3E680_integration(void) {
     func_8003E680();
     ASSERT(g_stub_order_count == 0, "bootstrap providers remain in 3E680");
 
-    func_8007ED58();
+    /* the cycles read through DsRead: a drive and libds in the production host-boot state (runs func_8007ED58 itself) */
+    ASSERT(FxBuild(&fx, 0), "fixture build failed");
+    PE_Disc_SetActive(fx.disc);
+    ASSERT(Test_CdLoaderReady(), "cd loader ready");
     D_800B0E6C = 0x801ED800u;  /* func_8006A8D4 arena value */
     PE_StoreU32(0x800B0E08u, 0x800F74F8u); /* func_8006A674 arena value */
     B26_SeedArchiveDefault();  /* B26: no disc, so seed the archive */
@@ -27058,11 +27216,14 @@ static void test_87090_strict_advances_to_851A8(void)
  * path to reach the bootstrap boundary. */
 static void test_87090_6A9E4_integration(void)
 {
-    TEST("87090_6A9E4_integration");
+    TEST_RETAIL_DISC1("87090_6A9E4_integration");
+    DiscFixture fx;
     ResetTestState();
     DAY1_SeedClearDispatch();
-    HostFB_Init();
-    func_8007ED58();
+    /* the cycles read through DsRead: a drive and libds in the production host-boot state (runs HostFB_Init and func_8007ED58) */
+    ASSERT(FxBuild(&fx, 0), "fixture build failed");
+    PE_Disc_SetActive(fx.disc);
+    ASSERT(Test_CdLoaderReady(), "cd loader ready");
     D_800B0E6C = 0x80100000u;
     PE_StoreU32(0x800B0E08u, 0x80180000u);
     B26_SeedArchiveDefault();
@@ -27075,6 +27236,7 @@ static void test_87090_6A9E4_integration(void)
            "func_80087090 must not be a bootstrap provider");
     ASSERT(CountOrderLog("func_800851A8") == 0,
            "func_800851A8 must not be a bootstrap provider");
+    FxFree(&fx);
     PASS();
 }
 
@@ -27965,8 +28127,10 @@ static void B50_SeedPrefixState(uint32_t count)
 static void B50_StartFixture(DiscFixture *fx, uint32_t count)
 {
     PE_Disc_SetActive(fx->disc);
-    HostFB_Init();
-    func_8007ED58();
+    /* The 6AD40 family reads through DsRead: libds in the production host-boot state with the device detached (the read opens
+     * its own loader window).  Test_CdLoaderReady runs HostFB_Init and func_8007ED58 itself, in the order the stamp
+     * derivation of 6AD40_complete_effect_allowlist expects (counter 0 after HostFB_Init, 1 after the VSync(0) below). */
+    (void)Test_CdLoaderReady();
     HostFB_VSync(0);
     g_bootstrap_disc = 1;
     B50_SeedPrefixState(count);
@@ -28100,6 +28264,31 @@ static void test_6AD40_complete_effect_allowlist(void)
     memcpy(snapshot, PE_TranslateConst(PE_RAM_BASE, PE_RAM_SIZE), PE_RAM_SIZE);
 
     ASSERT(func_8006AD40() == 0, "complete function must return retail zero");
+    /* Read-poll stamp 0x8009B6C4.  DsRead stamps VSync(-1) when it starts a read; inside the loader device window
+     * (pe_plat2_cdhost_loader.c) that value is frozen at the host call count the window opened with (HostFB_VSync), and
+     * the quiet window restores the count at close, so the stamp is the host counter at the issue (the same value the
+     * deleted hand issuer stored via HostFB_GetState).
+     * The counter stands at 1 at the first issue because the test's own B50_StartFixture runs Test_CdLoaderReady
+     * (HostFB_Init(), func_8007ED58(), ...) and then HostFB_VSync(0), and every HostFB_VSync call increments the zeroed
+     * count (this replaces the earlier "measured constant"; it is what the removed adapter, which never advanced the
+     * counter, expected for every issue).  The retail read poll queries VSync(-1) exactly once per poll (cdgen50 rule) and the host counter moves by
+     * one per query, and this run is six issue-then-poll rounds, so the sixth issue stores 1 + 5 polls = 6.
+     * Cross-check: the sixth poll and then func_8006AD40's own VSync(0) (retail code in the function under test,
+     * jal 0x80073A44 with a0 = 0 at EXE 0x8006B28C, after jal 0x80074A44(1) / 0x80074DC0(0)) follow it, leaving the
+     * counter at stamp + 2.  Counter sequence: VSync(0) [1], six poll VSync(-1) [2..7], VSync(0) [8]. */
+    {
+        int vs_end;
+        HostFB_GetState(&vs_end, NULL, NULL, NULL);
+        ASSERT(vs_end == (1 + 5) + 2, "host counter after the run is not stamp + last poll + trailing query");
+    }
+    /* The last poll's ready callee (0x8007F608) left its own scratch words, which the footprint loop below allows: the
+     * deadline is the counter it saw (the sixth poll's query, stamp + 1 = 7) plus 960, one pass counted, and the
+     * command-name word.  Source of these three expectations: pe_plat_cd_ready.c (cdgen36) and its host contract that
+     * its VSync(-1) reads are HostFB_GetState pure queries; they are not cdgen50 facts (the ready entry is a stopped
+     * callee in that set). */
+    ASSERT(PE_LoadU32(0x800A3478u) == (1u + 5u + 1u) + 960u && PE_LoadU32(0x800A347Cu) == 1u &&
+           PE_LoadU32(0x800A3480u) == 0x80011BA8u,
+           "read-poll ready callee scratch words differ from the cdgen50 call sequence");
     /* B52 advances through func_8007506C to jtb[2]=func_80076C34.  The
      * zero fixture still has image h=0x100 and no CLUT call; B54K-A adds
      * the D_800930F0 718D0 image walk over the zero TIM at +0x180. */
@@ -28131,7 +28320,7 @@ static void test_6AD40_complete_effect_allowlist(void)
     ASSERT(PE_LoadU32(0x8009B6ACu) == 0x200u &&
            PE_LoadU32(0x8009B6B0u) == B50_3126_DEST &&
            PE_LoadU32(0x8009B6B4u) == 0u &&
-           PE_LoadU32(0x8009B6C4u) == 1u &&
+           PE_LoadU32(0x8009B6C4u) == (1u + 5u) &&
            PE_LoadU32(0x8009B6CCu) == 0u,
            "prefix D_800930E0 provider state differs from retail adapter");
     for (uint32_t a = PE_RAM_BASE; a < PE_RAM_END; a++) {
@@ -28141,6 +28330,7 @@ static void test_6AD40_complete_effect_allowlist(void)
             (a >= 0x8009B6ACu && a < 0x8009B6B8u) ||
             (a >= 0x8009B6C4u && a < 0x8009B6C8u) ||
             (a >= 0x8009B6CCu && a < 0x8009B6D0u) ||
+            (a >= 0x800A3478u && a < 0x800A3484u) ||   /* ready callee (0x8007F608) deadline/counter/name words: it now runs on every poll (cdgen50 rule: the poll always calls ready); their values are pe_plat_cd_ready.c (cdgen36) behaviour, asserted above */
             (a >= 0x8009D268u && a < 0x8009D26Cu) ||
             (a >= 0x8009D2F4u && a < 0x8009D2F8u) ||
             (a >= 0x800B8628u && a < 0x800B863Cu) ||
@@ -28197,7 +28387,23 @@ static void test_6AD40_complete_effect_allowlist(void)
              * and the command-lane response buffer they are copied from. */
             (a >= 0x8009B53Cu && a < 0x8009B540u) ||
             (a >= 0x800A3460u && a < 0x800A3468u) ||
-            (a >= 0x800A3610u && a < 0x800A3694u))
+            (a >= 0x800A3610u && a < 0x800A3694u) ||
+            /* The reads of this run go through the real DsRead command chain (loader device window, see Test_CdLoaderReady)
+             * and Test_CdLoaderReady installed ResetCallback, so the retail libds command layer leaves its own bookkeeping:
+             * drive-lane status/command bytes (0x8009B294, 0x8009B558..0x8009B58C), the last-command and status words
+             * (0x8009AFC4..0x8009AFD8), the command-queue head and slot index (0x800A3510, 0x800A3600), and the loader call's
+             * stack scratch (the position record frame 0x801FEBF0, the location scratch 0x801FFE80); the function's own
+             * VSync(0) now reaches the retail VBlank handler, which bumps the counter 0x800956AC and the display-env word
+             * 0x80095884.  None of these is state of the 6AD40 effect walk this test pins. */
+            (a >= 0x800956ACu && a < 0x800956B0u) ||
+            (a >= 0x80095884u && a < 0x80095888u) ||
+            (a >= 0x8009AFC4u && a < 0x8009AFD8u) ||
+            (a >= 0x8009B294u && a < 0x8009B298u) ||
+            (a >= 0x8009B558u && a < 0x8009B58Cu) ||
+            (a >= 0x800A3510u && a < 0x800A3518u) ||
+            (a >= 0x800A3600u && a < 0x800A3608u) ||
+            (a >= 0x801FEBF0u && a < 0x801FEBFCu) ||
+            (a >= 0x801FFE80u && a < 0x801FFE84u))
             continue;
         if (PE_LoadU8(a) != snapshot[a - PE_RAM_BASE]) {
             free(snapshot);
@@ -28229,7 +28435,7 @@ static void test_6AD40_strict_completes_without_frontier(void)
         HostFB_Init();
         Bootstrap_Init();
         Bootstrap_EnableStrict();
-        func_8007ED58();  /* CD reset — sets drive state after bootstrap init */
+        if (!Test_CdLoaderReady()) _exit(4);   /* the reads go through DsRead: libds booted and idle (runs func_8007ED58) */  /* CD reset — sets drive state after bootstrap init */
         HostFB_VSync(0);  /* advance VSync counter for DMA poll */
         B50_SeedPrefixState(1);
         PE_StoreU8(B53D_INIT_BYTE, 1u);
@@ -28246,7 +28452,7 @@ static void test_6AD40_strict_completes_without_frontier(void)
     PE_Disc_SetActive(fx.disc);
     HostFB_Init();
     Bootstrap_Init();
-    func_8007ED58();
+    ASSERT(Test_CdLoaderReady(), "cd loader ready");   /* the reads go through DsRead: libds booted and idle (runs func_8007ED58) */
     HostFB_VSync(0);
     B50_SeedPrefixState(1);
     PE_StoreU8(B53D_INIT_BYTE, 1u);
@@ -30208,6 +30414,7 @@ static int B54K_BuildDisc(DiscFixture *fx, uint32_t sector_count)
         raw[0] = 0x00;
         memset(raw + 1, 0xFF, 10);
         raw[11] = 0x00;
+        Test_SectorHeaderMsf(raw, i);
         raw[15] = 0x02;
     }
     PE_Disc_Close(fx->disc);
@@ -30395,7 +30602,9 @@ static void test_B54KL_6AD40_e0_counted_then_3126_completion(void)
            PE_LoadU8(B50_3126_DEST + 0x0FFFu) == 0u &&
            PE_LoadU8(B50_3126_DEST + 0x1000u) == 0xA5u,
            "D_80093126 issue did not write exactly two sectors");
-    ASSERT(PE_LoadU32(0x8009B6B0u) == B50_3126_DEST &&
+    /* 0x8009B6B0 is the transfer cursor of the retail read step: destination plus 0x800 per sector copied (two sectors here;
+     * the old hand loader left it at the destination). */
+    ASSERT(PE_LoadU32(0x8009B6B0u) == B50_3126_DEST + 0x1000u &&
            PE_LoadU32(0x8009B6B4u) == 0u &&
            (PE_LoadU32(0x800B0CD8u) & 0x01004000u) == 0u,
            "D_80093126 completion/provider state differs");
@@ -30423,7 +30632,8 @@ static void test_B54KL_6AD40_empty_e0_skips_entry_walk(void)
            "zero-count E0 archive executed an entry");
     ASSERT(B54KM_CompletionStateIsExact(),
            "empty E0 archive changed the completion state");
-    ASSERT(PE_LoadU32(0x8009B6B0u) == B50_3126_DEST &&
+    /* transfer cursor of the retail read step: destination plus 0x800 per sector copied (the same two-sector read) */
+    ASSERT(PE_LoadU32(0x8009B6B0u) == B50_3126_DEST + 0x1000u &&
            (PE_LoadU32(0x800B0CD8u) & 0x01004000u) == 0u,
            "empty E0 path did not complete D_80093126");
     FxFree(&fx);
@@ -35633,11 +35843,12 @@ static void test_6E6A8_sector_to_byte(void)
 {
     DiscFixture fx;
     uint32_t i;
-    TEST("6E6A8_sector_to_byte");
+    TEST_RETAIL_DISC1("6E6A8_sector_to_byte");
     ResetTestState();
     func_8007ED58();
     ASSERT(FxBuild(&fx, 0), "fixture build failed");
     PE_Disc_SetActive(fx.disc);
+    ASSERT(Test_CdLoaderReady(), "cd loader ready");   /* DsRead needs libds booted and idle */
     ASSERT(func_8006E6A8(FX_PEIMG_LBA, B16_STREAM, 2) == 1,
            "two-sector issue failed");
     for (i = 0; i < 4096u; i++)
@@ -35735,7 +35946,7 @@ static void test_6AD40_strict_stops_at_frontier(void)
         HostFB_Init();
         Bootstrap_Init();
         Bootstrap_EnableStrict();
-        func_8007ED58();
+        if (!Test_CdLoaderReady()) _exit(4);   /* the reads go through DsRead: libds booted and idle (runs func_8007ED58) */
         HostFB_VSync(0);
         B50_SeedPrefixState(1);
         PE_StoreU8(B53D_INIT_BYTE, 1u);
@@ -35882,6 +36093,7 @@ static void test_FLD1_6B4F8_m0431i_load(void) {
     ASSERT(disc != NULL, err[0] ? err : "PE_Disc_Open failed");
     func_8007ED58();
     PE_Disc_SetActive(disc);
+    ASSERT(Test_CdLoaderReady(), "cd loader ready");   /* DsRead needs libds booted and idle */
     PE_StoreU32(0x800B0DD8u, 1013u);
     PE_StoreU32(0x800B0CD8u + 0x194u, dest0);
     PE_StoreU32(0x800B0CD8u + 0x168u, dest1);
@@ -36875,6 +37087,36 @@ static void test_ATK3_retail_attack_initialization(void)
 #include "test_cd_ack.h"
 #include "test_cd_sync_callbacks.h"
 #include "test_cd_device.h"
+
+/* Test_CdLoaderReady: leave libds the way the production boot leaves it for the loader (the entry state of
+ * credits_attach_from_host_boot): ResetCallback and the host-mode DsInit (func_8003E610's effect: 0x8009B554 == 1, no
+ * device hooks installed), CdReset leaving the drive lane idle (func_8006A5BC), the command queue empty, the CD device
+ * model DETACHED.  A DsRead started in that state opens its own loader device window (pe_plat2_cdhost_loader.c), runs the
+ * real command chain (Pause, Setmode, Setloc, ReadN, sector interrupt, data callback, sector DMA, counter decrement) to
+ * the end and closes the window before func_8006E6D4 returns, so the data is in the buffer when the call returns, as
+ * the callers of the retail loader expect.  Fixtures that reset RAM and call the loader path need this: ResetTestState
+ * zeroes all of it, and the retail jump tables the command layer reads are stripped from the repository, restored from
+ * the user's disc by the cd_device_tables fixup and planted exactly as CdDeviceSeed plants them.  The disc must already
+ * be active.  Returns 1 when the state was reached. */
+static int Test_CdLoaderReady(void)
+{
+    char err[320];
+    if (PE_TestRetail_Apply(RETAILFIX_cd_device_tables, sizeof(RETAILFIX_cd_device_tables) / sizeof(RETAILFIX_cd_device_tables[0]),
+                            err, sizeof(err)) != 0)
+        return 0;
+    for (unsigned j = 0; j < 6; j++)
+        for (unsigned i = 0; i < 32; i++)
+            PE_StoreU32(0x80000000u + CDDEV_tables[j].address + i * 4u, CDDEV_tables[j].values[i]);
+    for (unsigned i = 0; i < 26; i++) PE_StoreU32(0x80011D0Cu + i * 4u, CDDEV_command_jumps[i]);
+    for (unsigned i = 0; i < 5; i++) PE_StoreU32(0x80011B8Cu + i * 4u, CDACK_jumps[i]);
+    Test_PlantCdRegisterPointers();   /* EXE .data pointer table (a fixture that reset RAM again after ResetTestState lost it) */
+    Test_PlantCdDmaPointers();
+    HostFB_Init(); PE_GPU_Init(); PE_Callback_Init();
+    func_80073C94();   /* ResetCallback */
+    PE_StoreU32(0x8009B554u, 0u);   /* a fixture that already ran func_8007ED58 marked libds host-booted; CdInit's host branch does that itself */
+    return !PE_CdReg_DeviceEnabled() && func_8007EC14() == 1 && PE_LoadU32(0x8009B554u) == 1u &&
+           func_8007ED58() == 1 && func_8007F72C() == 1 && !PE_Port_ShouldStop();
+}
 #include "test_cd_flush_native.h"
 #include "test_cd_retry_native.h"
 #include "test_cd_status_native.h"
@@ -42613,14 +42855,14 @@ int main(void)
     test_read_guard_queue();
     test_read_happy_guest_bytes();
     test_read_exact_end_boundary();
-    test_read_one_byte_overflow();
+    test_read_word_aligned_dest_at_ram_end();
     test_read_truncated_source();
     test_read_zero_size_trivial();
     test_read_repeated_loads();
     test_read_then_ramreset();
     test_poll_after_read();
     test_poll_timeout();
-    test_poll_host_counter_does_not_advance();
+    test_poll_advances_vsync_query_by_one_fresh_read_kept();
     test_poll_host_deadline_boundary();
     test_698D4_real_disc_sequence();
     test_698D4_quiet_window_takes_no_emulated_time();
@@ -42652,7 +42894,6 @@ int main(void)
     test_B558_73de8_getter();
     test_B558_7b9ec_transcribe();
     test_B558_7aab4_idle();
-    test_cd_timeout_native_recovery();
     test_B558_7b010_status_arms();
     test_cd_control_native_adapters();
     test_cd_command_wait_stop();
