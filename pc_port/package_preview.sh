@@ -8,6 +8,7 @@
 #   parasite-eve-day1-preview/parasite-eve-preview    launcher script
 #   parasite-eve-day1-preview/README-PREVIEW.txt      controls + known limits
 #   parasite-eve-day1-preview/build-info.json         commit, time, sha256
+#   parasite-eve-day1-preview/bin/gamecontrollerdb.txt SDL_GameControllerDB (+ -LICENSE.txt)
 #
 # Usage:
 #   PE_BINARY=build/pcbuild-preview/parasite-eve-port ./pc_port/package_preview.sh
@@ -17,12 +18,23 @@
 #   PE_SOURCE_COMMIT  source commit recorded in build-info (default: git HEAD)
 #   PE_SOURCE_NOTE    free-text provenance note recorded in build-info
 #   PE_OUTPUT_DIR     output dir (default: build/lanes/preview/dist; must be git-ignored)
+#   PE_PREVIEW_DEV_MENU=1|0  REQUIRED. 1: the launcher exports PE_DEV_MENU=1 (Back+Start / F8 dev
+#                     menu on; owner checkpoint builds). 0: off (public preview). Unset = refuse to
+#                     package (a silent 0 shipped native-only-c062ded9-ctrl with no working dev menu).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-NAME="parasite-eve-day1-preview"
+# Default (private Day-1 preview) names; PE_PACKAGE_TAG=<tag> (e.g. native-only-d5efe5c0) names the folder
+# parasite-eve-<tag> and the archive parasite-eve-<tag>-linux-x64.tar.gz instead (public release packages).
+PACKAGE_TAG="${PE_PACKAGE_TAG:-}"
+if [[ -n "$PACKAGE_TAG" ]]; then
+    [[ "$PACKAGE_TAG" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]] || { echo "ERROR: PE_PACKAGE_TAG must match [A-Za-z0-9][A-Za-z0-9._-]*" >&2; exit 1; }
+    NAME="parasite-eve-$PACKAGE_TAG"
+else
+    NAME="parasite-eve-day1-preview"
+fi
 TARBALL_NAME="$NAME-linux-x64.tar.gz"
 BINARY="${PE_BINARY:-$ROOT/build/pcbuild-preview/parasite-eve-port}"
 OUT_DIR="${PE_OUTPUT_DIR:-$ROOT/build/lanes/preview/dist}"
@@ -45,6 +57,9 @@ mkdir -p "$STAGE/bin"
 
 install -m 0755 "$BINARY" "$STAGE/bin/parasite-eve-port"
 strip --strip-unneeded "$STAGE/bin/parasite-eve-port" 2>/dev/null || true
+# SDL_GameControllerDB mappings (zlib), read by the SDL2 pad backend from the exe dir.
+install -m 0644 "$ROOT/pc_port/third_party/SDL_GameControllerDB/gamecontrollerdb.txt" "$STAGE/bin/gamecontrollerdb.txt"
+install -m 0644 "$ROOT/pc_port/third_party/SDL_GameControllerDB/LICENSE" "$STAGE/bin/gamecontrollerdb-LICENSE.txt"
 
 cat > "$STAGE/parasite-eve-preview" <<'LAUNCHER'
 #!/usr/bin/env bash
@@ -83,111 +98,49 @@ fi
 cd "$HERE"
 SKIP=()
 [[ "${PE_SKIP_MOVIE:-__DEFAULT_SKIP__}" == 1 ]] && SKIP=(--skip-movie)
+# Dev menu (Back/View + Start/Menu on a controller, F8 on the keyboard): on for
+# checkpoint builds packaged with PE_PREVIEW_DEV_MENU=1; PE_DEV_MENU=0 turns it off.
+export PE_DEV_MENU="${PE_DEV_MENU:-__DEV_MENU__}"
 exec "$HERE/bin/parasite-eve-port" --windowed "${SKIP[@]}" --scale 3 \
-    --window-title "Parasite Eve - Day 1 preview" \
+    --window-title "Parasite Eve" \
     --disc-image "$DISC" "$@"
 LAUNCHER
 chmod 0755 "$STAGE/parasite-eve-preview"
 
-cat > "$STAGE/README-PREVIEW.txt" <<'README'
-PARASITE EVE — NATIVE PC PORT — DAY 1 PREVIEW (linux-x64)
-==========================================================
-
-This is an early, unfinished research build. It contains NO game data:
-you must supply your own Parasite Eve (USA) Disc 1 image.
-
-RUN
----
-  tar -xzf parasite-eve-day1-preview-linux-x64.tar.gz
-  cd parasite-eve-day1-preview
-  ./parasite-eve-preview "/path/to/Parasite Eve (USA) (Disc 1).bin"
-
-The disc argument may be the Disc 1 .bin, its .cue, or the folder holding
-them. The image must be a raw BIN (2352 bytes/sector), e.g. a Redump
-BIN/CUE dump; .iso and .chd are not supported. Extra arguments go to the
-game binary, e.g.  ./parasite-eve-preview disc1.bin --scale 4
-
-It opens a window (X11; on Wayland desktops and Steam Game Mode, XWayland
-is used automatically). Drag to resize; the 4:3 picture is kept. Esc quits.
-
-The preview starts a NEW GAME directly: the Square logo, opening movie and
-title screen are skipped (the movie path is not finished yet).
-
-CONTROLS                 KEYBOARD                 CONTROLLER (Xbox layout)
---------                 --------                 ------------------------
-D-pad / move             Arrow keys               D-pad or left stick
-Cross (confirm / act)    Enter, Space, Z or X     A
-Circle (cancel)          C                        B
-Square                   S                        X
-Triangle (menu)          V                        Y
-L1 / R1                  Q / E                    LB / RB
-L2 / R2                  1 / 3                    LT / RT
-Select                   Tab                      Back / View
-Start                    P                        Start / Menu
-Fast-forward toggle      F6                       L3 (click left stick)
-Fast-forward while held  -                        R3 (click right stick)
-Quit                     Esc                      -
-
-Keyboard and controller work at the same time. Controllers are read
-through the Linux joystick interface (/dev/input/js*) and may be plugged in
-or removed while the game runs; up to four are merged. This covers Xbox
-pads, Steam Deck / Legion Go built-in controls and anything Steam Input or
-Handheld Daemon (HHD) presents as an Xbox controller.
-
-Fast-forward runs the game uncapped and mutes the sound (it fades out and
-back in, so there is no chipmunk audio or static); the window title shows
-the active speed.
-
-Controller environment variables:
-  PE_JOYSTICK=/dev/input/js1   use only this device (default: js0..js7)
-  PE_JOYSTICK=off              ignore controllers
-  PE_PAD_SWAP_XY=1             swap Square/Triangle (pads whose driver
-                               reports X/Y the other way round)
-  PE_PAD_DEBUG=1               print raw controller events and the pad word
-e.g.  PE_PAD_DEBUG=1 ./parasite-eve-preview disc1.bin
-If no controller is detected, check `ls -l /dev/input/js*` exists and is
-readable by your user. If Steam is running, it may hide the physical pad and
-expose a virtual one instead — either works.
-
-KNOWN LIMITS
-------------
-__LIMITS__
-
-RUNTIME REQUIREMENTS
---------------------
-64-bit Linux with glibc and libX11.so.6 (loaded at runtime; present on
-Bazzite / SteamOS / any desktop distro). Sound uses libpulse-simple.so.0
-(PipeWire's pulse compatibility provides it; the game is silent without
-it). No other libraries needed. PE_AUDIO_LATENCY_MS=150 raises the audio
-buffer (default 100 ms) if sound crackles on a busy system.
-README
-chmod 0644 "$STAGE/README-PREVIEW.txt"
 
 VARIANT="${PE_PREVIEW_VARIANT:-current}"
 LIMITS_FILE="${PE_PREVIEW_LIMITS:-}"
 if [[ -n "$LIMITS_FILE" ]]; then LIMITS="$(cat "$LIMITS_FILE")"; else LIMITS="* See build-info.json for the source commit."; fi
 DEFAULT_SKIP="${PE_PREVIEW_DEFAULT_SKIP:-0}"
-python3 - "$STAGE" "$LIMITS" "$DEFAULT_SKIP" <<'PY'
+DEV_MENU="${PE_PREVIEW_DEV_MENU:-}"
+[[ "$DEV_MENU" == 0 || "$DEV_MENU" == 1 ]] || die "PE_PREVIEW_DEV_MENU must be 1 (owner/checkpoint build: Back+Start / F8 dev menu on) or 0 (public preview: off); it is ${DEV_MENU:-unset}"
+DEV_MENU_WORD=$([[ "$DEV_MENU" == 1 ]] && echo ENABLED || echo DISABLED)
+python3 "$ROOT/pc_port/tools/render_preview_readme.py" --template "$ROOT/pc_port/package_readme_preview.txt" \
+    --out "$STAGE/README-PREVIEW.txt" --tarball "$TARBALL_NAME" --dir "$NAME" --limits "$LIMITS" \
+    --default-skip "$DEFAULT_SKIP" --dev-menu "$DEV_MENU" --tag "$PACKAGE_TAG" --commit "$SOURCE_COMMIT" --note "$SOURCE_NOTE"
+chmod 0644 "$STAGE/README-PREVIEW.txt"
+python3 - "$STAGE" "$DEFAULT_SKIP" "$DEV_MENU" <<'PY'
 import sys, pathlib
-stage, limits, skip = sys.argv[1:]
-r = pathlib.Path(stage, "README-PREVIEW.txt"); r.write_text(r.read_text().replace("__LIMITS__", limits))
-l = pathlib.Path(stage, "parasite-eve-preview"); l.write_text(l.read_text().replace("__DEFAULT_SKIP__", skip))
+stage, skip, devmenu = sys.argv[1:]
+l = pathlib.Path(stage, "parasite-eve-preview")
+l.write_text(l.read_text().replace("__DEFAULT_SKIP__", skip).replace("__DEV_MENU__", devmenu))
 PY
 BIN_SHA="$(sha256sum "$STAGE/bin/parasite-eve-port" | cut -d' ' -f1)"
 LAUNCHER_SHA="$(sha256sum "$STAGE/parasite-eve-preview" | cut -d' ' -f1)"
 BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-python3 - "$STAGE/build-info.json" "$SOURCE_COMMIT" "$SOURCE_NOTE" "$BUILD_TIME" "$BIN_SHA" "$LAUNCHER_SHA" <<'PY'
+python3 - "$STAGE/build-info.json" "$SOURCE_COMMIT" "$SOURCE_NOTE" "$BUILD_TIME" "$BIN_SHA" "$LAUNCHER_SHA" "$DEV_MENU" "$NAME" <<'PY'
 import json, sys
-out, commit, note, t, bsha, lsha = sys.argv[1:]
+out, commit, note, t, bsha, lsha, devmenu, name = sys.argv[1:]
 info = {
     "schema": 1,
-    "name": "parasite-eve-day1-preview",
+    "name": name,
     "platform": "linux-x64",
     "source_commit": commit,
     "source_note": note,
     "build_time_utc": t,
     "binary": {"path": "bin/parasite-eve-port", "sha256": bsha},
     "launcher": {"path": "parasite-eve-preview", "sha256": lsha},
+    "dev_menu_default": int(devmenu),
     "contains_game_data": False,
 }
 with open(out, "w") as f:
@@ -196,9 +149,13 @@ with open(out, "w") as f:
 PY
 chmod 0644 "$STAGE/build-info.json"
 
-# Guard: only the four expected payload files, no disc images, nothing from rom/.
+# Guard: the packaged launcher must carry the chosen dev-menu default and no placeholder.
+grep -qF "export PE_DEV_MENU=\"\${PE_DEV_MENU:-$DEV_MENU}\"" "$STAGE/parasite-eve-preview" || die "launcher dev-menu default not applied (wanted $DEV_MENU)"
+! grep -rqF "__DEV_MENU" "$STAGE" || die "unreplaced __DEV_MENU placeholder in the stage"
+grep -qF "\"dev_menu_default\": $DEV_MENU" "$STAGE/build-info.json" || die "build-info.json lacks dev_menu_default=$DEV_MENU"
+# Guard: only the expected payload files (incl. the SDL_GameControllerDB mapping + licence), no disc images, nothing from rom/.
 mapfile -t files < <(cd "$WORK" && find "$NAME" -type f | LC_ALL=C sort)
-expected=("$NAME/README-PREVIEW.txt" "$NAME/bin/parasite-eve-port" "$NAME/build-info.json" "$NAME/parasite-eve-preview")
+expected=("$NAME/README-PREVIEW.txt" "$NAME/bin/gamecontrollerdb-LICENSE.txt" "$NAME/bin/gamecontrollerdb.txt" "$NAME/bin/parasite-eve-port" "$NAME/build-info.json" "$NAME/parasite-eve-preview")
 [[ "${files[*]}" == "${expected[*]}" ]] || die "unexpected staged files: ${files[*]}"
 for f in "${files[@]}"; do
     case "${f,,}" in

@@ -1,5 +1,82 @@
 # Changelog
 
+## 2026-11-25 - binary release `native-only-d5efe5c0` and source syncs 3, 4 and 5
+
+First public binaries since October: Linux x86-64 and Windows x64 archives,
+built from the development tree at `d5efe5c00`. Release:
+[`native-only-d5efe5c0`](https://github.com/Blizz127/parasite-eve-decomp-port/releases/tag/native-only-d5efe5c0)
+(`parasite-eve-native-only-d5efe5c0-linux-x64.tar.gz`,
+`parasite-eve-native-only-d5efe5c0-windows-x64.zip`, `SHA256SUMS`). You supply
+your own Parasite Eve (USA) Disc 1 BIN/CUE dump; no game data, BIOS or SDK
+code is included.
+
+**Binaries**
+
+- The game executes as compiled host C with no interpreter or CPU emulation.
+  `psyq_port_guard.py --binary --require-exe` against the original executable
+  finds **0 Psy-Q-classified functions linked** in the Linux binary (down from
+  31 at the 2026-11-25 source sync and 264 on 2026-10-30); the memory-card BIOS
+  entries forward to the port's own card model, which saves to a local card
+  file. Provenance correction (2026-11-26): a file-level provenance audit of the host providers found that the providers covering about 109 of the original SDK functions (SPU, counter and GPU state words, GPU packet and image-transfer workers, CD stream and IRQ delivery, libgte state, libsnd init, save manager) were translated from the matched decompilation or carry no black-box derivation evidence. They are not clean-room, their sources stay unpublished, and they are being re-derived from black-box vectors and psx-spx family by family; each follow-up release lists what moved. The other providers (CD leaves, GTE commands, BIOS card, string and memory entries, MDEC, pad) were written clean-room from vectors.
+- Day 1 is the verified playable slice; later days run but are less tested.
+- The Windows build is cross-compiled from the same sources and was
+  smoke-tested under Wine only. Real Windows, real controllers and fullscreen
+  behaviour are untested.
+- The only retail-derived bytes in each binary are one 40-byte run, the SPU
+  Gaussian interpolation table `k_gauss` (a documented hardware constant
+  table).
+
+**Source syncs (previous sync: `9f7d1a099`)**
+
+- Sync 3, from `a2dae913c`: clean-room providers for the GPU DrawSync,
+  DMA-start and PutDispEnv host hooks (with the VBlank-clock timeout fix),
+  libgpu enqueue and immediate issue, ResetGraph, InitGeom, the libds step gate
+  and CD_ready, DsGetDiskType with its first-mount quiet window, the libpress
+  MDEC table upload and core, and a repair of the checker header.
+- Sync 4, from `d5efe5c00`: the final form of the GPU timeout clock (the
+  timeout check reads the VBlank counter through the host query that seeds its
+  deadline; empty DMA-callback slots run the native setter) and the test
+  telemetry it restores.
+- Sync 5, from `2b98ba557`: the host memory-card BIOS entry points
+  (`pc_port/platform/pe_bios_card.c`, clean-room from the psx-spx
+  kernel/BIOS documentation and the port's own card model), the
+  `pe_plat_bios_card` thunks that the binaries bind for the four former card
+  BIOS stubs, their header and test, and the files edited by that binding.
+  These were published after a provenance audit of the card model and thunks.
+  The public source now matches the released binaries except for the held
+  files below.
+
+**Not published (held)**
+
+- The curated public copies of `pc_port/CMakeLists.txt` and
+  `pc_port/tests/test_native.c` lag the development tree. The native port
+  therefore does not build from this repository alone yet; the release
+  archives are the runnable deliverable. This is work in progress.
+- A few remaining providers stay unpublished while their provenance is under
+  audit, as do hand ports of Psy-Q-classified functions that were never
+  published and three retail-derived test-vector headers.
+
+**Verification (development tree `d5efe5c00`)**
+
+- Native test suite: 1935 run, 1924 passed, 0 failed, 6 skipped (the six
+  quarantined adapter tests), with the disc attached.
+- Linux binary: cold boot 60 of 60 frames identical to the baseline with audio
+  equal; Day 1 pad-only route with movies to the first boss victory, 187 of 187
+  sampled frames identical with route audio equal; save and Continue round
+  trip passes with the card unchanged by loading.
+- Strict Psy-Q guard on the published source tree: PASS, 0 findings.
+  The development tree still carries 78 allow-list rows that are all outside
+  the shipped binaries (21 unlinked definitions, 50 backend-header layering
+  rows, 7 libgte test tables).
+- Retail-data scan of the archives: only the 40-byte `k_gauss` run per binary.
+- Private-content and secrets scan of the archive contents and the published
+  source: clean.
+- Smoke of the extracted Linux archive: boots to the title screen, a pad-only
+  New Game reaches the first field room with player control and continues to
+  the first battle, with no `CPU_BOUNDARY/REFUSED` lines. Windows package under
+  Wine (headless): boots, reaches the title and first control, and all 62
+  screenshots are byte-identical to the Linux binary's.
+
 ## 2026-11-25 — source sync 2, no new build
 
 Source only. No new binary. Synced from the development tree at `9f7d1a099`

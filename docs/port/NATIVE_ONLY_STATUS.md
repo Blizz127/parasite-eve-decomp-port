@@ -1,21 +1,45 @@
 # Native-only build: status
 
-**Source status, 2026-11-25.** The published source (development tree
-`541ce991f`) links 31 Psy-Q SDK functions in the game binary (23 runtime,
-8 BIOS), down from 264 at the 2026-10-30 sync; the replacements are host
-providers written from black-box vectors of the original code and the
-psx-spx documentation. No new binary is published with that sync: public
-binaries stay held until the count is 0. The notes below describe the newest
-published binaries.
+**Current release, 2026-11-25:** [`native-only-d5efe5c0`](https://github.com/Blizz127/parasite-eve-decomp-port/releases/tag/native-only-d5efe5c0)
+(Linux x86-64 and Windows x64), built from the development tree at
+`d5efe5c00`. The public source is synced to `2b98ba557`, which adds the
+memory-card BIOS model and thunks the binaries bind.
 
-Current release: [`native-only-ab6de50b`](https://github.com/Blizz127/parasite-eve-decomp-port/releases/tag/native-only-ab6de50b)
-(2026-10-08, Linux x86-64). It was tested on a real disc image on the build
-machine (Day 1 plays through to the opening of Day 2), but it is **untested
-by hand past Day 1** and **not yet tested on real hardware** such as a
-handheld or a gaming PC.
+- **Psy-Q.** Provenance correction (2026-11-26): a file-level provenance audit of the host providers found that the providers covering about 109 of the original SDK functions (SPU, counter and GPU state words, GPU packet and image-transfer workers, CD stream and IRQ delivery, libgte state, libsnd init, save manager) were translated from the matched decompilation or carry no black-box derivation evidence. They are not clean-room, their sources stay unpublished, and they are being re-derived from black-box vectors and psx-spx family by family; each follow-up release lists what moved. The other providers (CD leaves, GTE commands, BIOS card, string and memory entries, MDEC, pad) were written clean-room from vectors. The
+  binary audit (`psyq_port_guard.py --binary --no-sources --require-exe`
+  against the original executable) finds **0 rows**: 0 Psy-Q-classified
+  functions linked in the Linux binary. The Windows exe is the same sources
+  cross-compiled; the symbol-based audit cannot read PE images. The
+  development tree still carries 78 allow-list rows, all **outside** the
+  shipped binaries (21 unlinked definitions, 50 backend-header layering rows,
+  7 libgte test tables).
+- **Tests.** Native suite 1935 run, 1924 passed, 0 failed, 6 skipped (the six
+  quarantined adapter tests), with the disc attached.
+- **Linux binary, full gate.** Cold boot 60 of 60 frames identical to the
+  baseline, audio equal. Day 1 pad-only route with movies to the first boss
+  victory: 187 of 187 sampled frames identical to the baseline, route audio
+  equal. Save and Continue round trip: PASS, card unchanged by loading.
+- **Retail data.** One 40-byte run in each binary, the SPU Gaussian
+  interpolation table `k_gauss` (a documented hardware constant table,
+  allow-listed in the source). No other retail, BIOS or disc bytes.
+- **Verified slice.** Day 1 is verified. Later days run but are less tested.
+- **Windows.** Tested under Wine only (headless smoke: boots, title, first
+  player control, screenshots byte-identical to the Linux binary's). Controller
+  mapping and fullscreen behaviour on real Windows are unverified, and none of
+  the device checks (controller, borderless window, on-screen keyboard) has
+  been run on real hardware.
+- **Source.** The native port does not build from the public tree alone yet:
+  a few providers are still held under provenance audit, and the curated
+  public `pc_port/CMakeLists.txt` and test harness lag the development tree.
 
-It supersedes [`native-only-328511c8`](https://github.com/Blizz127/parasite-eve-decomp-port/releases/tag/native-only-328511c8), which is still
-available. The earlier [`native-only-2918a7f0`](https://github.com/Blizz127/parasite-eve-decomp-port/releases/tag/native-only-2918a7f0) **stops about
+You need your own Parasite Eve (USA) Disc 1 BIN/CUE dump. No game data, BIOS or
+SDK code is included.
+
+**The rest of this page describes the October builds** (`native-only-ab6de50b`
+and earlier, Linux x86-64 only) and is kept for history. Where it says the
+binary contains Psy-Q-derived code, or lists unported calls that stop the
+game, that was true of those builds and not of the current release. The
+earlier [`native-only-2918a7f0`](https://github.com/Blizz127/parasite-eve-decomp-port/releases/tag/native-only-2918a7f0) **stops about
 12 minutes into Day 1** (before the first Eve fight); don't use it.
 
 ## What "native-only" means

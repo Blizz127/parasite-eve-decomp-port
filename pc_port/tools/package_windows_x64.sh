@@ -96,12 +96,14 @@ LAUNCHER
 
 # --- README (CRLF) ---------------------------------------------------------
 cat > "$STAGE/README-WINDOWS.txt" <<'README'
-PARASITE EVE - NATIVE PC PORT - WINDOWS x64 PRIVATE PREVIEW
-============================================================
+PARASITE EVE - NATIVE PC PORT - WINDOWS x64
+===========================================
 
-This is an early, unfinished research build. It is HYBRID: parts of the game
-still run through an interpreter or boundary shims; it is not a finished
-native port. It contains NO game data, NO BIOS and NO Sony / Psy-Q SDK files.
+This is an early, unfinished research build. It is a compiled native build:
+every function that the original binary took from the Psy-Q SDK has been
+replaced by clean-room host providers; 0 Psy-Q-classified functions linked.
+The game runs as compiled host C, with no interpreter and no CPU emulation.
+It contains NO game data, NO BIOS and NO Sony / Psy-Q SDK files.
 You must supply your own Parasite Eve (USA) Disc 1 image.
 
 RUN
@@ -123,6 +125,9 @@ CONTROLS
 Keyboard: arrows = D-pad; Enter/Space/Z/X = Cross; C = Circle; S = Square;
 V = Triangle; Q/E = L1/R1; 1/3 = L2/R2; Tab = Select; P = Start;
 F6 = fast-forward toggle; F8 = dev/Options menu; Escape = quit.
+Dev/Options menu (F8): __DEV_MENU_WORD__ in this build (launcher default
+PE_DEV_MENU=__DEV_MENU__; PE_DEV_MENU=1 or PE_DEV_MENU=0 in the environment
+overrides it).
 Controller: Xbox-compatible pads through XInput (loaded at run time; no
 controller or no XInput = keyboard only).
 
@@ -161,7 +166,9 @@ l = stage / "parasite-eve.cmd"
 t = l.read_text().replace("__DEV_MENU__", dev).replace("__SCALE__", scale)
 l.write_bytes(t.replace("\r\n", "\n").replace("\n", "\r\n").encode())
 r = stage / "README-WINDOWS.txt"
-r.write_bytes(r.read_text().replace("\r\n", "\n").replace("\n", "\r\n").encode())
+word = "ENABLED" if dev == "1" else "DISABLED"
+rt = r.read_text().replace("__DEV_MENU_WORD__", word).replace("__DEV_MENU__", dev)
+r.write_bytes(rt.replace("\r\n", "\n").replace("\n", "\r\n").encode())
 PY
 
 BIN_SHA="$(sha256sum "$STAGE/bin/parasite-eve-port.exe" | cut -d' ' -f1)"

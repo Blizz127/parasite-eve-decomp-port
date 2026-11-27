@@ -1,132 +1,108 @@
 # parasite-eve-decomp-port
 
 Parasite Eve decomp and port: a matching decompilation of Parasite Eve
-(PlayStation, USA, SLUS-00662) and a native Linux port that runs the
-decompiled game code.
+(PlayStation, USA, SLUS-00662) and a native PC port that runs the decompiled
+game code as compiled host C.
 
-> **You need your own disc.** This repository contains no game data, no BIOS
-> and no Sony SDK code. The port reads everything from your own copy of
-> Parasite Eve. See [NOTICE.md](NOTICE.md).
+> **You need your own disc.** This repository and its releases contain no game
+> data, no BIOS and no Sony SDK code. The port reads everything from your own
+> copy of Parasite Eve (USA) Disc 1. See [NOTICE.md](NOTICE.md).
 >
-> **Just want to play?** Jump to [How to play](#how-to-play).
->
-> **Source update (2026-11-25).** The latest release,
-> [`source-20261125`](https://github.com/Blizz127/parasite-eve-decomp-port/releases/tag/source-20261125),
-> is a source-only sync of the development tree (`541ce991f`): the native port
-> now links 31 Psy-Q SDK functions instead of 264, replaced by host providers
-> written from black-box vectors of the original code and psx-spx. It carries
-> **no new binary**: public binaries stay held until that count reaches 0.
-> See [CHANGELOG.md](CHANGELOG.md) and
-> [docs/port/NATIVE_ONLY_STATUS.md](docs/port/NATIVE_ONLY_STATUS.md).
->
-> **Newest playable build (2026-10-10): native-only.** Release
-> [`native-only-e26d98fd`](https://github.com/Blizz127/parasite-eve-decomp-port/releases/tag/native-only-e26d98fd)
-> runs only native C: no MIPS interpreter and no CPU emulation in the game.
-> A function that isn't ported yet stops the game with a
-> `CPU_BOUNDARY/REFUSED` message instead of being emulated (rooms included:
-> they no longer skip missing code silently). On a real disc image it plays
-> Day 1 through to the opening of Day 2. It is untested by hand past Day 1
-> and has not been played on real hardware yet. What works and what doesn't:
-> [docs/port/NATIVE_ONLY_STATUS.md](docs/port/NATIVE_ONLY_STATUS.md).
-> The earlier `native-only-2918a7f0` stops about 12 minutes into Day 1;
-> don't use it. The hardware-tested Day 1 build is still
-> [r5](https://github.com/Blizz127/parasite-eve-decomp-port/releases/tag/day1-r5).
+> **Current build: native-only-d5efe5c0 (2026-11-25).** Release
+> [`native-only-d5efe5c0`](https://github.com/Blizz127/parasite-eve-decomp-port/releases/tag/native-only-d5efe5c0)
+> ships a Linux x86-64 archive and a Windows x64 archive.
+> Jump to [How to play](#how-to-play).
 
 ## About this project
 
-This is a passion project. I'm working hard on it, but it's made for fun and for everyone's enjoyment — free, non-commercial, and made by a fan. If you enjoy it, that's the whole point.
+This is a passion project. I'm working hard on it, but it's made for fun and
+for everyone's enjoyment: free, non-commercial, and made by a fan. If you
+enjoy it, that's the whole point.
 
 ## How to play
 
-This is a native Linux build of Parasite Eve, not an emulator. You need your
-own copy of the game; nothing from the game is included. No BIOS is needed.
-**Day 1 plays from start to finish.**
+This is a native build of Parasite Eve, not an emulator. You need your own
+copy of the game; nothing from the game is included. No BIOS is needed. It is
+an early research preview: **Day 1 is the verified playable slice**; later
+days run but are less tested. Expect rough edges beyond Day 1.
 
 ### 1. Download
 
-From the [r5 release](https://github.com/Blizz127/parasite-eve-decomp-port/releases/tag/day1-r5),
-download **`parasite-eve-day1-day1-r5-16a267b1-linux-x64.tar.gz`**. You can
-also download `SHA256SUMS` if you want to check the file.
+From the
+[`native-only-d5efe5c0` release](https://github.com/Blizz127/parasite-eve-decomp-port/releases/tag/native-only-d5efe5c0),
+download the archive for your system, plus `SHA256SUMS` if you want to check
+the file:
 
-> **What is in the r5 build.** The r5 binary is compiled from the full
-> development tree, so it contains two things this repository's source
-> leaves out:
->
-> - **Psy-Q SDK-derived code:** about 445 functions that translate Sony's
->   Psy-Q libraries (graphics, CD, pad, sound, GTE and others).
-> - **khasinski's upstream code:** credited, and not under this
->   repository's MIT license (see [UPSTREAM_FILES.md](UPSTREAM_FILES.md)).
->
-> It includes no game assets, apart from the PlayStation SPU's 40-byte
-> sound-interpolation table. All of this is being replaced by the project's
-> own code in later releases (a Psy-Q-free port layer).
+| System | Asset |
+|---|---|
+| Linux x86-64 | `parasite-eve-native-only-d5efe5c0-linux-x64.tar.gz` |
+| Windows x64 | `parasite-eve-native-only-d5efe5c0-windows-x64.zip` |
 
-### 2. Install
+SHA-256 of the two archives (the same values are in `SHA256SUMS`):
 
-Unpack it into `~/Games`:
-
-```sh
-mkdir -p ~/Games
-tar xzf ~/Downloads/parasite-eve-day1-day1-r5-16a267b1-linux-x64.tar.gz -C ~/Games
+```
+6b2db2ad65cc56de73503b9104e078a333f472d35ef98e0d22ae3099caf0ff28  parasite-eve-native-only-d5efe5c0-linux-x64.tar.gz
+1afdea4af4cca77afd1e1f577f18b910a335eaae6fb823c448b7545a2fefa448  parasite-eve-native-only-d5efe5c0-windows-x64.zip
 ```
 
-That gives you `~/Games/parasite-eve-day1-day1-r5-16a267b1/`, with the
-launcher `parasite-eve` inside.
+To check on Linux, run `sha256sum -c SHA256SUMS` in the folder that holds the
+downloads.
 
-### 3. Your disc
+### 2. Your disc
 
 You need **Parasite Eve (USA) Disc 1** as a raw **BIN/CUE** image. This is
-the "Redump" kind: one `.bin` of 495,531,120 bytes, next to its `.cue`. An
-`.iso` or `.chd` does not work directly.
+the "Redump" kind: one raw `.bin` (2352 bytes per sector) next to its `.cue`.
+An `.iso` or `.chd` does not work directly.
 
-- **Ripped with a disc tool to BIN/CUE:** use the `.bin` as it is.
-- **You have a `.chd`:** convert it with
-  `chdman extractcd -i "Parasite Eve (USA) (Disc 1).chd" -o "Parasite Eve (USA) (Disc 1).cue" -ob "Parasite Eve (USA) (Disc 1).bin"`.
-  `chdman` comes with MAME. On Bazzite or Steam Deck, install `mame-tools`
-  in a distrobox.
+If you have a `.chd`, convert it with
+`chdman extractcd -i "Parasite Eve (USA) (Disc 1).chd" -o "Parasite Eve (USA) (Disc 1).cue" -ob "Parasite Eve (USA) (Disc 1).bin"`.
+`chdman` comes with MAME.
 
-Put the `.bin` and `.cue` in a folder of their own:
+Nothing needs to be extracted from the disc. The port reads the image
+directly.
 
-```
-~/Games/parasite-eve/disc/Parasite Eve (USA) (Disc 1).bin
-~/Games/parasite-eve/disc/Parasite Eve (USA) (Disc 1).cue
-```
-
-Nothing needs to be extracted. The port reads the image directly and checks
-it on start.
-
-### 4. Run it
+### 3a. Run on Linux
 
 ```sh
-~/Games/parasite-eve-day1-day1-r5-16a267b1/parasite-eve ~/Games/parasite-eve/disc
+tar -xzf parasite-eve-native-only-d5efe5c0-linux-x64.tar.gz
+cd parasite-eve-day1-preview
+./parasite-eve-preview "/path/to/Parasite Eve (USA) (Disc 1).bin"
 ```
 
-You can pass the folder, the `.bin` or the `.cue`. It starts fullscreen. For
-a window instead:
+The disc argument may be the Disc 1 `.bin`, its `.cue`, or the folder that
+holds them. Extra arguments go to the game, for example
+`./parasite-eve-preview disc1.bin --scale 4`.
 
-```sh
-PE_WINDOWED=1 ~/Games/parasite-eve-day1-day1-r5-16a267b1/parasite-eve ~/Games/parasite-eve/disc
+Requirements: 64-bit Linux with glibc and `libX11.so.6` (loaded at runtime;
+Wayland desktops and Steam Game Mode use XWayland). Controllers use
+`libSDL2-2.0.so.0` when present. Sound uses `libpulse-simple.so.0`
+(PipeWire's pulse compatibility provides it; the game is silent without it).
+Under Steam Game Mode / gamescope it starts fullscreen; `PE_FULLSCREEN=0`
+keeps a window. The package's `README-PREVIEW.txt` lists the controller
+environment variables and more detail.
+
+### 3b. Run on Windows
+
+1. Unzip anywhere (a normal user folder). The game writes its save under
+   `%APPDATA%\parasite-eve-port`.
+2. Create a folder named `disc` next to `parasite-eve.cmd` and put your Disc 1
+   `.bin` and `.cue` in it.
+3. Double-click `parasite-eve.cmd`, or run it from Command Prompt. To use a
+   disc kept elsewhere:
+
+```bat
+set PE_DISC=D:\dumps\Parasite Eve (USA) (Disc 1).bin
+parasite-eve.cmd
 ```
 
-To run it without typing the disc path every time, save the path once:
+Extra arguments go to the game, for example `parasite-eve.cmd --scale 4`;
+`--fullscreen` opens a borderless full-screen window. Requirements: 64-bit
+Windows 10 or later, nothing else to install. The package's
+`README-WINDOWS.txt` has the list of files the game writes.
 
-```sh
-mkdir -p ~/.config/parasite-eve-port
-echo "disc1=$HOME/Games/parasite-eve/disc" > ~/.config/parasite-eve-port/config
-```
-
-After that, `~/Games/parasite-eve-day1-day1-r5-16a267b1/parasite-eve` alone
-is enough, and you can double-click it in a file manager.
-
-### 5. Steam Deck / Bazzite Game Mode
-
-1. In Desktop Mode, save the disc path once (the `config` step above).
-2. In Steam, choose **Games → Add a Non-Steam Game → Browse**. Pick
-   `~/Games/parasite-eve-day1-day1-r5-16a267b1/parasite-eve`.
-3. Switch to Game Mode and start it from your library. No launch options are
-   needed.
-4. Controller: the built-in controls work as a standard Xbox-style gamepad.
-   Use Steam's default "Gamepad" layout.
+**The Windows build was tested under Wine only.** It is cross-compiled from
+the same sources as the Linux build. Controller mapping, fullscreen behaviour,
+audio devices and everything else on real Windows are unverified.
 
 ### Controls
 
@@ -142,65 +118,68 @@ is enough, and you can double-click it in a file manager.
 | Select | Back / View | Tab |
 | Start | Start / Menu | P |
 | Fast-forward on/off | L3 (click left stick) | F6 |
-| Fast-forward while held | R3 (click right stick) | — |
-| Quit | — | Esc |
+| Fast-forward while held | R3 (click right stick) | none |
+| Quit | none | Esc |
 
-Keyboard and controllers work at the same time. You can plug a controller in
-or remove it while the game runs.
-
-**Dev menu (cheats; off unless you press them):** F1 shows the help. The
-other keys are F2 god mode, F3 infinite ammo and full PE, F4 win the current
-battle, F5 key items, F6 fast-forward and F7 fast-forward speed. F8 opens the
-warp menu: Up/Down chooses, Enter warps, F8 closes it. Use warps while
-walking around in the field. "CHEATS" shows in the corner while any cheat is
-on.
-
-### Saves
-
-Memory card saves go to `~/.local/share/parasite-eve-port/memcard1.mcd`.
-They survive updates, because the install folder is never written to.
+Keyboard and controllers work at the same time. On Linux, controllers are
+read through SDL2's game controller layer and you can plug one in or remove
+it while the game runs; on Windows, Xbox-compatible pads work through XInput.
+In Steam, a non-Steam game shortcut gets Steam Input's virtual pad; set the
+controller layout to "Gamepad" if Steam shows a desktop or mouse layout.
+The developer menu is off in this build.
 
 ### Troubleshooting
 
-- **Nothing happens when I double-click it.** The launcher didn't find your
-  disc. Run it from a terminal with the disc path (step 4) and read the
-  message.
 - **"not a raw 2352-byte/sector BIN".** You gave it an `.iso` or a converted
-  image. Use the `.bin` from a BIN/CUE dump (or convert the `.chd`, step 3).
-- **The disc is rejected at start.** The port checks for USA Disc 1
-  (SLUS-00662). A different region, Disc 2, or a modified image is refused,
-  with a message saying why.
-- **"no X display".** Run it from a desktop session or Game Mode.
-  Wayland desktops provide one through XWayland.
-- **`GLIBC_2.34' not found`.** Your Linux is too old. The build needs
-  glibc 2.34 or newer: a 2021-or-later distribution, including SteamOS 3
-  and Bazzite.
-- **No sound.** Sound needs `libpulse-simple.so.0`, which PipeWire provides
-  on current distributions. If sound crackles, try
-  `PE_AUDIO_LATENCY_MS=150`.
-- **The controller does nothing.** Check that `ls -l /dev/input/js*` lists a
-  device your user can read. If Square and Triangle are swapped, set
+  image. Use the `.bin` from a BIN/CUE dump (or convert the `.chd`).
+- **"no X display" (Linux).** Run it from a desktop session or Game Mode.
+- **No sound (Linux).** Sound needs `libpulse-simple.so.0`. If sound
+  crackles, try `PE_AUDIO_LATENCY_MS=150`.
+- **The controller does nothing (Linux).** Try `PE_PAD_DEBUG=1` to print the
+  controller devices; if Square and Triangle are swapped, set
   `PE_PAD_SWAP_XY=1`.
-- **Logs:** every run writes `~/.local/state/parasite-eve-port/logs/run-<time>.log`
-  (the last 10 are kept). Include the newest one, with the time and room and
-  a screenshot, when you report a bug.
-
-Known issues in r5:
-
-- Using some equipment or tool items from the field menu may stop the game.
-  Healing items are fine.
-- Loading screens are shorter than on a real PlayStation.
-- Aya's gun model may be missing when she readies it.
+- **The game stops with a `CPU_BOUNDARY/REFUSED` line.** That names a game
+  function that has no native version yet. Please report it.
+- **Reporting a bug.** Include the build id from `build-info.json` in the
+  package folder, the room and time, and the console output.
 
 ### FAQ
 
 - **Do I need a PlayStation BIOS?** No.
-- **Is the game included?** No. There are no game files, music or movies.
-  You must own the disc, and the port reads your copy.
-- **How far does it go?** Day 1 plays from start to finish: the opera,
-  Carnegie Hall, the sewers and the alligator boss, with the movies. Days 2
-  to 6 and Disc 2 are in progress.
-- **Windows?** Not yet. This release is Linux x86-64 only.
+- **Is the game included?** No. There are no game files, music or movies. You
+  must own the disc, and the port reads your copy.
+- **How far does it go?** Day 1 (the opera and the first boss) is the
+  verified playable slice. Later days run but are less tested.
+- **Windows?** Yes, as a Wine-tested preview; see above.
+- **Can I build the port from this repository?** Not yet; see
+  [Build from source](#build-from-source).
+
+## What is in the current build
+
+- **Native claim.** The game executes as compiled host C, with no interpreter
+  and no CPU emulation. The symbol-based Psy-Q audit
+  (`psyq_port_guard.py --binary --require-exe`, run against the original
+  executable) finds **0 Psy-Q-classified functions linked** in the Linux
+  binary, and the memory-card BIOS entries forward to the port's own card
+  model, which saves to a local card file. Provenance correction (2026-11-26): a file-level provenance audit of the host providers found that the providers covering about 109 of the original SDK functions (SPU, counter and GPU state words, GPU packet and image-transfer workers, CD stream and IRQ delivery, libgte state, libsnd init, save manager) were translated from the matched decompilation or carry no black-box derivation evidence. They are not clean-room, their sources stay unpublished, and they are being re-derived from black-box vectors and psx-spx family by family; each follow-up release lists what moved. The other providers (CD leaves, GTE commands, BIOS card, string and memory entries, MDEC, pad) were written clean-room from vectors.
+- **Verified.** Native test suite 1935 run, 1924 passed, 0 failed, 6 skipped
+  (the six quarantined adapter tests), with the disc attached. On the Linux
+  binary: cold boot 60 of 60 frames identical to the baseline with audio
+  equal; the Day 1 pad-only route with movies to the first boss victory,
+  187 of 187 sampled frames identical to the baseline with route audio equal;
+  and a save and Continue round trip, which passes with the card unchanged by
+  loading. The Windows package was smoke-tested under Wine (headless): it
+  boots, reaches the title and first player control, and every screenshot
+  matches the Linux binary's.
+- **Retail-data scan.** One 40-byte run in each binary: the SPU Gaussian
+  interpolation table `k_gauss`, a documented hardware constant table. No
+  other retail, BIOS or disc bytes.
+- **Known limits.** Windows is tested under Wine only. Later days are less
+  tested. This is a preview; please report issues.
+
+Details and the full list of what was checked:
+[docs/port/NATIVE_ONLY_STATUS.md](docs/port/NATIVE_ONLY_STATUS.md) and the
+[release notes](https://github.com/Blizz127/parasite-eve-decomp-port/releases/tag/native-only-d5efe5c0).
 
 ## What is here
 
@@ -210,7 +189,9 @@ Known issues in r5:
   difference is the Psy-Q SDK functions and two functions with retail
   tables, which are split from your disc as assembly instead.
 - `pc_port/`: the native port, including the host layer (window, input,
-  audio, saves), the disc checks, the opt-in cheats, and its tests.
+  audio, saves), the host providers that replace the Psy-Q SDK code (clean-room
+  ones published, translated ones held until re-derived), the disc checks, the
+  opt-in cheats, and its tests.
 - `configs/`: splat and symbol configuration (addresses and names only).
 - `tools/`, `scripts/`, `dev/`: the analysis tools, including the retail-data
   and Psy-Q guards, the build scripts and the build container.
@@ -256,27 +237,52 @@ docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD":/workspace \
 Everything the build writes (`build/`, `asm/`, `assets/`) is git-ignored,
 and your disc is only read.
 
-**The native port** (`pc_port/`) can't be built from this repository yet.
-The files that still translate Psy-Q SDK code are being replaced by the
-project's own port layer, and they are not published. The prebuilt release
-is the way to play until then.
+**The native port** (`pc_port/`) does not build from this repository alone
+yet. This is work in progress. The public source now holds the clean-room
+host providers that replace the Psy-Q SDK code, but a few providers are still
+held while their provenance is audited, and the curated public copies of
+`pc_port/CMakeLists.txt` and the test harness lag the development tree and are
+being made public-ready. The prebuilt release archives are the runnable
+deliverable until then. The matching retail rebuild above is unaffected.
 
 ## Status
 
-Day 1 is playable from start to finish on the port (r5), and movies play in
-real time. Since 2026-10-07 the port is **native only**: the game binary has
-no MIPS interpreter or CPU emulation, and the sound driver runs as native C.
-The native-only build plays Day 1 to the opening of Day 2 on a real disc
-image; it has not been played on real hardware yet. The calls that still stop
-it are listed in
-[docs/port/NATIVE_ONLY_STATUS.md](docs/port/NATIVE_ONLY_STATUS.md). Every known difference from the PlayStation original is logged in
+Since 2026-10-07 the port is **native only**: the game binary has no MIPS
+interpreter or CPU emulation, and the sound driver runs as native C. A game
+function that has no native version yet is never emulated; the game stops and
+prints a `CPU_BOUNDARY/REFUSED` line that names it. As of 2026-11-25 the
+Linux binary links 0 Psy-Q-classified functions by the symbol-based audit (see
+the provenance correction above: about 109 SDK functions are still covered by
+translated providers under re-derivation); the current release is
+[`native-only-d5efe5c0`](https://github.com/Blizz127/parasite-eve-decomp-port/releases/tag/native-only-d5efe5c0).
+Day 1 is the verified playable slice; later days run but are less tested.
+Nothing has been played on real Windows hardware, and the device checks
+(controller, borderless window, on-screen keyboard) have not been run.
+See [docs/port/NATIVE_ONLY_STATUS.md](docs/port/NATIVE_ONLY_STATUS.md). Every
+known difference from the PlayStation original is logged in
 [docs/port/KNOWN_DIVERGENCES.md](docs/port/KNOWN_DIVERGENCES.md).
+
+## Earlier builds
+
+These are kept for history. Use `native-only-d5efe5c0` above.
+
+- [`native-only-e26d98fd`](https://github.com/Blizz127/parasite-eve-decomp-port/releases/tag/native-only-e26d98fd)
+  (2026-10-10, Linux x86-64): native C only, no MIPS interpreter. It played
+  Day 1 through to the opening of Day 2 on a real disc image.
+- [`day1-r5`](https://github.com/Blizz127/parasite-eve-decomp-port/releases/tag/day1-r5)
+  (Linux x86-64): the hardware-tested Day 1 build. Day 1 plays from start to
+  finish with the movies. It contains about 445 Psy-Q-derived functions and
+  credited upstream code (see [UPSTREAM_FILES.md](UPSTREAM_FILES.md)).
+- [`native-only-2918a7f0`](https://github.com/Blizz127/parasite-eve-decomp-port/releases/tag/native-only-2918a7f0)
+  stops about 12 minutes into Day 1; don't use it.
 
 ## Credits and license
 
 - Credits: [CREDITS.md](CREDITS.md), covering khasinski's decompilation, the
   tools and the libraries. The imported files are listed in
-  [UPSTREAM_FILES.md](UPSTREAM_FILES.md).
+  [UPSTREAM_FILES.md](UPSTREAM_FILES.md). The Windows package also ships the
+  AMD FidelityFX FSR 1 (MIT) license and the SDL_GameControllerDB (zlib)
+  license under `LICENSES\`.
 - License: [LICENSE](LICENSE) (MIT), for this project's original work only.
 - Legal notice and disclaimer: [NOTICE.md](NOTICE.md). Parasite Eve is ©
   Square Enix. This project is not affiliated with or endorsed by Square
