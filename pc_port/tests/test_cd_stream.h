@@ -28,6 +28,9 @@ static void CDSTREAM_SeedCase(unsigned k)
     PE_StoreU32(0x8009B34Cu,CDSTREAM_cases[k].busy?0x8013001Cu:0x1F801098u);
     PE_StoreU32(0x8013001Cu,CDSTREAM_cases[k].busy?0x01000000u:0u);
     PE_StoreU32(0x801FFE88u,0x55667788u);
+    /* the native handler's persistent frame window (0x801FFE80..9F): +8 = the oracle's frame word (0x55667788, the stale FIFO header word the record word at +0x1C copies when the FIFO is not read by hand),
+     * +0x10 = the ready-result slot, zero as in the oracle (pe_cd_stream_oracle.py zeroes the original's result bytes) */
+    for(unsigned i=0;i<8;i++) PE_StoreU8(0x801FFE90u+i,0u);
 }
 static void test_cd_stream_source_stack_alias(void)
 {
@@ -86,7 +89,10 @@ static void test_DAY2_cd_stream(void)
                PE_CdLoadU32(0x1F801020u)==CDSTREAM_cases[k].mailbox &&
                (PE_CdReg_ReadU32(PE_CDREG_BASE)>>24)==CDSTREAM_cases[k].request,"stream register writes differ");
         if(CDSTREAM_cases[k].boundary) {
-            const char *names[]={"", "func_8007C564_sector_fifo","func_8007CEAC","func_8007AAB4","func_8007C564_auxiliary_callback"};
+            /* Boundary columns of the regenerated fixtures (pe_cd_stream_oracle.py: the original continues THROUGH the sector FIFO helper and
+         * resumes after the DMA issuer / owner callback; the host stop is what the clean-room handler's seams still raise in this idle
+         * harness).  1 = sector FIFO (no longer a stop: the column is 0 for fifo-boundary), 2 = the DMA issuer's DRQ wait, 4 / 5 = the owner callback. */
+            const char *names[]={"", "func_8007C564_sector_fifo","func_8007CEAC_drq","func_8007AAB4","CD stream end-of-frames callback (0x800B0CCC)","CD stream ring-wrap callback (0x800B0CCC)"};
             ASSERT(PE_Port_GetStopReason()==PE_PORT_STOP_UNRESOLVED_BOUNDARY &&
                 CountOrderLog(names[CDSTREAM_cases[k].boundary])==1,"stream unsupported callee was not stopped");
         } else ASSERT(!PE_Port_ShouldStop()&&!g_stub_order_count,"stream RAM path unexpected boundary");

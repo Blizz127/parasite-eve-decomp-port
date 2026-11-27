@@ -20,7 +20,7 @@ What is new relative to pe_cdx_vectors.cases():
  * per-call callee return sequences (ack types, VSync progressions) so retry / timeout loops run to their exits;
  * a side file OUT.classes (line number -> verbatim | perturbed | discovery) for the report's per-class tables.
 
-Usage: pe_cdx_cdhost_vectors.py OUT.txt [-n N] [--capture F ..] [--only ENTRY] [--tuple-cap K] [--silent]
+Usage: pe_cdx_cdhost_vectors.py OUT.txt [-n N] [--capture F ..] [--only ENTRY] [--tuple-cap K] [--silent] [--stop A,B]
   --silent: the diagnostic-text callees (printf 0x80071A74, puts 0x80073C5C) are silent stops (not recorded, no effect)
 """
 import hashlib
@@ -291,7 +291,7 @@ def run_one(base, entry, sp, sysc, s, kind, tup, x_extra, D, tuples_for_base, ov
         x = perturb(ram, x, tup, args, sp, D)
     elif kind == 'discovery':
         x = seed_words(ram, x, D)
-    x = entry_hw(entry, ram, x, args) if kind != 'verbatim' else x       # a verbatim tuple keeps the observed register reads
+    x = entry_hw(entry, ram, x, args) if kind != 'verbatim' or HW_ON_VERBATIM[0] else x       # a verbatim tuple keeps the observed register reads (--hw-on-verbatim: replaced by the poll-wait model)
     for (a, sz), val in sorted((k_, v_) for k_, v_ in (ov or {}).items()):          # explorer overrides: one word each, applied last
         off = a & 0x1FFFFF
         if sz == 1:
@@ -455,6 +455,8 @@ def gen_entry(base, entry, n, tuples, tuple_cap, stats, pool):
     sp = m.SPEC[entry]
     sysc = m.syscall_pcs(base, entry)
     c._check_callees_complete(base, entry, tuple(sp['callees']) + tuple(sp.get('inline', ())), inline=tuple(sp.get('inline', ())))
+    for cb_ in STOP_EXTRA:
+        sp['callees'].setdefault(cb_, 2)
     for t in tuples:
         # real callback targets seen at runtime are stopped like the sentinels (arity 2, results scripted)
         for tok in t['calls']:
@@ -462,13 +464,15 @@ def gen_entry(base, entry, n, tuples, tuple_cap, stats, pool):
             if f[0] in ('G', 'D') and len(f) > 1 and int(f[1], 16) not in sp['callees']:
                 sp['callees'][int(f[1], 16)] = 2
     tuples = tuples[:tuple_cap]
-    D = collect_D(base, entry, sp, sysc, tuples) if tuples else collect_D_pool(base, entry, sp, sysc, pool)
+    D = set() if VERBATIM_ONLY[0] else collect_D(base, entry, sp, sysc, tuples) if tuples else collect_D_pool(base, entry, sp, sysc, pool)
     n_ver = len(tuples)
-    n_pert = (n - n_ver) // 2 if tuples else 0
+    n_pert = 0 if VERBATIM_ONLY[0] else (n - n_ver) // 2 if tuples else 0
+    if VERBATIM_ONLY[0]:
+        n = n_ver
     plan = [dict(kind='verbatim', tup=t, ov=None, s=None) for t in tuples]
     plan += [dict(kind='perturbed', tup=tuples[i % len(tuples)], ov=None, s=None) for i in range(n_pert)]
     want_disc = n - len(plan)
-    kept, runs = explore(base, entry, sp, sysc, pool, tuples, want_disc, EXPLORE_RUNS.get(entry, 600))
+    kept, runs = ([], 0) if VERBATIM_ONLY[0] else explore(base, entry, sp, sysc, pool, tuples, want_disc, EXPLORE_RUNS.get(entry, 600))
     explored = len(kept)
     plan += [dict(kind='discovery', tup=t, ov=ov, s=s, explored=True) for s, t, ov in kept[:want_disc]]
     plan += [dict(kind='discovery', tup=None, ov=None, s=None)] * max(0, n - len(plan))
@@ -518,6 +522,9 @@ def gen_entry(base, entry, n, tuples, tuple_cap, stats, pool):
     return out, classes
 
 
+STOP_EXTRA = []              # --stop A,B: extra stopped callees (arity 2) for every generated entry, in addition to the runtime-observed callback targets
+HW_ON_VERBATIM = [False]     # --hw-on-verbatim: the wait model (k not-ready reads before ready) on top of the verbatim tuples' arguments and RAM state
+VERBATIM_ONLY = [False]      # --verbatim-only: every given tuple once, verbatim, nothing else (the credits-leg sets)
 EXPLORE_RUNS = {0x8007C564: 3000, 0x8007CEAC: 1500, 0x8007B558: 800, 0x8007B010: 400}
 
 
@@ -555,6 +562,14 @@ def main():
             del argv[i:j]
         elif '--only' in argv:
             i = argv.index('--only'); only = int(argv[i + 1], 16); del argv[i:i + 2]
+        elif '--stop' in argv:
+            i = argv.index('--stop')
+            STOP_EXTRA.extend(int(t, 16) for t in argv[i + 1].split(',') if t)     # extra stopped callees (arity 2): real callback targets the runtime provider never called
+            del argv[i:i + 2]
+        elif '--hw-on-verbatim' in argv:
+            argv.remove('--hw-on-verbatim'); HW_ON_VERBATIM[0] = True
+        elif '--verbatim-only' in argv:
+            argv.remove('--verbatim-only'); VERBATIM_ONLY[0] = True
         elif '--tuple-cap' in argv:
             i = argv.index('--tuple-cap'); tcap = int(argv[i + 1]); del argv[i:i + 2]
         else:

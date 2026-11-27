@@ -184,20 +184,34 @@ static void test_HOOKREG_cd_vblank_registry_tail(void)
     PASS();
 }
 
-/* Stream oracle cases 50 and 54 reach the D_800B0CCC jalr at 0x8007CA90
- * (status 7 follows) and 0x8007CB34 (status 8, $a0 = D_800A34A0). */
+/* The two stream oracle rows that reach the D_800B0CCC jalr at 0x8007CA90 (status 7 follows; frame limit init[14] != 0) and 0x8007CB34
+ * (status 8, $a0 = D_800A34A0; init[14] == 0) are selected BY PROPERTY, not by index, so a regeneration of retail_cd_stream_cases.h cannot move
+ * them: the first row of the auxiliary-callback class (boundary column 4, or 5 for the ring-wrap callback of the regenerated table) with the
+ * wanted init[14] condition. */
+static int HOOKREG_FindAuxCase(int frame_limit_nonzero)
+{
+    for (unsigned k = 0; k < sizeof(CDSTREAM_cases) / sizeof(CDSTREAM_cases[0]); k++)
+        if ((CDSTREAM_cases[k].boundary == 4u || CDSTREAM_cases[k].boundary == 5u) &&
+            (CDSTREAM_cases[k].init[14] != 0u) == (frame_limit_nonzero != 0))
+            return (int)k;
+    return -1;
+}
+
 static void test_HOOKREG_cd_aux_registry_continues(void)
 {
-    static const struct { unsigned k; uint32_t status; int rec_a0; } c[] = {
-        {50u, 7u, 0}, {54u, 8u, 1}};
+    static const struct { uint32_t status; int rec_a0; } c[] = {
+        {7u, 0}, {8u, 1}};
     TEST("HOOKREG_cd_aux_registry_continues");
     for (unsigned i = 0; i < 2u; i++) {
         pe_addr_t rec;
         uint32_t advance;
-        ASSERT(CDSTREAM_cases[c[i].k].boundary == 4u &&
-               (CDSTREAM_cases[c[i].k].init[14] != 0u) == !c[i].rec_a0,
+        int ki = HOOKREG_FindAuxCase(!c[i].rec_a0);
+        ASSERT(ki >= 0 &&
+               (CDSTREAM_cases[ki].boundary == 4u || CDSTREAM_cases[ki].boundary == 5u) &&
+               (CDSTREAM_cases[ki].init[14] != 0u) == !c[i].rec_a0,
                "fixture: case is not the expected auxiliary-hook site");
-        CDSTREAM_SeedCase(c[i].k);
+        unsigned k = (unsigned)ki;
+        CDSTREAM_SeedCase(k);
         PE_StoreU32(0x800B0CCCu, HOOKREG_WITNESS);
         PE_StoreU32(HOOKREG_SLOT, HOOKREG_SENTINEL);
         rec = PE_LoadU32(0x800C0DC8u) + (PE_LoadU32(0x800BE998u) << 5);

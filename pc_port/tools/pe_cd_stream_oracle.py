@@ -71,8 +71,12 @@ def main():
           (0x9B35C,0x80130018),(0x9B34C,0x8013001C)):sw(r,a,v)
         r[0x130000:0x130020]=bytes(32);sw(r,0x13001C,0x01000000 if busy else 0)
         sw(r,0x1FEFE8,0x55667788);r[0x1FEFF0:0x1FEFF8]=bytes(8)
-        # A physical FIFO and DMA submission cannot be executed by the RAM interpreter.
-        stops=(0x80073A44,0x8007C70C,0x8007CEAC,0x80170000)
+        # A physical DMA submission and the owner callback cannot be executed by the RAM interpreter: they are stopped callees
+        # (VSync, the DMA issuer 0x8007CEAC, the callback word target 0x80170000).  Since the clean-room stream handler runs the
+        # sector FIFO read itself, the original continues THROUGH the FIFO helper 0x8007C70C (run inline, relocated MMIO) and,
+        # at the DMA issuer and the callback, RESUMES after the call with $v0 = 0 (the call is a recorded stop, the original keeps
+        # going to its normal end) instead of freezing the image at the stop.  `boundary` still names the host stop the suite sees.
+        stops=(0x80073A44,0x8007CEAC,0x80170000)
         regs=execute(r,0x8007C564,stop_at=stops,instruction_budget=500000)
         boundary=0
         while regs[31]:
@@ -81,12 +85,13 @@ def main():
                 regs[2]=0
                 regs=execute(r,ret,initial_regs=dict(enumerate(regs)),stop_at=stops,instruction_budget=500000)
                 continue
-            if name=='fifo-boundary':boundary=1
-            elif name=='dma-boundary':boundary=2
+            if name=='dma-boundary':boundary=2
             elif name=='interrupt-boundary':boundary=3
-            elif 'callback' in name:boundary=4
+            elif name=='frame-end-callback':boundary=4
+            elif name=='wrap-callback':boundary=5
             else:raise AssertionError((name,hex(ret)))
-            break
+            regs[2]=0
+            regs=execute(r,ret,initial_regs=dict(enumerate(regs)),stop_at=stops,instruction_budget=500000)
         rows.append((name,init,h,occupied,first,busy,seed,boundary,digest(r,RANGES),*struct.unpack_from('<2I',r,0x130010),r[0x130003]))
     # Status priority, result copy, aliases and empty nonblocking result.
     for hi,lo,dst,mode in itertools.product((0,1,5,255),(0,2,5),(0x80140000,0),(1,256)):

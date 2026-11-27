@@ -836,15 +836,6 @@ set(FIELD_RUNTIME_SRCS
 # translated retail graph and its host-safe providers, but not the CLI entry
 # point or the X11 presentation adapter.  Creating this target does not claim
 # that the currently translated graph is a complete Day 1 field runtime.
-# The clean-room stream handler (platform/pe_plat2_cdhost_stream.c) matches the 778 cdgen47 vectors but not yet the suite's deeper
-# stream states (record publication, payload copy): until the deep vector set is replayed to zero, the previous stream provider
-# stays in the build (it defines the same symbol, pe_plat_cdhost_stream, through the cd.h binding macro).  Set
-# -DPE_CDHOST_LEGACY_STREAM=OFF to build the clean-room one.
-option(PE_CDHOST_LEGACY_STREAM "Build the previous stream handler provider instead of the clean-room pe_plat2_cdhost_stream.c" ON)
-if(PE_CDHOST_LEGACY_STREAM)
-    list(REMOVE_ITEM FIELD_RUNTIME_SRCS platform/pe_plat2_cdhost_stream.c)
-    list(APPEND FIELD_RUNTIME_SRCS platform/pe_plat_cd_stream_handler_host.c)
-endif()
 add_library(pe_field_runtime STATIC ${FIELD_RUNTIME_SRCS})
 # The translated stream engine keeps its own func_8008CB54 / func_8008CBA8 definitions: they stay
 # compiled but unreferenced by the generated callers, which bind to pe_plat/cdx_spu.h.
