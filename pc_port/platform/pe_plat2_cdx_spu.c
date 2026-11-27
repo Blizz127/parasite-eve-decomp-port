@@ -202,6 +202,7 @@ void pe_plat_cdxspu_reverb_transition(uint32_t mode)
     if (mode == PE_LoadU32(W_REVERB_MODE)) return;
     (void)func_80085A64(0);
     (void)func_8008CF70((int)(mode | 0x100u));
+    if (PE_Port_ShouldStop()) return;     /* the mode change's pending DMA ended in a stop: the reverb stays off */
     (void)func_80085A64(1);
 }
 
@@ -314,29 +315,55 @@ int pe_plat_cdxspu_stream_dispatch(void)
 
 /* ---------------------------------------------------------------- SPU DMA */
 
+/* Bounded halfword register poll of the DMA setup: reads register `reg` (offset in the SPU block; the base pointer word
+ * is loaded once per poll loop) at most WAIT_POLLS times until (value & mask) == want, one port-clock tick per failed
+ * read.  Returns 1 when the condition held, 0 after WAIT_POLLS reads that all failed (the original goes on silently,
+ * see the timeout sequences of the cdgen48 fault set: 3841 reads), -1 when a stop was requested (host contract). */
+static int spu_reg_poll(uint32_t reg, uint32_t mask, uint32_t want)
+{
+    uint32_t addr = PE_LoadU32(W_SPU_BASE) + reg, n;
+    for (n = 0; n < WAIT_POLLS; n++) {
+        if (PE_Port_ShouldStop()) return -1;
+        if (((uint32_t)PE_LoadU16(addr) & mask) == want) return 1;
+        pe_plat_sio_poll_tick();
+    }
+    return 0;
+}
+
 /* Start one DMA channel 4 transfer of `size` bytes (clamped) between guest RAM at `address` and the
  * SPU transfer address; `read` selects the direction.  The transfer address register takes the stored
- * address value masked to (32 - shift) bits, SPUCNT takes the DMA transfer mode, SPU_DELAY its DMA
- * priority bits (shared leaves), and the DMA channel registers are programmed with the 64-byte block
- * count last.  Returns the clamped size. */
+ * address value masked to (32 - shift) bits and is polled back until it holds that value; SPUCNT takes the DMA
+ * transfer mode and is polled until its transfer-mode bits (5-4) hold it; SPU_DELAY its DMA priority bits (shared
+ * leaves), and the DMA channel registers are programmed with the 64-byte block count last.  Each poll is bounded
+ * (WAIT_POLLS reads) and a timeout is silent.  Fault sequences (cdgen48 `upload_fault`, black-box):
+ *   - the transfer address register never reads back the stored value: after the polls, the direction word is
+ *     stored, SPUCNT is polled (still without being written) and the transfer is NOT started;
+ *   - SPUCNT never shows the mode bits after its write: the transfer is NOT started.
+ * Whether the SPUCNT poll compares the mode bits only or the whole register is not determined by the vectors (every
+ * row's readback either equals the stored value or differs in the mode bits).  Returns the clamped size. */
 static uint32_t spu_dma_issue(uint32_t address, uint32_t size, int read)
 {
     uint32_t clamped = size > DMA_MAX_BYTES ? DMA_MAX_BYTES : size;
     uint32_t blocks = (clamped + (DMA_BLOCK - 1u)) / DMA_BLOCK;
     uint32_t shift = PE_LoadU32(W_SHIFT) & 31u;
     uint32_t tsa = ((uint32_t)PE_LoadU16(H_XFER_ADDR) << shift) >> shift;
-    uint32_t base;
+    uint32_t base, mode = read ? SPUCNT_DMAR : SPUCNT_DMAW;
     uint16_t cnt;
+    int w;
 
     PE_StoreU16(H_XFER_ADDR, (uint16_t)tsa);
     base = PE_LoadU32(W_SPU_BASE);
     PE_StoreU16(base + R_XFER_ADDR, (uint16_t)tsa);
-    (void)PE_LoadU16(PE_LoadU32(W_SPU_BASE) + R_XFER_ADDR);     /* the register is read back once */
+    w = spu_reg_poll(R_XFER_ADDR, 0xFFFFu, tsa & 0xFFFFu);
+    if (w < 0) return clamped;
     PE_StoreU32(W_DMA_DIR, read ? 1u : 0u);
+    if (w == 0) {
+        (void)spu_reg_poll(R_SPUCNT, SPUCNT_XFER, mode);
+        return clamped;
+    }
     cnt = PE_LoadU16(PE_LoadU32(W_SPU_BASE) + R_SPUCNT);
-    PE_StoreU16(PE_LoadU32(W_SPU_BASE) + R_SPUCNT,
-                (uint16_t)((cnt & ~SPUCNT_XFER) | (read ? SPUCNT_DMAR : SPUCNT_DMAW)));
-    (void)PE_LoadU16(PE_LoadU32(W_SPU_BASE) + R_SPUCNT);        /* ... and the control register */
+    PE_StoreU16(PE_LoadU32(W_SPU_BASE) + R_SPUCNT, (uint16_t)((cnt & ~SPUCNT_XFER) | mode));
+    if (spu_reg_poll(R_SPUCNT, SPUCNT_XFER, mode) != 1) return clamped;
     if (read) func_8007DC84(); else func_8007DC5C();            /* SPU_DELAY priority bits */
     PE_StoreU32(W_DMA_SRC, address);
     PE_StoreU32(W_DMA_BLOCKS, blocks);

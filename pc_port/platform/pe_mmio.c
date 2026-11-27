@@ -275,11 +275,44 @@ static const PeMmioReg *find_reg(uint32_t a, size_t size)
     return NULL;
 }
 
+/* Byte / halfword access inside the DPCR / DICR words (0x1F8010F0..F7).  The DMA controller registers are 32-bit registers
+ * the CPU may also reach a byte or halfword at a time (the CD DMA issue code reads and writes the DICR byte at 0x1F8010F6,
+ * bits 16..23: the channel IRQ enables and the master enable).  A load returns the selected bytes of the word; a store
+ * replaces the selected bytes of bits 0..23 and leaves the DICR acknowledge flags (bits 24..30, write-one-to-clear) alone
+ * unless the store covers byte 3, whose bits are written as the acknowledge mask (psx-spx "DMA Channels / DICR").
+ * Provenance: psx-spx (DICR is byte-addressable) and the black-box vector set cdgen47 dma (the CD DMA issue code accesses the
+ * DICR byte 0x1F8010F6); added with the clean-room pe_plat2_cdhost_dma.c (docs/evidence/native-cdx-20261126/cdhost-author). */
+static int is_dma_ctl_part(uint32_t a, size_t size)
+{
+    return a >= 0x1F8010F0u && a + size <= 0x1F8010F8u &&
+           (size == 1 || (size == 2 && !(a & 1u)));
+}
+
+static uint32_t dma_ctl_word(uint32_t a) { return (a & 4u) ? PE_GPU_ReadDICR() : PE_GPU_ReadDPCR(); }
+
+static uint32_t dma_ctl_part_load(uint32_t a, size_t size)
+{
+    uint32_t v = dma_ctl_word(a) >> (8u * (a & 3u));
+    return size == 1 ? (v & 0xFFu) : (v & 0xFFFFu);
+}
+
+static void dma_ctl_part_store(uint32_t a, size_t size, uint32_t value)
+{
+    uint32_t shift = 8u * (a & 3u);
+    uint32_t mask = (size == 1 ? 0xFFu : 0xFFFFu) << shift;
+    uint32_t base = dma_ctl_word(a);
+    if (a & 4u) base &= 0x00FFFFFFu;                   /* DICR: no acknowledge bits unless this store supplies them */
+    uint32_t word = (base & ~mask) | ((value << shift) & mask);
+    if (a & 4u) { PE_GPU_WriteDICR(word); PE_IRQ_ObserveDicrWrite(word); }
+    else PE_GPU_WriteDPCR(word);
+}
+
 int PE_MMIO_IsModelled(pe_addr_t address, size_t size)
 {
     uint32_t a = canon(address);
     if (is_otc_dma_word(a,size) || is_gpu_dma_word(a,size) || is_mdec_dma_word(a, size) || is_mdec_word(a, size) || is_gpu_word(a, size) || is_cd_read(a, size) || is_cd_dma_word(a, size)) return 1;
     if (is_spu_volume(a, size)) return 1;
+    if (is_dma_ctl_part(a, size)) return 1;
     if (is_spu(a, size))
         return (size == 2 && !(a & 1u)) || (size == 4 && !(a & 3u)) || size == 1;
     return find_reg(a, size) != NULL;
@@ -357,6 +390,10 @@ uint32_t PE_MMIO_Load(pe_addr_t address, size_t size)
             mmio_fatal("load (unaligned SPU)", address, size);
         return v;
     }
+    if (is_dma_ctl_part(canon(address), size)) {
+        PE_MMIO_Commit();
+        return dma_ctl_part_load(canon(address), size);
+    }
     const PeMmioReg *r = find_reg(canon(address), size);
     if (!r || !r->read)
         mmio_fatal("load", address, size);
@@ -412,6 +449,11 @@ void PE_MMIO_Store(pe_addr_t address, size_t size, uint32_t value)
         PE_MMIO_Commit();
         if (!spu_store(canon(address), size, value))
             mmio_fatal("store (byte/unaligned SPU)", address, size);
+        return;
+    }
+    if (is_dma_ctl_part(canon(address), size)) {
+        PE_MMIO_Commit();
+        dma_ctl_part_store(canon(address), size, value);
         return;
     }
     const PeMmioReg *r = find_reg(canon(address), size);

@@ -14,7 +14,7 @@ static int initialize_callbacks(int bind_host)
     PE_StoreU32(0x800A36A8u,0u);
     PE_StoreU32(0x800A36A4u,0u);
     PE_StoreU32(0x800A36A0u,0u);
-    pe_plat_cd_initialize_state();
+    pe_plat_cdxstream_initialize_state();
     pe_plat_cd_set_guarded_state(0u);
     PE_StoreU32(0x8009AFB4u,0x80080164u);
     PE_StoreU32(0x8009AFB8u,0x80080778u);

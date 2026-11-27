@@ -21,11 +21,13 @@
 #define PE_SDK_H
 
 #include <stdint.h>
+#include "pe_plat/cdhost.h"   /* the six CD host entries (clean-room implementations; binds func_8007AAB4/B010/B558/BF44/C564/CEAC) */
 #include "pe_guest_ram.h"
 #include "pe_plat/cd.h"
 #include "pe_plat/state.h"
 #include "pe_plat/ctl.h"
 #include "pe_plat/cdx_save.h"
+#include "pe_plat/cdx_stream.h"
 #include "pe_plat/gpu_address.h"
 #include "pe_plat/gpuaddr.h"
 #include "pe_plat/gpu_primitive.h"
@@ -61,12 +63,8 @@ void func_80085DC4(int callback);
 uint32_t func_80085E54(pe_addr_t source, uint32_t size);
 int func_80085F14(int mode);
 int func_8007A488(int mode, pe_addr_t pe_result);
-void pe_plat_cd_stream_handler_host(void);
-#define func_8007C564 pe_plat_cd_stream_handler_host
 void func_8007C564(void);
 void func_8007C13C(void);
-void pe_plat_cd_dma_issue_host(uint32_t channel,pe_addr_t address,uint32_t blocks,uint32_t words,uint32_t control,uint32_t interrupt,uint32_t unused);
-#define func_8007CEAC pe_plat_cd_dma_issue_host
 void func_8007CEAC(uint32_t channel,pe_addr_t address,uint32_t blocks,uint32_t words,
                     uint32_t control,uint32_t interrupt,uint32_t unused);
 void func_8007F960(uint32_t status, pe_addr_t response);
@@ -76,7 +74,6 @@ void func_800812F4(unsigned int value);
 void func_8007FE24(void);
 void func_800800F4(void);
 int pe_plat_cd_initialize_device_host(void);
-#define func_8007BBFC pe_plat_cd_initialize_device_host
 int func_8007BBFC(void);
 void func_8007FA2C(void);
 void func_8007E5C4(void);
@@ -84,7 +81,7 @@ void func_8007E964(uint32_t status, pe_addr_t response);
 void func_80080164(uint32_t status, pe_addr_t response);
 void func_8007EB88(uint32_t sequence, uint32_t status, pe_addr_t response);
 void func_8007E704(uint32_t status, pe_addr_t response);
-/* Address-keyed data-ready callback dispatcher owned by cd_stream_port.c.
+/* Address-keyed data-ready callback dispatcher (platform/pe_plat2_cdx_stream_seams.c).
  * Retail dispatches D_8009AFB8 / D_8009AFB4 / D_800A36A4 / D_800B8AB4
  * through indirect calls; the translated-tree targets are native leaves, so
  * every poll loop that consumes func_8007AAB4 events (7C13C, 7B010, 7B558,
@@ -293,8 +290,6 @@ int func_8007FC64(pe_addr_t pe_result);
 int func_8007F418(uint32_t sequence,pe_addr_t response);
 int func_80080DC4(int command,pe_addr_t param,pe_addr_t response);
 /* CdGetSector: one DMA3 sector-buffer transfer (game/boot/cd_stream_port.c). */
-int pe_plat_cd_sector_dma_host(uint32_t dst,uint32_t count);
-#define func_8007BF44 pe_plat_cd_sector_dma_host
 int func_8007BF44(unsigned int a0,unsigned int a1);
 int  func_80080D5C(int command, pe_addr_t param, pe_addr_t result);
 /* 1 when a CD provider serves XA-ADPCM streaming through the libcd queue
@@ -303,7 +298,7 @@ int PE_Cd_XaServiceAvailable(void);
 /* 1 when the active disc has the file a guest name string names (pe_libcd.c). */
 int PE_Cd_FilePresent(pe_addr_t guest_name);
 /* Mid-game register-level device attachment for a CD-XA consumer: the two
- * hooks host-mode DsInit skips, saved and restored (game/boot/cd_stream_port.c). */
+ * hooks host-mode DsInit skips, saved and restored (platform/pe_plat2_cdx_stream_seams.c). */
 typedef struct { pe_addr_t irq2, vsync0; int attached; } PeCdAttach;
 int  PE_Cd_AttachDevice(PeCdAttach *saved);
 void PE_Cd_DetachDevice(const PeCdAttach *saved);
@@ -336,7 +331,6 @@ int func_8007C2A0(int a0);
 pe_addr_t func_8007A4BC(pe_addr_t callback);
 void func_8007A8EC(unsigned int value);
 void pe_plat_cd_shutdown_stream_host(void);
-#define func_8007A2A4 pe_plat_cd_shutdown_stream_host
 void func_8007A2A4(void);
 void func_8007C394(uint32_t sector); /* stream-record index update */
 int  func_8007F0C8(uint32_t mode, pe_addr_t loc, int count, uint32_t a3,
@@ -351,14 +345,8 @@ int  func_8007FCBC(int a0, int a1);   /* libcd 0x8007FCBC (hand port, misc_hi_po
  * code for known targets, else the guest-code registry / loud boundary. */
 uint32_t PE_Card_ICall(const char *slot, pe_addr_t fn, unsigned arity,
                        uint32_t a0, uint32_t a1, uint32_t a2);
-int pe_plat_cd_acknowledge_host(void);
-#define func_8007AAB4 pe_plat_cd_acknowledge_host
 int  func_8007AAB4(void);            /* CD acknowledge-poll worker (stop) */
-int pe_plat_cd_status_poll_host(uint32_t mode,uint32_t dst);
-#define func_8007B010 pe_plat_cd_status_poll_host
 int  func_8007B010(uint32_t cmdi, pe_addr_t buf); /* CD status-poll prefix */
-int pe_plat_cd_command_issue_host(uint32_t cmd,uint32_t input,uint32_t dst,uint32_t mode);
-#define func_8007B558 pe_plat_cd_command_issue_host
 int  func_8007B558(uint32_t cmd, uint32_t data, pe_addr_t dst,
                    uint32_t mode);   /* CD command-issue controller */
 int  func_8007FCFC(uint32_t cmd, uint32_t data); /* CD issue wrapper */

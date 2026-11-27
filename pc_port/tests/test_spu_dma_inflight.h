@@ -288,14 +288,14 @@ static void test_SPUFL_bad_shift_issue_stops(void)
     char err[512];
     TEST("SPUFL_bad_shift_issue_stops");
     SPUFL_Reset(SPUFL_A_SPU);
-    PE_StoreU32(0x8009B424u, 32u);
+    /* The register-level upload (pe_plat2_cdx_spu.c spu_write, cdgen48 vectors with shifts 0..31) takes any address shift
+     * 0..31 like retail's variable shifts: the old host model refused shifts above 11, retail does not. */
+    PE_StoreU32(0x8009B424u, 31u);
     ASSERT(SPUFL_Captured(SPUFL_CallIssueA, err, sizeof err),
            "cannot capture stderr");
     PE_SpuDma_GetState(&state);
-    ASSERT(PE_Port_GetStopReason() == PE_PORT_STOP_UNRESOLVED_BOUNDARY,
-           "an unrepresentable transfer-address shift did not stop");
-    ASSERT(strstr(err, "SPU_DMA/REFUSED func_8007D9F8: transfer-address shift 32") != NULL,
-           "stop line does not name the shift");
-    ASSERT(state.pending == 0, "a refused issue started DMA4");
+    ASSERT(!PE_Port_ShouldStop() && state.pending == 1,
+           "a shift the retail code accepts must start the transfer without a stop");
+    ASSERT(strstr(err, "SPU_DMA/REFUSED") == NULL, "an accepted shift was refused");
     PASS();
 }

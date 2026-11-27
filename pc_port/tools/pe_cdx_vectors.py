@@ -30,10 +30,11 @@ arguments are only those the spec says the callee takes (leftover argument
 registers are not compared) and n is how many stores the original had made
 before the call (the checker compares distinct bytes).
 
-Usage: pe_cdx_vectors.py OUT.txt BATCH [ENTRY ...] [-n N] [-regonly] [-edge]
+Usage: pe_cdx_vectors.py OUT.txt BATCH [ENTRY ...] [-n N] [-regonly] [-edge] [-variant NAME]
+       (-variant: cdgen48 only; NAME in '' (inline, register level), bound (80085F44 / 80085E54 stopped), fault (stuck TSA / sticky SPUCNT hardware models))
        (-edge: cdgen46 only; the retry callees return arbitrary nonzero success values instead of the documented 1 / 0xF1000000+n)
        (-regonly: the register-level-only entries of the batch, which have no smoke checker; see REPORT)
-       BATCH in cdgen42, cdgen42b, cdgen44, cdgen45, cdgen46 (cdgen43 is split between this file
+       BATCH in cdgen42, cdgen42b, cdgen44, cdgen45, cdgen46, cdgen48 (cdgen43 is split between this file
        for the libetc veneers and pe_cdx_irq_vectors.py for the IRQ dispatcher).
 """
 import os
@@ -121,6 +122,42 @@ BIOS_STOPS = (0xA0, 0xB0, 0xC0)
 CLASS32 = (0, 1, 2, 3, 0x7F, 0x80, 0xFF, 0x100, 0x7FFFFFFF, 0x80000000, 0xFFFFFFFF, 0x10000, 0x12345678)
 EDGE = (0, 1, 2, 3, 0x7F, 0x80, 0xFF, 0x100, 0x101, 0x7FFF, 0x8000, 0xFFFF, 0x10000, 0x7FFFFFFF, 0x80000000, 0xFFFFFFFF)
 
+# ---- register-level hardware models for cdgen48 (default off: empty dicts leave every other batch byte-identical) --------
+# REGSEQ[halfword offset] = [values, reads]: the i-th 16-bit read of that register returns values[i] (last repeats), written
+# into the register page just before the load (like MEMSEQ for plain words); the read is logged as usual (L), so the checker
+# replays it in order.  STUCK = set of halfword offsets whose STORE is accepted by the CPU (logged in S) but not latched
+# by the device (the readback keeps the old value): a harness model of a hardware fault, never original behaviour.
+REGSEQ = {}
+STUCK = set()
+_prev_load = pl._ns['LOAD']
+_prev_store = v._store
+
+
+def _reg_load(fmt, buf, a):
+    m = REGSEQ.get(a & ~1)
+    if m is not None and struct.calcsize(fmt) <= 2:
+        vals = m[0]
+        struct.pack_into('<H', buf, a & ~1, vals[min(m[1], len(vals) - 1)] & 0xFFFF)
+        m[1] += 1
+    return _prev_load(fmt, buf, a)
+
+
+def _reg_store(fmt, buf, a, val):
+    if STUCK and (a & ~1) in STUCK:
+        return
+    return _prev_store(fmt, buf, a, val)
+
+
+pl._ns['LOAD'] = _reg_load
+v._store = _reg_store
+
+
+def _reset_models():
+    c.MEMSEQ.clear()
+    REGSEQ.clear()
+    STUCK.clear()
+    c.SPU_STICKY[0] = 0
+
 # ------------------------------------------------ public-header aliases
 # `#define func_X pe_plat_name` in include/pe_plat/*.h: several retail entries bound to one
 # host symbol are one callee as far as a provider can tell; vectors name it by the lowest address.
@@ -202,7 +239,7 @@ def run_case(ram, entry, args, rets, sp, sysc, models=None):
         pcs |= set(BIOS_STOPS)
     for _ in range(c.CALL_CAP[0]):
         st = Stops(pcs)
-        r = v.execute(ram, pc, (), stop_at=st, initial_regs=regs, instruction_budget=100000, **xkw)
+        r = v.execute(ram, pc, (), stop_at=st, initial_regs=regs, instruction_budget=sp.get('budget', 100000), **xkw)
         hit = st.hit
         if hit == v.RET or hit is None:
             return r[2] & 0xFFFFFFFF, list(pl.LOADS), list(pl.STORES), calls
@@ -244,7 +281,23 @@ def run_case(ram, entry, args, rets, sp, sysc, models=None):
             regs = dict(enumerate(r))
             pc = r[31]
             continue
+        if hit in sp.get('silent', ()):       # cdgen47: diagnostic-text callees (printf / puts) run as a silent stop, not recorded
+            r[2] = 0
+            regs = dict(enumerate(r))
+            pc = r[31]
+            continue
         n = sp['callees'][hit]
+        if hit == 0x80071A74 and sp.get('printf_fmt'):
+            # cdgen47: retail printf records the format pointer and exactly the arguments the format consumes (the other argument
+            # registers are leftovers); the format string words are appended to the loads so the checker can count the conversions
+            fa = r[4] & 0xFFFFFFFF
+            n = 1 + min(3, c._printf_arity(ram, fa))
+            a0_ = fa & 0x1FFFFC
+            while a0_ < len(ram) - 4:
+                pl.LOADS.append((0x80000000 + a0_, 4, struct.unpack_from('<I', ram, a0_)[0]))
+                if 0 in ram[a0_:a0_ + 4] or (a0_ + 4 - (fa & 0x1FFFFC)) > 256:
+                    break
+                a0_ += 4
         rec = [canon(hit)] + [x & 0xFFFFFFFF for x in r[4:4 + min(n or 0, 4)]]
         for k in range(4, n or 0):          # o32: arguments 5.. are in the caller's outgoing area at sp+0x10 (cdgen46)
             rec.append(struct.unpack_from('<I', ram, (r[29] + 0x10 + 4 * (k - 4)) & 0x1FFFFF)[0])
@@ -296,7 +349,7 @@ def discover(base, entry, sp, pilots=100):
         except (AssertionError, struct.error, IndexError):   # includes MipsBreak
             continue
         finally:
-            c.MEMSEQ.clear()
+            _reset_models()
             c.CdIrq.active = False
         for key2 in {((a & ~3) if sz < 4 else a, sz) for a, sz, _val in r[1] if _is_state(a)}:
             seen.setdefault(key2[0], {}).setdefault(key2[1], 0)
@@ -405,7 +458,7 @@ def cases(base, entry, n=200, extra=None):
             spun += 1
             continue
         finally:
-            c.MEMSEQ.clear()
+            _reset_models()
             c.CdIrq.active = False
         if c.UNFAITHFUL[0]:
             dropped += 1
@@ -431,6 +484,10 @@ def main():
     if EDGE46:
         argv.remove('-edge')
         globals()['EDGE46'] = True
+    if '-variant' in argv:
+        i = argv.index('-variant')
+        globals()['VARIANT'] = argv[i + 1]
+        del argv[i:i + 2]
     regonly = '-regonly' in argv
     if regonly:
         argv.remove('-regonly')

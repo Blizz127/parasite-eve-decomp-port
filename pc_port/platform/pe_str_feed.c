@@ -24,6 +24,7 @@
 #include "pe_gpu.h"
 #include "pe_cdreg.h"
 #include "pe_spu_dma.h"
+#include "pe_sdk.h"
 
 #define GA_RING_BASE    0x800C0DC8u
 #define GA_RING_COUNT   0x800C20C4u
@@ -161,7 +162,29 @@ int PE_StrFeed_Probe(pe_addr_t bcd_location)
     if (msf < 150u || msf - 150u >= PE_Disc_UserSectorCount(disc) ||
         !PE_Disc_ReadRawSector(disc, msf - 150u, raw))
         return 0;
-    return IsStreamSector(raw);
+    if (!IsStreamSector(raw))
+        return 0;
+    /* PE_TEST_CD_MOVIE_DEVICE=1: COVERAGE FIXTURE, default off, host model only.
+     * Declines the host feeder for a real stream location and attaches the
+     * register-level CD device (kept attached), so func_80081314 issues the
+     * retail ReadS through the libds queue and the data-ready chain runs the
+     * stream handler and DMA issuer.  Not play evidence, not retail behaviour
+     * (KNOWN_DIVERGENCES #5 is the intended production path). */
+    if (getenv("PE_TEST_CD_MOVIE_DEVICE") != NULL) {
+        static PeCdAttach fixture_attach;
+        static int announced;
+        if (!announced) {
+            announced = 1;
+            fprintf(stderr, "[PE_TEST_CD] MOVIE_DEVICE fixture: feeder declined, attaching CD device (location %02X:%02X:%02X)\n",
+                    PE_LoadU8(bcd_location), PE_LoadU8(bcd_location + 1u), PE_LoadU8(bcd_location + 2u));
+        }
+        if (!PE_CdReg_DeviceEnabled() && !fixture_attach.attached) {
+            int ok = PE_Cd_AttachDevice(&fixture_attach);
+            fprintf(stderr, "[PE_TEST_CD] MOVIE_DEVICE attach=%d\n", ok);
+        }
+        return 0;
+    }
+    return 1;
 }
 
 void PE_StrFeed_Reset(void)

@@ -58,23 +58,50 @@ static uint32_t wlog[8192], nwlog;
 static int bad_read, bad_call; static const char *trap_name;
 static unsigned long runaway;
 static jmp_buf case_escape; static int escape_armed;
-static int in_frame(pe_addr_t a) { return a >= PE_GUEST_FRAME_LO && a < PE_GUEST_FRAME_HI; }
+/* The candidate's fixed host scratch window (0x801FFE80 .. 0x801FFEA0: the 0xE command parameter byte of the stream pump at 0x801FFE90 and the
+ * CD stream handler's own frame, result bytes at +0x10 and FIFO bytes at +8 from 0x801FFE80 (cdhost author, extends the same mapping), the slot the
+ * project fixtures reach at the standard sp 0x801FFF00) is the same slot the vectors record as an own-frame pointer F+n
+ * (oracle entered in isolation at a lower sp).  It is treated as own-frame: reads/writes are unlogged, pointers into it
+ * compare as F+offset, and it is out of the final RAM diff.  -DCDX_STRICT_FRAME_PTR restores the raw comparison. */
+#define CDX_SCRATCH_LO 0x801FFE80u
+#define CDX_SCRATCH_HI 0x801FFEA0u
+#ifdef CDX_STRICT_FRAME_PTR
+static int in_scratch(pe_addr_t a) { (void)a; return 0; }
+#else
+static int in_scratch(pe_addr_t a) { return a >= CDX_SCRATCH_LO && a < CDX_SCRATCH_HI; }
+#endif
+static int in_frame(pe_addr_t a) { return (a >= PE_GUEST_FRAME_LO && a < PE_GUEST_FRAME_HI) || in_scratch(a); }
 static uint32_t mlog[1024][3]; static unsigned nmlog;
 #ifndef CDX_SEED_ZERO
 static uint8_t canary_img[MEM];                 /* the seed image of unseeded RAM */
 static uint32_t ostore[MEM];                    /* generation mark: byte stored by the original's S list in this case */
 static uint8_t canary_byte(uint32_t b) { return (uint8_t)(0xC5u ^ ((b ^ (b >> 8) ^ (b >> 16)) & 0x7Fu)); }
-static int cdx_exempt(uint32_t b) { return (b >= (PE_GUEST_FRAME_LO & (MEM - 1)) && b < (PE_GUEST_FRAME_HI & (MEM - 1))) || (b >= 0x1FE000u && b < 0x1FF000u); }
+static int cdx_exempt(uint32_t b) { return (b >= (PE_GUEST_FRAME_LO & (MEM - 1)) && b < (PE_GUEST_FRAME_HI & (MEM - 1))) || (b >= 0x1FE000u && b < 0x1FF000u) || in_scratch(0x80000000u + b); }
 #endif
 static uint32_t rq[16384][3]; static unsigned nrq, rq_pos;
 static uint32_t last_w_addr; static unsigned last_w_size;
 static int is_reg(pe_addr_t a) { return (a >> 16) == 0x1F80u; }
+/* Optional (a checker sets it before the first case): one non-register word whose loads are replayed in order, like register
+ * reads, from the vector's L list (cdgen48: the DMA-completion flag 0x8009D24C, whose clearing is a harness hook).  0 = off. */
+static pe_addr_t replay_extra;
+/* Optional (cdgen48): the "@n" write-timing of a callee record counts logged stores (PE_StoreU*).  A provider that writes through
+ * PE_Translate pointers has no logged store, so its "@0" cannot be told from a reordering; with this flag set a timing-only
+ * mismatch (same callee, order and arguments) is counted as `timing_unobservable` instead of failing when the provider made
+ * no logged store at all in the case.  Default 0 = the strict behaviour of the older checkers. */
+static int timing_needs_logged_stores; static unsigned timing_unobservable;
+static int is_replay(pe_addr_t a) { return is_reg(a) || (replay_extra && a == replay_extra); }
 static int loose_reads;   /* CDX_LOOSE_READS=1: an extra read of PLAIN RAM the original never made is not a mismatch (no observable effect); register reads stay replayed in order */
 static int mmio_read(pe_addr_t a, unsigned n, uint32_t *v)
 {
-    if (!is_reg(a)) return 0;
+    if (!is_replay(a)) return 0;
     if (rq_pos >= nrq || rq[rq_pos][0] != a || rq[rq_pos][1] != n) {
         bad_read = 1; *v = 0;
+        if (getenv("CDX_SERVE_ANY")) {   /* diagnostic (default off): serve the read from the first unconsumed recorded read of the same address and width, any order; the case still fails */
+            unsigned j;
+            for (j = rq_pos; j < nrq; j++)
+                if (rq[j][0] == a && rq[j][1] == n) { *v = rq[j][2]; fprintf(stderr, "  native R %08X/%u -> %X (SERVED OUT OF ORDER from recorded read #%u)\n", (unsigned)a, n, *v, j); return 1; }
+        }
+        if (getenv("CDX_TRACE")) fprintf(stderr, "  native R %08X/%u -> NOT REPLAYABLE (next recorded read: %s)\n", (unsigned)a, n, rq_pos < nrq ? "see L" : "none");
         if (escape_armed && ++runaway > 1000000ul) longjmp(case_escape, 1);
         return 1;
     }
@@ -104,6 +131,7 @@ static void wr(pe_addr_t a, unsigned n)
 static void mmio_store(pe_addr_t a, unsigned n, uint32_t v)
 {
     if (is_reg(a) && nmlog < 1024) { mlog[nmlog][0] = a; mlog[nmlog][1] = n; mlog[nmlog][2] = v; nmlog++; }
+    if (is_reg(a) && getenv("CDX_TRACE")) fprintf(stderr, "  native W %08X/%u <- %X\n", (unsigned)a, n, v);
 }
 uint8_t PE_LoadU8(pe_addr_t a) { uint32_t m; if (mmio_read(a, 1, &m)) return (uint8_t)m; rd(a, 1); return ram[a & (MEM - 1)]; }
 uint16_t PE_LoadU16(pe_addr_t a) { uint16_t v; uint32_t m; if (mmio_read(a, 2, &m)) return (uint16_t)m; rd(a, 2); memcpy(&v, ram + (a & (MEM - 1)), 2); return v; }
@@ -138,7 +166,7 @@ static uint32_t ret_of(uint32_t fn)
 }
 static void fmt_got(char *o, size_t n, uint32_t v)
 {
-    if (v >= PE_GUEST_FRAME_LO && v < 0x801FF000u) {   /* sw-cdx-stream2 de6617fc9: the whole 0x801FE000..FFF own-frame window */
+    if ((v >= PE_GUEST_FRAME_LO && v < 0x801FF000u) || in_scratch(v)) {   /* sw-cdx-stream2 de6617fc9: the whole 0x801FE000..FFF own-frame window; sw-cdx-stream3: also the fixed scratch slot */
         if (!got_fset) { got_fbase = v; got_fset = 1; }
         snprintf(o, n, "F%+d", (int)(v - got_fbase));
     } else snprintf(o, n, "%08X", v);
@@ -150,13 +178,13 @@ static void fmt_want(char *o, size_t n, uint32_t v)
         snprintf(o, n, "F%+d", (int)(v - want_fbase));
     } else snprintf(o, n, "%08X", v);
 }
-/* Record a call to callee `fn` taking `n` guest arguments; return its scripted result. */
-static uint32_t cdx_callee(uint32_t fn, unsigned n, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4)
+/* Record a call to callee `fn` taking `n` guest arguments (up to 8: cdgen47 records the 5th..7th, the stack words of the
+ * retail 7-argument 0x8007CEAC, as ordinary values); return its scripted result. */
+static __attribute__((unused)) uint32_t cdx_calleeN(uint32_t fn, unsigned n, const uint32_t *a)
 {
-    char t[200], p[24]; uint32_t a[5]; unsigned i; char sfx[24];
-    a[0] = a0; a[1] = a1; a[2] = a2; a[3] = a3; a[4] = a4;
+    char t[200], p[24]; unsigned i; char sfx[24];
     snprintf(t, sizeof t, "%08X", fn);
-    for (i = 0; i < n && i < 5; i++) {
+    for (i = 0; i < n && i < 8; i++) {
         fmt_got(p, sizeof p, a[i]);
         strncat(t, ",", sizeof t - strlen(t) - 1);
         strncat(t, p, sizeof t - strlen(t) - 1);
@@ -166,6 +194,11 @@ static uint32_t cdx_callee(uint32_t fn, unsigned n, uint32_t a0, uint32_t a1, ui
     ngot++;
     if (escape_armed && ngot > 50000u) longjmp(case_escape, 1);   /* a native stuck in a retry loop around a stand-in */
     return ret_of(fn);
+}
+static __attribute__((unused)) uint32_t cdx_callee(uint32_t fn, unsigned n, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4)
+{
+    uint32_t a[8] = {0}; a[0] = a0; a[1] = a1; a[2] = a2; a[3] = a3; a[4] = a4;
+    return cdx_calleeN(fn, n, a);
 }
 #define CALLEE(sym, fn, n) \
     uint32_t sym(uintptr_t a, uintptr_t b, uintptr_t c, uintptr_t d, uintptr_t e) \
@@ -187,7 +220,7 @@ static unsigned host_only_calls;
  * (retail value, 32-bit) to the width of the public prototype's parameter.  Default: compared as is. */
 static uint32_t (*want_norm)(uint32_t fn, unsigned idx, uint32_t v);
 static int call(uint32_t entry, const uint32_t *a, uint32_t *ret);   /* batch dispatcher: 1 = returns a value, 0 = void, -1 unknown */
-static int mutant;   /* 0 native, 1 noop, 2 flip */
+static int mutant;   /* 0 native, 1 noop, 2 flip (retflip+storeflip), 3 poke0, 4 same (canary controls), 5 retflip (return only), 6 storeflip (last guest write only) */
 
 #ifndef CDX_SEED_ZERO
 /* canary-mode diagnostics: classification of every final-image difference / footprint extra, aggregated per (entry, word) */
@@ -283,7 +316,7 @@ int main(int argc, char **argv)
     unsigned n = 0, bad = 0, i;
     if (argc < 2 || !(f = fopen(argv[1], "r"))) { fprintf(stderr, "usage: check vectors.txt [noop|flip]\n"); return 2; }
     loose_reads = getenv("CDX_LOOSE_READS") != NULL;
-    if (argc > 2) mutant = !strcmp(argv[2], "noop") ? 1 : !strcmp(argv[2], "flip") ? 2 : !strcmp(argv[2], "poke0") ? 3 : !strcmp(argv[2], "same") ? 4 : 0;
+    if (argc > 2) mutant = !strcmp(argv[2], "noop") ? 1 : !strcmp(argv[2], "flip") ? 2 : !strcmp(argv[2], "poke0") ? 3 : !strcmp(argv[2], "same") ? 4 : !strcmp(argv[2], "retflip") ? 5 : !strcmp(argv[2], "storeflip") ? 6 : 0;
 #ifndef CDX_SEED_ZERO
     { uint32_t b; for (b = 0; b < MEM; b++) canary_img[b] = cdx_exempt(b) ? 0 : canary_byte(b); }
 #endif
@@ -309,7 +342,7 @@ int main(int argc, char **argv)
         for (k = (unsigned)li + 1; k < (unsigned)si; k++) {
             unsigned addr, size, val;
             if (!strcmp(tok[k], "-")) continue;
-            if (sscanf(tok[k], "%x:%u=%x", &addr, &size, &val) == 3 && is_reg(addr)) {
+            if (sscanf(tok[k], "%x:%u=%x", &addr, &size, &val) == 3 && is_replay(addr)) {
                 if (nrq < 16384) { rq[nrq][0] = addr; rq[nrq][1] = size; rq[nrq][2] = val; nrq++; }
                 continue;
             }
@@ -362,8 +395,9 @@ int main(int argc, char **argv)
         if (setjmp(case_escape)) { escape_armed = 0; bad_read = 1; has = 0; got = 0; }
         else { escape_armed = 1; has = call(entry, a, &got); escape_armed = 0; }
         if (has < 0) { fprintf(stderr, "unknown entry %08X\n", entry); return 2; }
-        if (mutant == 2) { if (has) got ^= 1u; if (last_w_size) ram[last_w_addr & (MEM - 1)] ^= 1u; else ram[0x1000] ^= 1; }
-        if (mutant >= 3) {   /* positive controls for the canary: stores the original never made (see the header comment) */
+        if (mutant == 2 || mutant == 5) { if (has) got ^= 1u; }   /* flip = retflip + storeflip */
+        if (mutant == 2 || mutant == 6) { if (last_w_size) ram[last_w_addr & (MEM - 1)] ^= 1u; else ram[0x1000] ^= 1; }
+        if (mutant == 3 || mutant == 4) {   /* positive controls for the canary: stores the original never made (see the header comment) */
             uint32_t w;
             for (w = mutant == 3 ? 0x100000u : 0u; w + 4 <= MEM; w += 4) {
                 uint32_t b0 = w, ok4 = 1; unsigned q;
@@ -389,7 +423,8 @@ int main(int argc, char **argv)
                     unsigned j;
                     for (j = 0; j < 4; j++)
                         if (ram[k + j] != expect[k + j] && !((k + j) >= lo && (k + j) < hi) &&
-                            !((k + j) >= 0x1FE000u && (k + j) < 0x1FF000u)) FAILC(4);
+                            !((k + j) >= 0x1FE000u && (k + j) < 0x1FF000u) &&
+                            !in_scratch(0x80000000u + k + j)) FAILC(4);
                 }
             }
         }
@@ -453,7 +488,7 @@ int main(int argc, char **argv)
                      * category 7 (write timing); anything else: category 6 */
                     const char *ga = strchr(got_calls[want_c], '@'), *wa = strchr(w, '@');
                     if (ga && wa && (size_t)(ga - got_calls[want_c]) == (size_t)(wa - w) &&
-                        !strncmp(got_calls[want_c], w, (size_t)(wa - w))) FAILC(7); else FAILC(6);
+                        !strncmp(got_calls[want_c], w, (size_t)(wa - w))) { if (timing_needs_logged_stores && nwlog == 0) timing_unobservable++; else FAILC(7); } else FAILC(6);
                 }
                 want_c++;
             }
@@ -462,6 +497,7 @@ int main(int argc, char **argv)
         { unsigned q; for (q = 0; q < CDX_NCAT; q++) cat_count[q] += (unsigned)cat_hit[q]; }
         if (!ok) {
             entry_bad[slot]++;
+            if (getenv("CDX_LINES")) fprintf(stderr, "FAILLINE %u\n", n);
             if (bad++ < (getenv("CDX_MAXPRINT") ? (unsigned)atoi(getenv("CDX_MAXPRINT")) : 8u) && !mutant) {
                 unsigned q;
                 fprintf(stderr, "MISMATCH line %u entry %08X (%s%s%s) %.160s\n", n, entry, bad_read ? "read outside original loads; " : "",
@@ -480,7 +516,8 @@ int main(int argc, char **argv)
             }
         }
     }
-    printf("mode=%s checked %u cases, %u mismatches (host-only calls ignored: %u)\n", mutant == 1 ? "noop" : mutant == 2 ? "flip" : "native", n, bad, host_only_calls);
+    printf("mode=%s checked %u cases, %u mismatches (host-only calls ignored: %u)\n", mutant == 1 ? "noop" : mutant == 2 ? "flip" : mutant == 3 ? "poke0" : mutant == 4 ? "same" : mutant == 5 ? "retflip" : mutant == 6 ? "storeflip" : "native", n, bad, host_only_calls);
+    if (timing_unobservable) printf("  callee write-timing not observable (provider made no logged store): %u records\n", timing_unobservable);
     for (i = 0; i < nentry; i++) printf("  %08X cases=%u mismatches=%u\n", entry_id[i], entries_seen[i], entry_bad[i]);
 #ifndef CDX_SEED_ZERO
     printf("canary: original S stores of 0 to never-seeded bytes: %u stores, %u distinct words (the blind set under zero seeding)\n", zero_unseeded_entries, zero_unseeded_distinct);

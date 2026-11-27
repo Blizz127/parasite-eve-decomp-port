@@ -58,4 +58,6 @@ uint32_t pe_plat_spu_read(int guest_destination, unsigned int size);
 #include "pe_plat/spu_b.h"
 /* The cdgen44 SPU / stream leaves (cdx-spu) bind in pe_plat/cdx_spu.h. */
 #include "pe_plat/cdx_spu.h"
+/* The SPU data upload family (800850F4/C0, 80085174/98) binds in pe_plat/spu_upload.h. */
+#include "pe_plat/spu_upload.h"
 #endif

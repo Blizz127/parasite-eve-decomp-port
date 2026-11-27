@@ -20,9 +20,6 @@ func	0x800738D8	pc_port/game/decomp/func_800738D8_port.c
 func	0x80075C94	pc_port/game/decomp/func_80075C94_port.c
 func	0x80077C84	pc_port/game/boot/func_80077C84_port.c
 func	0x8007D778	pc_port/game/decomp/func_8007D778_port.c
-func	0x8007F7E8	pc_port/game/boot/cd_stream_port.c
-func	0x8007F88C	pc_port/game/boot/cd_stream_port.c
-func	0x80080778	pc_port/game/boot/cd_stream_port.c
 table	libgte_ratan_tbl	pc_port/tests/retail_enemy_tick_cases.h
 table	libgte_ratan_tbl	pc_port/tests/retail_item_execution_cases.h
 table	libgte_ratan_tbl	pc_port/tests/retail_pe_action_cases.h

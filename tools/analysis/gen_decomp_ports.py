@@ -704,19 +704,19 @@ DEAD_SDK_UNLINKED = {
 }
 
 PE_PLAT_REPLACED = {
-    "func_8007FA2C": "pc_port/game/boot/cd_stream_port.c",  # CD startup state
-    "func_8007A4D0": "pc_port/game/boot/cd_stream_port.c",  # CD command control
-    "func_8007A60C": "pc_port/game/boot/cd_stream_port.c",  # asynchronous CD command control
-    "func_8007A740": "pc_port/game/boot/cd_stream_port.c",  # CD command control and wait
-    "func_8007A3CC": "pc_port/game/boot/cd_stream_port.c",  # CD latch reset wrapper
-    "func_8007A8EC": "pc_port/game/boot/cd_stream_port.c",  # DMA3 callback wrapper
-    "func_80080404": "pc_port/game/boot/cd_stream_port.c",  # CD command progression
-    "func_8008080C": "pc_port/game/boot/cd_stream_port.c",  # decode CD response status
+    "func_8007FA2C": "pc_port/platform/pe_plat2_cdx_stream.c",  # CD startup state
+    "func_8007A4D0": "pc_port/platform/pe_plat2_cdx_stream.c",  # CD command control
+    "func_8007A60C": "pc_port/platform/pe_plat2_cdx_stream.c",  # asynchronous CD command control
+    "func_8007A740": "pc_port/platform/pe_plat2_cdx_stream.c",  # CD command control and wait
+    "func_8007A3CC": "pc_port/platform/pe_plat2_cdx_stream.c",  # CD latch reset wrapper
+    "func_8007A8EC": "pc_port/platform/pe_plat2_cdx_stream.c",  # DMA3 callback wrapper
+    "func_80080404": "pc_port/platform/pe_plat2_cdx_stream.c",  # CD command progression
+    "func_8008080C": "pc_port/platform/pe_plat2_cdx_stream.c",  # decode CD response status
     "func_8007C544": "pc_port/platform/pe_plat2_gpuprim.c",  # stream range setter (clean-room, gpu2c)
     "func_80075EE0": "pc_port/platform/pe_plat2_gpuprim_setenv.c",  # environment packet builder (clean-room, gpu2e vectors by the gpu2c author)
     "func_8007A214": "pc_port/platform/pe_plat2_gpuprim.c",  # record-pool initialiser (clean-room, gpu2c)
     "func_8007A244": "pc_port/platform/pe_plat2_gpuprim_poolw.c",  # record-pool worker (clean-room, gpu2c)
-    "func_8007CE80": "pc_port/game/boot/cd_stream_port.c",  # stream word copy
+    "func_8007CE80": "pc_port/platform/pe_plat2_cdx_stream.c",  # stream word copy
     "func_8007D15C": "pc_port/platform/pe_plat2_cdx_spu.c",  # SPU DMA event installer
     "func_8007DCAC": "pc_port/platform/pe_plat2_spu_a.c",  # SPU modeled delay
     "func_8007D054": "pc_port/platform/pe_plat2_cdx_spu.c",  # SPU default initialization
@@ -742,6 +742,10 @@ PE_PLAT_REPLACED = {
     "func_80085DF4": "pc_port/platform/pe_plat2_cdx_spu.c",  # SPU read adapter
     "func_8008CB54": "pc_port/platform/pe_plat2_cdx_spu.c",  # SPU reverb mode transition
     "func_8008CBA8": "pc_port/platform/pe_plat2_cdx_spu.c",  # stream command dispatcher
+    "func_800850F4": "pc_port/platform/pe_plat2_spu_upload.c",  # SPU data upload
+    "func_800850C0": "pc_port/platform/pe_plat2_spu_upload.c",  # SPU upload prepare step
+    "func_80085174": "pc_port/platform/pe_plat2_spu_upload.c",  # SPU upload DMA-complete wait
+    "func_80085098": "pc_port/platform/pe_plat2_spu_upload.c",  # SPU upload DMA-complete callback
     "func_80085644": "pc_port/platform/pe_plat2_cdx_spu.c",  # stream bring-up
     "func_8007BDDC": "pc_port/platform/pe_plat_cd_sync.c",  # CD data sync
     "func_8007A910": "pc_port/platform/pe_plat_cd_sync.c",  # CD sync forwarding ABI
@@ -821,7 +825,10 @@ PE_PLAT_REPLACED = {
     "func_8007EE84": "pc_port/platform/pe_plat_cd_queue_command_host.c",
     "func_8007F0C8": "pc_port/platform/pe_plat_cd_command_sequence_host.c",
     "func_8007F418": "pc_port/platform/pe_plat_cd_response_query_host.c",
-    "func_8007FE24": "pc_port/game/boot/cd_stream_port.c",
+    "func_8007FE24": "pc_port/platform/pe_plat2_cdx_stream.c",
+    "func_8007F7E8": "pc_port/platform/pe_plat2_cdx_stream_slots.c",  # libds VBlank hook (pump slot 0x800A36A0; clean-room, cdgen42c)
+    "func_8007F88C": "pc_port/platform/pe_plat2_cdx_stream_slots.c",  # libds status callback (slot 0x800A36A8; clean-room, cdgen42c)
+    "func_80080778": "pc_port/platform/pe_plat2_cdx_stream_slots.c",  # default CD ready callback (D_8009AFB8; clean-room, cdgen42c)
     "func_8007ED58": "pc_port/platform/pe_plat_cd_reset_host.c",
     "func_8007EC14": "pc_port/platform/pe_plat_cd_public_init_host.c",
     "func_80081314": "pc_port/platform/pe_plat_cd_read_stream_host.c",
@@ -1072,14 +1079,14 @@ PE_PLAT_REPLACED = {
     "func_800768A0": "pc_port/platform/pe_plat2_gpuimg_work.c",  # StoreImage worker (clean-room, gpu2b)
     "func_80076EE4": "pc_port/platform/pe_plat2_gpuq.c",  # libgpu queue pump (clean-room, gpu2a)
     "func_8007512C": "pc_port/platform/pe_plat2_gpuimg.c",  # MoveImage (clean-room, gpu2b)
-    "func_8007A2A4": "pc_port/game/boot/cd_stream_port.c",
-    "func_8007BBFC": "pc_port/game/boot/cd_stream_port.c",
-    "func_8007AAB4": "pc_port/platform/pe_plat_cd_ack_host.c",
-    "func_8007BF44": "pc_port/platform/pe_plat_cd_sector_dma_host.c",
-    "func_8007C564": "pc_port/platform/pe_plat_cd_stream_handler_host.c",
-    "func_8007CEAC": "pc_port/platform/pe_plat_cd_dma_issue_host.c",
-    "func_8007B558": "pc_port/platform/pe_plat_cd_command_issue_host.c",
-    "func_8007B010": "pc_port/platform/pe_plat_cd_status_poll_host.c",
+    "func_8007A2A4": "pc_port/platform/pe_plat2_cdx_stream.c",
+    "func_8007BBFC": "pc_port/platform/pe_plat2_cdx_stream.c",
+    "func_8007AAB4": "pc_port/platform/pe_plat2_cdhost_ack.c",  # CD host entry (clean-room, cdhost author; cdgen47 vectors)
+    "func_8007BF44": "pc_port/platform/pe_plat2_cdhost_sector.c",  # CD host entry (clean-room, cdhost author; cdgen47 vectors)
+    "func_8007C564": "pc_port/platform/pe_plat2_cdhost_stream.c",  # CD host entry (clean-room, cdhost author; cdgen47 vectors)
+    "func_8007CEAC": "pc_port/platform/pe_plat2_cdhost_dma.c",  # CD host entry (clean-room, cdhost author; cdgen47 vectors)
+    "func_8007B558": "pc_port/platform/pe_plat2_cdhost_cmd.c",  # CD host entry (clean-room, cdhost author; cdgen47 vectors)
+    "func_8007B010": "pc_port/platform/pe_plat2_cdhost_poll.c",  # CD host entry (clean-room, cdhost author; cdgen47 vectors)
     "func_80074E28": "pc_port/platform/pe_plat2_gpuimg_rect.c",  # rectangle report (clean-room, gpu2b)
     "func_800844E4": "pc_port/platform/pe_plat2_cdx_save.c",  # libpad PadInitDirect (fresh-author black-box vectors, cdgen45)
     "func_800825C0": "pc_port/platform/pe_plat_pad.c",  # PadGetState (clean-room)
@@ -1149,9 +1156,10 @@ PE_PLAT_HEADERS = {
                    "pc_port/platform/pe_plat2_gpuimg.c": "pc_port/include/pe_plat/gpuimg.h",
                    "pc_port/platform/pe_plat2_gpuimg_rect.c": "pc_port/include/pe_plat/gpuimg.h",
                    "pc_port/platform/pe_plat2_gpuimg_work.c": "pc_port/include/pe_plat/gpuimg.h",
-                   "pc_port/game/boot/cd_stream_port.c": "pc_port/include/pe_plat/cd_stream.h",
+                   "pc_port/platform/pe_plat2_cdx_stream.c": "pc_port/include/pe_plat/cdx_stream.h",
+                   "pc_port/platform/pe_plat2_cdx_stream_slots.c": "pc_port/include/pe_plat/cdx_stream.h",
                    "pc_port/platform/pe_plat_cd.c": "pc_port/include/pe_plat/cd.h",
-                   "pc_port/game/boot/func_800850F4_port.c": "pc_port/include/pe_plat/state.h",
+                   "pc_port/platform/pe_plat2_spu_upload.c": "pc_port/include/pe_plat/spu_upload.h",
                    "pc_port/platform/pe_plat_cd_sync.c": "pc_port/include/pe_plat/cd.h",
                    "pc_port/platform/pe_plat_gte.c": "pc_port/include/pe_plat/gte.h",
                    "pc_port/platform/pe_plat_gte_regs.c": "pc_port/include/pe_plat/gte.h",
@@ -1181,12 +1189,12 @@ PE_PLAT_HEADERS = {
                    "pc_port/platform/pe_plat_cd_poll.c": "pc_port/include/pe_plat/cd.h",
                    "pc_port/platform/pe_plat_cd_data_ready.c": "pc_port/include/pe_plat/cd.h",
                    "pc_port/platform/pe_plat_cd_leaf.c": "pc_port/include/pe_plat/cd.h",
-                   "pc_port/platform/pe_plat_cd_sector_dma_host.c": "pc_port/include/pe_plat/cd.h",
-                   "pc_port/platform/pe_plat_cd_stream_handler_host.c": "pc_port/include/pe_plat/cd.h",
-                   "pc_port/platform/pe_plat_cd_dma_issue_host.c": "pc_port/include/pe_plat/cd.h",
-                   "pc_port/platform/pe_plat_cd_command_issue_host.c": "pc_port/include/pe_plat/cd.h",
-                   "pc_port/platform/pe_plat_cd_status_poll_host.c": "pc_port/include/pe_plat/cd.h",
-                   "pc_port/platform/pe_plat_cd_ack_host.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat2_cdhost_sector.c": "pc_port/include/pe_plat/cdhost.h",
+                   "pc_port/platform/pe_plat2_cdhost_stream.c": "pc_port/include/pe_plat/cdhost.h",
+                   "pc_port/platform/pe_plat2_cdhost_dma.c": "pc_port/include/pe_plat/cdhost.h",
+                   "pc_port/platform/pe_plat2_cdhost_cmd.c": "pc_port/include/pe_plat/cdhost.h",
+                   "pc_port/platform/pe_plat2_cdhost_poll.c": "pc_port/include/pe_plat/cdhost.h",
+                   "pc_port/platform/pe_plat2_cdhost_ack.c": "pc_port/include/pe_plat/cdhost.h",
                    "pc_port/platform/pe_plat_cd_ring_host.c": "pc_port/include/pe_plat/cd.h",
                    "pc_port/platform/pe_plat_spu_reverb.c": "pc_port/include/pe_plat/audio.h",
                    "pc_port/platform/pe_plat_spu_modetype.c": "pc_port/include/pe_plat/audio.h",

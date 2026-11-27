@@ -33,11 +33,11 @@ static void test_cd_stream_copy_words(void)
            PE_LoadU32(PACD_R + 4u) == 0xABCDEF01u &&
            PE_LoadU32(PACD_R + 8u) == 0x98765432u,
            "guest dispatch did not copy three words");
-    pe_plat_cd_stream_copy_words(PACD_S + 4u, PACD_S, 2u);
+    pe_plat_cdxstream_stream_copy_words(PACD_S + 4u, PACD_S, 2u);
     ASSERT(PE_LoadU32(PACD_S + 4u) == 0x12345678u &&
            PE_LoadU32(PACD_S + 8u) == 0x12345678u,
            "overlapping word copy did not proceed forward");
-    pe_plat_cd_stream_copy_words(0u, 0u, 0u);
+    pe_plat_cdxstream_stream_copy_words(0u, 0u, 0u);
     ASSERT(!PE_Port_ShouldStop(), "zero-word copy accessed guest memory");
     PASS();
 }

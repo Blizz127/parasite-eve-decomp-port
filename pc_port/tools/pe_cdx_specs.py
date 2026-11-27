@@ -51,6 +51,8 @@ def load_specs(m, batch):
         m.HOOKS[0x8007BBFC] = _cdirq_hook(m)
     if batch == 'cdgen42b':
         _load_cdgen42b(m)
+    if batch == 'cdgen48':
+        _load_cdgen48(m)
     if batch in ('cdgen42c', 'cdgen42ci'):
         _load_cdgen42c(m, batch == 'cdgen42ci')
     if batch == 'cdgen44':
@@ -87,6 +89,33 @@ def load_specs(m, batch):
           unsupported='superseded by batch cdgen46 (the interpreter gained DIV/DIVU/BREAK, see pe_battle_hud_oracle); kept out of cdgen44 so its vector hashes do not change', bios_silent=((0xA0, 0x3F), (0xB0, 0x3F)),
           inline=(0x8007D15C, 0x80085A04, 0x80085F14, 0x80085EB4, 0x800850F4, 0x80085174, 0x80085290, 0x80085C44,
                   0x80085D84, 0x80085814, 0x800858E8, 0x800726E4, 0x80072704))
+    if batch == 'cdgen47':
+        b = 'cdgen47'
+        # CD host providers with no clean-room derivation record (pe_plat_cd_{ack,status_poll,command_issue,sector_dma,
+        # stream_handler,dma_issue}_host).  Stopped callees = retail entries the current provider objects reach through a
+        # bound host symbol (`nm -u` NAMES + public pe_plat headers; never provider source): 80071A74 PE_Printf_Guest,
+        # 80073C5C PE_GuestCall(.., 0x80073c5c, 1), 80073A44 VSync (PE_GPU_VSyncQuery / HostFB_VSync), 80073DE8
+        # pe_plat_ctl_callback_state, 8007AAB4 pe_plat_cd_acknowledge_host, 8007B010 pe_plat_cd_status_poll_host, 8007B9EC
+        # (the timeout recovery: PE_Cd_TimeoutRecover is binding-dependent, see REPORT), 8007A488 pe_plat_cd_ready, 8007C214
+        # pe_plat_cd_data_ready_callback, 8007CEAC pe_plat_cd_dma_issue_host.  The CD data callbacks (jalr through the
+        # words 0x8009AFB4 / 0x8009AFB8, and the data-ready word 0x800B0CCC) are stopped at the sentinel addresses below
+        # and at the real callback targets seen at runtime (pe_cdx_cdhost_vectors.py adds them from the capture).
+        cb = {0x80131140: 2, 0x80131180: 2}
+        _s0 = s
+
+        def s(entry, name, kinds, callees=None, **kw):
+            _s0(entry, name, kinds, callees, printf_fmt=True, **kw)   # printf records its format's arguments only (pe_cdx_vectors.run_case)
+        s(0x8007AAB4, 'cd_acknowledge', '', {0x80071A74: 4, 0x80073C5C: 1}, batch=b, n=400)
+        poll = {0x8007AAB4: 0, 0x80073A44: 1, 0x80071A74: 4, 0x80073C5C: 1, 0x80073DE8: 0, 0x8007B9EC: 0}
+        poll.update(cb)
+        s(0x8007B010, 'cd_status_poll', 'wp', dict(poll), batch=b, n=400)
+        issue = dict(poll)
+        issue[0x8007B010] = 2
+        s(0x8007B558, 'cd_command_issue', 'bppw', issue, batch=b, n=400)
+        s(0x8007BF44, 'cd_sector_dma', 'pw', {}, batch=b, n=300)
+        s(0x8007C564, 'cd_stream_handler', '', {0x8007A488: 2, 0x8007C214: 0, 0x8007CEAC: 7, 0x801311C0: 0}, batch=b,
+          void=True, inline=(0x8007C444, 0x8007CE80), n=800)
+        s(0x8007CEAC, 'cd_dma_issue', 'cwwwwww', {0x80071A74: 4}, batch=b, void=True, n=600)
     if batch == 'cdgen46':
         b = 'cdgen46'
         # 0x80085644: stream (SPU) bring-up; inline libspu code runs DIV/DIVU (interpreter support: pe_battle_hud_oracle).
@@ -631,3 +660,300 @@ def _load_cdgen42c(m, inline_decode):
         s(0x80080778, 'cd_ready_default_cb', 'ew', callees778, batch=b, void=True,
           n=len(RT['afterdecode']) + N778 + NRAND)
     m.HOOKS[0x80080778] = rd_hook
+
+
+# ------------------------------------------------------------------------------------------------------------------
+# cdgen48: the SPU data upload 0x800850F4 (SpuWrite with prepare: arms the DMA-complete flag and callback, then the
+# libspu write path) and its DMA-complete wait 0x80085174 (sw-vec-spu-upload, 2026-11-27).
+#
+# Retail structure (disassembly of the EXE, tools/analysis/pe_dis.sh; the vectors are what the interpreter does):
+#   800850F4(src, size): 800850C0 (stores 1 to 0x8009D24C, then 80085F44(0x80085098) = SetTransferCallback: stores the
+#     callback word 0x8009B434 only when it differs), then 80085E54(src, size) (size clamped to 0x7EFF0 unsigned; calls
+#     8007D9F8; returns the clamped size; clears 0x8009B430 only when the callback word is 0).
+#     8007D9F8: transfer-mode word 0x8009B418 == 0 (DMA): 8007D778(2, B414 << B424) (TSA halfword B414 = value >> B424,
+#     store to SPU TSA 0x1F801DA6), 8007D778(1) (read back TSA up to 3841 times, then SPUCNT 0x1F801DAA mode bits 0x20),
+#     8007D778(3, src, size) (poll SPUCNT & 0x30 == 0x20, DPCR 0x1F8010F0 RMW through 8007DC5C, then DMA4 MADR = src,
+#     BCR = ((size >> 6) + (size & 0x3F != 0)) << 16 | 0x10, CHCR = 0x01000201); nonzero B418 (manual transfer):
+#     8007D454(src, size) writes halfwords to the data port 0x1F801DA8 in chunks of 64 bytes, polling SPUSTAT 0x1F801DAE.
+#   80085174(): returns at once unless 0x8009D24C == 1, else polls the word while it reads 1.  Only the DMA4 interrupt
+#     handler (callback 0x80085098) clears the word in production; the interpreter has no interrupts, so the clearing is a
+#     HARNESS MODEL: the word reads 1 for m reads and then a terminal value T (MEMSEQ, replayed in order by the checker).
+# Variants (pe_cdx_vectors.py -variant NAME): '' = nothing stopped (register level, MMIO footprint is the observable);
+# 'bound' = 80085F44 and 80085E54 stopped (their host-symbol bindings in pe_plat/spu_b.h and state.h) so the observable is
+# the callee records and the RAM word; 'fault' = register level plus stuck TSA / sticky SPUCNT hardware models (timeouts).
+# ------------------------------------------------------------------------------------------------------------------
+def _load_cdgen48(m):
+    import os
+    import re
+    import struct
+    c, gv = m.c, m.gv
+    s = m.spec
+    b = 'cdgen48'
+    variant = getattr(m, 'VARIANT', '')
+    A_B414, A_B418, A_B420, A_B424, A_B428, A_B42C, A_B430, A_B434 = (0x9B414, 0x9B418, 0x9B420, 0x9B424, 0x9B428, 0x9B42C, 0x9B430, 0x9B434)
+    A_D24C = 0x9D24C
+    R_TSA, R_CNT, R_STAT, R_DELAY = 0x1DA6, 0x1DAA, 0x1DAE, 0x1014   # R_DELAY = SPU_DELAY 0x1F801014 (the register 0x8009B410 points at; 8007DC5C RMWs it)
+    CB_RETAIL = 0x80085098
+
+    def p32(ram, a, v):
+        struct.pack_into('<I', ram, a & 0x1FFFFF, v & 0xFFFFFFFF)
+
+    def p16(ram, a, v):
+        struct.pack_into('<H', ram, a & 0x1FFFFF, v & 0xFFFF)
+
+    def hsh(*k):
+        h = 0x9E3779B1
+        for q in k:
+            h = gv.xs32((h ^ (q & 0xFFFFFFFF)) * 2654435761 & 0xFFFFFFFF or 1)
+        return h
+
+    # ---- runtime tuples (CDXT lines of pe_cdx_trace_wrap48.c, env CDX48_TRACE = comma-separated logs) ---------------
+    RT = {'upload': [], 'wait': []}
+    for path in [q for q in os.environ.get('CDX48_TRACE', '').split(',') if q]:
+        for ln in open(path, errors='replace'):
+            mm = re.match(r'CDXT (upload|wait|hostwait) ', ln)
+            if not mm:
+                continue
+            kv = {k: int(v, 16) for k, v in re.findall(r'(\w+)=([0-9A-Fa-f]+)', ln) if k not in ('call', 'frame')}
+            if kv not in RT['wait' if mm.group(1) == 'hostwait' else mm.group(1)]:
+                RT['wait' if mm.group(1) == 'hostwait' else mm.group(1)].append(kv)
+    REP = 4
+    for key in RT:
+        RT[key] = [t for t in RT[key] for _ in range(REP)]
+    COV = {}
+
+    def cov(fn, key):
+        COV.setdefault(fn, {})
+        COV[fn][key] = COV[fn].get(key, 0) + 1
+    m.COV = COV
+    m.RT = RT
+
+    SRC_DMA = (0x8009B7FC, 0x80100000, 0x80100001, 0x80100002, 0x80100003, 0x801FE000, 0xA0100000, 0x00100000, 0,
+               0xFFFFFFFF, 0x1F800000, 0x80000000, 0x8009B7FD)
+    SIZE_DMA = (0x20, 0, 1, 2, 3, 0x3F, 0x40, 0x41, 0x7F, 0x80, 0x1000, 0x12345, 0x7EFEF, 0x7EFF0, 0x7EFF1, 0x80000,
+                0xFFFFFFFF, 0x80000000)
+    SIZE_PIO = (0, 1, 2, 3, 0x20, 0x3F, 0x40, 0x41, 0x80, 0xC1, 0x100, 0x180)
+    SRC_PIO = (0x80100000, 0x80100200, 0x80100ffe, 0x8009B7FC)
+    SHIFT = (3, 0, 4, 16, 31)
+    TSAV = (0x200, 0, 0x202, 0x1010, 0xFFFF, 0x8000, 0x101)
+    CBV = (CB_RETAIL, 0, 0x80123456, 0xFFFFFFFF)
+    FLAGV = (0, 1, 2, 0xFFFFFFFF)
+    CNTV = (0xC000, 0xC020, 0, 0x8000, 0x0030, 0xFFFF, 0x1234)
+    DELAYV = (0x07654321, 0, 0xFFFFFFFF, 0x20000000, 0x12345678)
+    MODEV = (1, 2, 0x100, 0xFFFFFFFF)
+
+    def common_state(ram, h, b414, b418, b424, b434):
+        p16(ram, A_B414, b414)
+        p32(ram, A_B418, b418)
+        p32(ram, A_B424, b424)
+        p32(ram, A_B434, b434)
+        # words none of the entries reads (SpuInit alignment state B420/B428/B42C, the clear word B430): seeded in the
+        # interpreter run only.  The vector lists loads, so these words are NOT in the vector (the checker zero-fills RAM);
+        # a provider that reads them fails the read-outside-original-loads check
+        p32(ram, A_B420, (2, 0, 1, 7, 0x80000000, h >> 3)[(h >> 5) % 6])
+        p32(ram, A_B428, (8, 1, 2, 0x100, 0xFFFFFFFF, h >> 9)[(h >> 11) % 6])
+        p32(ram, A_B42C, (7, 0, 0xFF, 0x7FFFFFFF, h >> 13)[(h >> 17) % 5])
+        p32(ram, A_B430, (0, 1, 0xFFFFFFFF, h >> 7)[(h >> 19) % 4])
+        p32(ram, A_D24C, FLAGV[(h >> 21) % 4])
+        p16(ram, R_CNT, CNTV[(h >> 23) % len(CNTV)])
+        p16(ram, R_TSA, (b414 ^ (0x100 << ((h >> 27) % 4))) & 0xFFFF if (h >> 26) & 1 else h >> 4)
+        p32(ram, R_DELAY, DELAYV[(h >> 25) % len(DELAYV)])
+
+    def pio_stat_seq(ram, h, size):
+        """SPUSTAT read sequence for the manual-transfer path: entry read, per 64-byte chunk k busy reads then a clear read,
+        optional settle mismatches, final read equal to the entry read's low 11 bits (harness model of the busy bit)."""
+        st = ((h >> 3) & 0xFBFF) if (h >> 20) & 1 else (h >> 8) & 0x03FF
+        clear, busy = st & ~0x400, st | 0x400
+        chunks = (size + 63) // 64
+        seq = [clear]
+        for i in range(chunks):
+            k = (0, 0, 1, 2, 3, 0, 5)[((h >> (4 + i)) ^ i) % 7]
+            seq += [busy] * k + [clear]
+        f = (0, 0, 1, 3)[(h >> 14) % 4]
+        seq += [clear ^ 1 if (clear ^ 1) & 0x7FF != clear & 0x7FF else clear ^ 2] * f + [clear]
+        m.REGSEQ[R_STAT] = [seq, 0]
+        p16(ram, R_STAT, clear)
+
+    # ---- 0x800850F4: product cells ------------------------------------------------------------------------------
+    NA = len(SIZE_DMA) * len(SRC_DMA)
+    CELLS = len(SHIFT) * len(TSAV) * len(CBV)
+    NB = 0 if variant == 'bound' else CELLS * 2     # bound: no state word is read, the cells would only repeat the size x source rows
+    NC = len(MODEV) * len(SIZE_PIO) * len(SRC_PIO) // 2 + len(SIZE_PIO) * 3
+    FAULT_SZ = (0x20, 0, 1, 0x40, 0x41, 0x7EFF1)
+    FAULT_SRC = (0x8009B7FC, 0x80100000, 0x80100003)
+    NF = 3 * len(FAULT_SZ) * len(FAULT_SRC) * 2
+    NRAND = 160
+
+    def up_hook(ram, x, args, rets, seed):
+        k = seed - 1
+        nrt = len(RT['upload'])
+        if variant == 'fault':
+            h = hsh(seed, 48)
+            if m.PILOT[0]:
+                args[0], args[1] = 0x8009B7FC, 0x20
+                common_state(ram, h, 0x200, 0, 3, CB_RETAIL)
+                return x, None
+            if k < NF:
+                kind, j = k % 3, k // 3
+                sz, src = FAULT_SZ[j % len(FAULT_SZ)], FAULT_SRC[(j // len(FAULT_SZ)) % len(FAULT_SRC)]
+                args[0], args[1] = src, sz
+                common_state(ram, h, TSAV[j % len(TSAV)], 0, SHIFT[j % 3], CB_RETAIL)
+                p16(ram, R_CNT, 0xC000)
+                if kind in (0, 2):
+                    m.STUCK.add(R_TSA)                       # the TSA store is not latched: readback keeps the entry value
+                    b414 = struct.unpack_from('<H', ram, A_B414)[0]
+                    p16(ram, R_TSA, b414 ^ 0x0100)
+                if kind in (1, 2):
+                    m.c.SPU_STICKY[0] = (0x10, 0x30)[j % 2]  # SPUCNT mode bits that a store cannot clear
+                cov('upload', 'fault%d' % kind)
+                return x, None
+            args[0], args[1] = (SRC_DMA[h % len(SRC_DMA)], SIZE_DMA[(h >> 8) % len(SIZE_DMA)])
+            common_state(ram, h, TSAV[(h >> 4) % len(TSAV)], 0, SHIFT[(h >> 10) % 3], CB_RETAIL)
+            cov('upload', 'random')
+            return x, None
+        if m.PILOT[0]:
+            h = hsh(seed, 31)
+            pio = h & 1
+            args[0], args[1] = (SRC_PIO[h % 4] if pio else SRC_DMA[(h >> 8) % 8]), (SIZE_PIO[(h >> 4) % 12] if pio else SIZE_DMA[(h >> 12) % 18])
+            common_state(ram, h, TSAV[(h >> 4) % 7], MODEV[(h >> 16) % 4] if pio else 0, SHIFT[(h >> 8) % 5], CBV[(h >> 12) % 4])
+            if pio and variant != 'bound':
+                pio_stat_seq(ram, h, args[1])
+            return x, None
+        h = hsh(seed, 77)
+        if k < nrt:
+            t = RT['upload'][k]
+            args[0], args[1] = t['src'], t['size']
+            common_state(ram, h, t['b414'], t['b418'], t['b424'], t['b434'])
+            p32(ram, A_D24C, t['d24c'])
+            cov('upload', 'runtime')
+            return x, None
+        p = k - nrt
+        pio_sz = size = src = None
+        if p < NA:                                   # A: every size x every source at the boot state
+            size, src = SIZE_DMA[p // len(SRC_DMA)], SRC_DMA[p % len(SRC_DMA)]
+            common_state(ram, h, 0x200, 0, 3, CB_RETAIL)
+            cov('upload', 'size-x-src')
+        elif p < NA + NB:                            # B: (shift, tsa, callback) cells, two cases each
+            q = p - NA
+            cell, j = divmod(q, 2)
+            sh, ts, cb = SHIFT[cell % len(SHIFT)], TSAV[(cell // len(SHIFT)) % len(TSAV)], CBV[cell // (len(SHIFT) * len(TSAV))]
+            size, src = SIZE_DMA[(cell * 2 + j) % len(SIZE_DMA)], SRC_DMA[(cell * 5 + j) % len(SRC_DMA)]
+            common_state(ram, h, ts, 0, sh, cb)
+            cov('upload', 'state-cells')
+        elif p < NA + NB + NC and variant != 'bound':   # C: manual-transfer (PIO) path, SPUSTAT busy sequences
+            q = p - NA - NB
+            mode = MODEV[q % len(MODEV)]
+            size, src = SIZE_PIO[(q // 2) % len(SIZE_PIO)], SRC_PIO[(q // 3) % len(SRC_PIO)]
+            common_state(ram, h, TSAV[q % len(TSAV)], mode, SHIFT[q % 3], CBV[q % 2])
+            pio_stat_seq(ram, h, size)
+            cov('upload', 'pio')
+        else:                                        # D: random fill
+            size, src = SIZE_DMA[(h >> 8) % len(SIZE_DMA)] if (h >> 3) & 1 else (h >> 6) & 0xFFFFFF, \
+                SRC_DMA[(h >> 16) % len(SRC_DMA)] if (h >> 4) & 1 else gv.xs32(h)
+            b418 = 0 if (h >> 5) % 5 else 1
+            if b418 and variant != 'bound':
+                src, size = SRC_PIO[(h >> 18) % 4], SIZE_PIO[(h >> 20) % 12]
+                pio_stat_seq(ram, h, size)
+            common_state(ram, h, TSAV[(h >> 9) % 7] if (h >> 7) & 1 else (h >> 12) & 0xFFFF, b418,
+                         SHIFT[(h >> 22) % 5] if (h >> 24) & 1 else (h >> 25) % 32,
+                         CBV[(h >> 26) % 4])
+            cov('upload', 'random')
+        args[0], args[1] = src, size
+        return x, None
+
+    if variant == 'bound':
+        s(0x800850F4, 'spu_data_upload', 'ww', {0x80085F44: 1, 0x80085E54: 2}, batch=b, void=True,
+          inline=(0x800850C0,), n=len(RT['upload']) + NA + NB + NRAND)
+    else:
+        s(0x800850F4, 'spu_data_upload', 'ww', {}, batch=b, void=True, bios=True,
+          bios_silent=((0xA0, 0x3F), (0xB0, 0x3F)), inline=(0x800850C0, 0x80085E54),
+          n=(NF + 92 if variant == 'fault' else len(RT['upload']) + NA + NB + NC + NRAND))
+    m.HOOKS[0x800850F4] = up_hook
+
+    # ---- 0x80085174: DMA-complete wait ------------------------------------------------------------------------------
+    F0 = (0, 1, 2, 0xFFFFFFFF, 0x80000000, 0x100, 3)
+    POLLS = (1, 2, 3, 4, 5, 8, 16, 63, 64, 65, 255, 256, 1000, 4000)
+    TERM = (0, 2, 0xFFFFFFFF, 0x100, 3, 0x80000000)
+    CLEAR_F = (0, 2, 0xFFFFFFFF, 0x80000000, 0x100, 3)
+    NW1 = len(POLLS) * len(TERM) * 3
+    NW0 = len(F0) * 6
+    A_NEAR = (0x9D240, 0x9D244, 0x9D248, 0x9D250, 0x9D254, 0x9D258)
+
+    def wait_hook(ram, x, args, rets, seed):
+        k = seed - 1
+        nrt = len(RT['wait'])
+        h = hsh(seed, 55)
+        for i, a in enumerate(A_NEAR):                       # neighbours of the flag: a provider that reads them is caught
+            p32(ram, a, (0, 1, 0xFFFFFFFF, h >> (i + 3), 2)[(h >> (2 * i)) % 5])
+        p32(ram, A_B414, (0x200, 0, h >> 4)[(h >> 9) % 3])
+        p32(ram, A_B418, (0, 1)[(h >> 11) & 1])
+        p32(ram, A_B424, (3, 0, 4, 5)[(h >> 12) % 4])
+        p32(ram, A_B434, (CB_RETAIL, 0, h)[(h >> 14) % 3])
+        p32(ram, A_B430, h >> 5)
+        if m.PILOT[0]:
+            return x, None
+        if k < nrt:
+            f0, mm_, term = RT['wait'][k]['d24c'], 1 + (h >> 8) % 3, (0, 2, 3)[(h >> 12) % 3]
+            cov('wait', 'runtime')
+        elif k < nrt + NW1:
+            q = k - nrt
+            f0, mm_, term = 1, POLLS[q % len(POLLS)], TERM[(q // len(POLLS)) % len(TERM)]
+            cov('wait', 'polls-x-terminal')
+        elif k < nrt + NW1 + NW0 * 4:
+            q = k - nrt - NW1
+            f0, mm_, term = (CLEAR_F + ((h >> 6) | 2,))[q % 7], 0, 0
+            cov('wait', 'flag-clear')
+        else:
+            if (h >> 3) % 3:
+                f0, mm_, term = 1, 1 + (h >> 8) % 70, (0, 2, h | 2)[(h >> 20) % 3]
+            else:
+                f0, mm_, term = (h >> 6) | 2, 0, 0
+            cov('wait', 'random')
+        if f0 == 1:
+            m.c.MEMSEQ[A_D24C] = [[1] * mm_ + [term & 0xFFFFFFFF], 0]
+        else:
+            p32(ram, A_D24C, f0)
+        return x, None
+
+    s(0x80085174, 'spu_dma_wait', '', {}, batch=b, void=True,
+      n=len(RT['wait']) + NW1 + NW0 * 4 + 120)
+    m.HOOKS[0x80085174] = wait_hook
+
+    # ---- 0x80085098: the DMA-complete callback registered by 800850C0 (SetTransferCallback arg) -----------------------
+    # Retail: 80085F44(0) (clears the callback word 0x8009B434 when it is nonzero), then 0x8009D24C := 0.  Inputs: the
+    # callback word only (read by 80085F44, inline in the '' variant).  'bound': 80085F44 stopped (1 argument, always 0).
+    CBW = (0, CB_RETAIL, 0x80123456, 0xFFFFFFFF, 1, 0x80000000)
+
+    def cb_hook(ram, x, args, rets, seed):
+        h = hsh(seed, 98)
+        p32(ram, A_B434, CBW[seed % len(CBW)] if seed <= len(CBW) * 4 * 4 else (CBW[(h >> 4) % len(CBW)] if (h >> 9) & 1 else h))
+        p32(ram, A_D24C, FLAGV[(seed // len(CBW)) % 4] if seed <= len(CBW) * 16 else (FLAGV[(h >> 11) % 4] if (h >> 10) & 1 else h >> 3))
+        p32(ram, A_B430, h >> 5)
+        p16(ram, A_B414, h >> 13)
+        p32(ram, A_B418, h >> 7)
+        cov('callback', 'product' if seed <= len(CBW) * 16 else 'random')
+        return x, None
+
+    if variant == 'bound':
+        s(0x80085098, 'spu_dma_irq_callback', '', {0x80085F44: 1}, batch=b, void=True, n=300)
+    else:
+        s(0x80085098, 'spu_dma_irq_callback', '', {}, batch=b, void=True, inline=(0x80085F44,), n=300)
+    m.HOOKS[0x80085098] = cb_hook
+
+    # ---- 0x800850C0: the prepare step (arms the completion flag and registers the callback) --------------------------
+    # Retail: 0x8009D24C := 1, then 80085F44(0x80085098) (inline in the '' variant: B434 read, stored only when different;
+    # 'bound': 80085F44 stopped, 1 argument).  Inputs: the callback word only.
+    def prep_hook(ram, x, args, rets, seed):
+        h = hsh(seed, 0xC0)
+        p32(ram, A_B434, CBW[seed % len(CBW)] if seed <= len(CBW) * 16 else (CBW[(h >> 4) % len(CBW)] if (h >> 9) & 1 else h))
+        p32(ram, A_D24C, FLAGV[(seed // len(CBW)) % 4] if seed <= len(CBW) * 16 else (FLAGV[(h >> 11) % 4] if (h >> 10) & 1 else h >> 3))
+        p32(ram, A_B430, h >> 5)
+        p16(ram, A_B414, h >> 13)
+        cov('prepare', 'product' if seed <= len(CBW) * 16 else 'random')
+        return x, None
+
+    if variant == 'bound':
+        s(0x800850C0, 'spu_prepare_transfer', '', {0x80085F44: 1}, batch=b, void=True, n=300)
+    else:
+        s(0x800850C0, 'spu_prepare_transfer', '', {}, batch=b, void=True, inline=(0x80085F44,), n=300)
+    m.HOOKS[0x800850C0] = prep_hook

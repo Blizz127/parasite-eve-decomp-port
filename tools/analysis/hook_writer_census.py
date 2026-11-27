@@ -136,7 +136,7 @@ FAMILIES = [
         "title": "libds VBlank hook D_800A36A0, called by func_8007FE24",
         "base": 0x800A36A0, "count": 1,
         "handled": [0x8007F7E8],
-        "site": ("pc_port/game/boot/cd_stream_port.c", '"CD_vblank_callback"'),
+        "site": ("pc_port/platform/pe_plat2_cdx_stream.c", '"cd_pump_slot_800A36A0"'),
         "setters": [{"fn": 0x8007FBC0, "val": ("reg", 4)}],
         "forwarders": [],
         "expected": {
@@ -150,7 +150,7 @@ FAMILIES = [
         "title": "CD stream auxiliary hook D_800B0CCC, called by func_8007C564",
         "base": 0x800B0CCC, "count": 1,
         "handled": [],
-        "site": ("pc_port/game/boot/cd_stream_port.c", '"func_8007C564_auxiliary_callback"'),
+        "site": ("pc_port/platform/pe_plat2_cdx_stream_seams.c", '"func_8007C564_auxiliary_callback"'),
         "setters": [{"fn": 0x8007C304, "val": ("stack", 0x10)}],
         "forwarders": [],
         "expected": {
@@ -316,7 +316,7 @@ SWITCH_TABLES = [
     {"key": "cd_command_table", "title": "func_80080220 command switch (cmd - 2 < 26)",
      "base": 0x80011D0C, "count": 26,
      "labels": [0x80080318, 0x80080340, 0x80080354, 0x80080368],
-     "site": ("pc_port/game/boot/cd_stream_port.c", '"CD_command_table"')},
+     "site": ("pc_port/platform/pe_plat_cd_command_complete.c", '"CD_command_table"')},
     {"key": "cd_interrupt_table", "title": "func_8007AAB4 interrupt-tag switch (tag 1..5)",
      "base": 0x80011B8C, "count": 5,
      "labels": [0x8007AD10, 0x8007AE10, 0x8007AE5C, 0x8007AEDC, 0x8007AF5C],

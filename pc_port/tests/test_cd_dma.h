@@ -53,6 +53,30 @@ static void test_cd_dma_issue_preserves_pending_irq(void)
     PASS();
 }
 
+/* DPCR / DICR are 32-bit registers the CPU may also reach a byte or halfword at a time (pe_mmio.c, platform host model):
+ * loads return the selected bytes; a store replaces the selected bytes of bits 0..23 and keeps the DICR acknowledge flags
+ * (bits 24..30, write-one-to-clear) unless byte 3 is written. */
+static void test_mmio_dma_ctl_sub_word_access(void)
+{
+    TEST("mmio_dma_ctl_sub_word_access");
+    ResetTestState();
+    PE_GPU_WriteDPCR(0x11223344u);
+    ASSERT(PE_LoadU8(0x1F8010F1u) == 0x33u && PE_LoadU8(0x1F8010F3u) == 0x11u && PE_LoadU16(0x1F8010F2u) == 0x1122u,
+           "DPCR byte / halfword loads");
+    PE_StoreU8(0x1F8010F2u, 0xAAu);
+    ASSERT(PE_LoadU32(0x1F8010F0u) == 0x11AA3344u, "DPCR byte store replaces only its byte");
+    PE_GPU_WriteDICR(0x00880000u);
+    ASSERT(PE_GPU_LatchDMACompletionFlag(3u), "cannot seed the DMA3 interrupt flag");
+    ASSERT(PE_LoadU8(0x1F8010F6u) == 0x88u && (PE_LoadU32(0x1F8010F4u) & 0x08000000u) != 0, "DICR byte load / seeded flag");
+    PE_StoreU8(0x1F8010F6u, 0x80u);
+    ASSERT(PE_LoadU8(0x1F8010F6u) == 0x80u && (PE_LoadU32(0x1F8010F4u) & 0x08000000u) != 0,
+           "DICR byte 2 store changes the enables and keeps the pending flag");
+    PE_StoreU8(0x1F8010F7u, 0x08u);
+    ASSERT((PE_LoadU32(0x1F8010F4u) & 0x08000000u) == 0 && PE_LoadU8(0x1F8010F6u) == 0x80u,
+           "DICR byte 3 store acknowledges the flag and keeps the enables");
+    PASS();
+}
+
 static void test_cd_dma_issue_busy_stop(void)
 {
     TEST("cd_dma_issue_busy_stop");

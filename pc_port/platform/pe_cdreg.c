@@ -9,6 +9,8 @@
 #include "pe_irq.h"
 #include "pe_irq_delivery.h"
 #include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include "game_port.h"
 #include "pe_bootstrap.h"
 #include "pe_mdec.h"
@@ -38,6 +40,77 @@ static int g_pause_replay; /* resume a paused stream at its last received sector
 static uint8_t g_sector_header[8];
 static int g_header_valid;
 static int g_in_stream_catchup;
+
+/* ── PE_TEST_CD_*: host-model COVERAGE FIXTURES (default off) ─────────────
+ * Test-only knobs that make the SIMULATED CD-ROM controller misbehave so the
+ * harness can exercise driver paths a healthy drive never reaches (poll
+ * timeout, sector-DMA waits, error responses).  They are coverage fixtures,
+ * not play evidence: nothing is written to guest RAM, only the device model
+ * answers differently.  With none of the variables set every branch below is
+ * a single test of a zero field and the model is byte-for-byte unchanged.
+ *   PE_TEST_CD_DRQ_DELAY=N     status register 0x1F801800 reads DRQSTS (bit 6)
+ *                              clear for the first N provider reads after a
+ *                              BFRD request loaded a sector
+ *   PE_TEST_CD_DMA_BUSY=N      DMA3 CHCR (0x1F8010B8) reads busy (bit 24) for
+ *                              the first N provider reads after the same BFRD
+ *   PE_TEST_CD_SECTORS=M       how many BFRD loads arm the two knobs above
+ *                              (default 1)
+ *   PE_TEST_CD_FROM_VB=V       every knob here is inert while the VBlank counter is
+ *                              below V (aims a knob past the first mount, which
+ *                              runs with the clocks frozen; default 0)
+ *   PE_TEST_CD_FIRST=K         skip the first K BFRD loads before arming (the
+ *                              first mount reads 2 sectors; K=2 aims the
+ *                              knobs past it; default 0)
+ *   PE_TEST_CD_CMD_STALL=CMD,CYCLES[,COUNT[,SKIP]]
+ *                              after SKIP (default 0) earlier commands CMD, the next COUNT (default 1) commands CMD get
+ *                              CYCLES extra CPU cycles before their first
+ *                              response (33868800 cycles = 1 s)
+ *   PE_TEST_CD_READ_ERROR=LBA[,boundary|int5]
+ *                              the first sector read at or past LBA fails:
+ *                              int5 = INT5 stat|1 + 0x04 (seek error) and the
+ *                              read stops; boundary (default) = the model's
+ *                              pre-existing CD_device_sector_read boundary */
+static struct {
+    int init;
+    uint32_t drq_delay,dma_busy,sectors,stall_cmd,stall_cycles,stall_left,stall_skip;
+    int have_stall,have_error,error_int5,error_fired;
+    uint32_t error_lba,drq_left,dma_left,armed,first,bfrd_seen,from_vb;
+} g_cdtest;
+static int CdTestLive(void) { return !g_cdtest.from_vb || PE_GPU_VSyncQuery()>=g_cdtest.from_vb; }
+static void CdTestNote(const char *what,uint32_t a,uint32_t b)
+{
+    fprintf(stderr,"[PE_TEST_CD] %s %u %u\n",what,a,b);
+}
+static void CdTestInit(void)
+{
+    const char *v;
+    g_cdtest.init=1;g_cdtest.sectors=1;
+    if((v=getenv("PE_TEST_CD_DRQ_DELAY"))) g_cdtest.drq_delay=(uint32_t)strtoul(v,0,0);
+    if((v=getenv("PE_TEST_CD_DMA_BUSY"))) g_cdtest.dma_busy=(uint32_t)strtoul(v,0,0);
+    if((v=getenv("PE_TEST_CD_SECTORS"))) g_cdtest.sectors=(uint32_t)strtoul(v,0,0);
+    if((v=getenv("PE_TEST_CD_FROM_VB"))) g_cdtest.from_vb=(uint32_t)strtoul(v,0,0);
+    if((v=getenv("PE_TEST_CD_FIRST"))) g_cdtest.first=(uint32_t)strtoul(v,0,0);
+    if((v=getenv("PE_TEST_CD_CMD_STALL"))) {
+        char *e;
+        g_cdtest.stall_cmd=(uint32_t)strtoul(v,&e,0);
+        if(*e==',') {
+            g_cdtest.stall_cycles=(uint32_t)strtoul(e+1,&e,0);
+            g_cdtest.stall_left=(*e==',')?(uint32_t)strtoul(e+1,&e,0):1u;
+            if(*e==',') g_cdtest.stall_skip=(uint32_t)strtoul(e+1,0,0);
+            g_cdtest.have_stall=g_cdtest.stall_left!=0;
+        }
+    }
+    if((v=getenv("PE_TEST_CD_READ_ERROR"))) {
+        char *e;
+        g_cdtest.error_lba=(uint32_t)strtoul(v,&e,0);g_cdtest.have_error=1;
+        g_cdtest.error_int5=(*e==',' && !strcmp(e+1,"int5"));
+    }
+    if(g_cdtest.drq_delay||g_cdtest.dma_busy||g_cdtest.have_stall||g_cdtest.have_error)
+        fprintf(stderr,"[PE_TEST_CD] coverage fixture ACTIVE (host device model only): drq_delay=%u dma_busy=%u sectors=%u first=%u from_vb=%u stall=%d(cmd %u,%u cyc,x%u) read_error=%d(lba %u,%s)\n",
+            g_cdtest.drq_delay,g_cdtest.dma_busy,g_cdtest.sectors,g_cdtest.first,g_cdtest.from_vb,g_cdtest.have_stall,g_cdtest.stall_cmd,
+            g_cdtest.stall_cycles,g_cdtest.stall_left,g_cdtest.have_error,g_cdtest.error_lba,
+            g_cdtest.error_int5?"int5":"boundary");
+}
 
 static int CdOutputDmaBusy(void)
 {
@@ -107,6 +180,23 @@ static int CdReadNextSector(void)
         g_device.responses++;
         return 0;
     }
+    if(!g_cdtest.init) CdTestInit();
+    if(g_cdtest.have_error && !g_cdtest.error_fired && CdTestLive() && g_device.next_lba>=g_cdtest.error_lba) {
+        g_cdtest.error_fired=1;
+        CdTestNote("read_error lba",g_device.next_lba,g_cdtest.error_int5);
+        if(g_cdtest.error_int5) {
+            uint8_t resp[2];
+            g_device.reading=0u;g_read_cycles=0u;
+            resp[0]=(uint8_t)(CdDeviceStatus()|1u);resp[1]=0x04u;
+            if(!PE_CdReg_PushResponse(5u,resp,2u)) {
+                CdDeviceBoundary("CD_device_response_queue",5u);return 0;
+            }
+            if(g_device.responses<16u) g_device.response_log[g_device.responses]=5u;
+            g_device.responses++;
+            return 0;
+        }
+        CdDeviceBoundary("CD_device_sector_read",g_device.next_lba);return 0;
+    }
     if(!PE_Disc_ReadRawSector(g_device_disc,g_device.next_lba,g_sector)) {
         CdDeviceBoundary("CD_device_sector_read",g_device.next_lba);return 0;
     }
@@ -152,6 +242,13 @@ static void CdDeviceCommand(uint8_t command)
     for(unsigned i=0;i<3u;i++) g_command_parameters[i]=i<g_parameter_count?g_parameters[i]:0u;
     g_command_parameter=g_parameter_count?g_parameters[0]:0u;g_parameter_count=0;
     g_phase=1;g_remaining_cycles=command==10u?0x13CCEu:0xC4E1u;
+    if(!g_cdtest.init) CdTestInit();
+    if(!CdTestLive()) {}
+    else if(g_cdtest.have_stall && g_cdtest.stall_left && g_cdtest.stall_cmd==command && g_cdtest.stall_skip) g_cdtest.stall_skip--;
+    else if(g_cdtest.have_stall && g_cdtest.stall_left && g_cdtest.stall_cmd==command) {
+        g_cdtest.stall_left--;g_remaining_cycles+=g_cdtest.stall_cycles;
+        CdTestNote("cmd_stall cmd",command,g_cdtest.stall_cycles);
+    }
 }
 uint32_t PE_CdReg_TimeSlice(uint32_t budget)
 {
@@ -507,6 +604,12 @@ void PE_CdReg_WriteU8(pe_addr_t address, uint8_t value)
             g_data_size=(g_device.mode&0x20u)?2340u:2048u;g_data_pos=0;
             for(unsigned i=0;i<g_data_size;i++) g_data[i]=g_sector[offset+i];
             g_sector_pending=0;
+            if(!g_cdtest.init) CdTestInit();
+            if(CdTestLive()) g_cdtest.bfrd_seen++;
+            if(CdTestLive() && (g_cdtest.drq_delay||g_cdtest.dma_busy) && g_cdtest.bfrd_seen>g_cdtest.first && g_cdtest.armed<g_cdtest.sectors) {
+                g_cdtest.armed++;g_cdtest.drq_left=g_cdtest.drq_delay;g_cdtest.dma_left=g_cdtest.dma_busy;
+                CdTestNote("bfrd armed drq_delay",g_cdtest.drq_delay,g_cdtest.dma_busy);
+            }
         }
     }
     /* ATV0..3 are pending banked volumes; ADPCTL bit5 applies all four.
@@ -598,8 +701,14 @@ void PE_CdReg_WriteU32(pe_addr_t address, uint32_t value)
 
 uint8_t PE_CdLoadU8(pe_addr_t address)
 {
-    if (PE_CdReg_IsMmio(address, 1u))
-        return PE_CdReg_ReadU8(address);
+    if (PE_CdReg_IsMmio(address, 1u)) {
+        uint8_t v=PE_CdReg_ReadU8(address);
+        if(g_cdtest.drq_left && address==PE_CDREG_BASE) {
+            g_cdtest.drq_left--;v&=(uint8_t)~0x40u;
+            CdTestNote("drq_not_ready_read left",g_cdtest.drq_left,v);
+        }
+        return v;
+    }
     return PE_LoadU8(address);
 }
 
@@ -614,8 +723,14 @@ void PE_CdStoreU8(pe_addr_t address, uint8_t value)
 
 uint32_t PE_CdLoadU32(pe_addr_t address)
 {
-    if (PE_CdReg_IsMmio(address, 4u))
-        return PE_CdReg_ReadU32(address);
+    if (PE_CdReg_IsMmio(address, 4u)) {
+        uint32_t v=PE_CdReg_ReadU32(address);
+        if(g_cdtest.dma_left && address==PE_CDREG_DMA3+8u) {
+            g_cdtest.dma_left--;v|=0x01000000u;
+            CdTestNote("dma_busy_read left",g_cdtest.dma_left,v);
+        }
+        return v;
+    }
     return PE_LoadU32(address);
 }
 

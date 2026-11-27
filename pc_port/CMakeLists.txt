@@ -38,12 +38,15 @@ set(PLATFORM_SRCS
     platform/pe_plat_cd_command_sequence_host.c
     platform/pe_plat_cd_queue_command_host.c
     platform/pe_plat_cd_search_file_host.c
-    platform/pe_plat_cd_ack_host.c
-    platform/pe_plat_cd_status_poll_host.c
-    platform/pe_plat_cd_command_issue_host.c
-    platform/pe_plat_cd_sector_dma_host.c
-    platform/pe_plat_cd_stream_handler_host.c
-    platform/pe_plat_cd_dma_issue_host.c
+    # CD host entries 0x8007AAB4 / B010 / B558 / BF44 / C564 / CEAC: clean-room replacements (pe_plat/cdhost.h).
+    # The earlier providers platform/pe_plat_cd_{ack,status_poll,command_issue,sector_dma,stream_handler,dma_issue}_host.c
+    # (undetermined provenance) stay in the tree but are not built.
+    platform/pe_plat2_cdhost_ack.c
+    platform/pe_plat2_cdhost_poll.c
+    platform/pe_plat2_cdhost_cmd.c
+    platform/pe_plat2_cdhost_sector.c
+    platform/pe_plat2_cdhost_stream.c
+    platform/pe_plat2_cdhost_dma.c
     platform/pe_plat_cd_status_callback.c
     platform/pe_plat_cd_command_complete.c
     platform/pe_plat_cd_unexpected_status.c
@@ -121,10 +124,14 @@ set(PLATFORM_SRCS
     platform/pe_plat2_gpuprim_clearrect.c
     platform/pe_plat_state.c
     platform/pe_plat2_ctl.c
+    platform/pe_plat2_cdx_stream.c
+    platform/pe_plat2_cdx_stream_slots.c
+    platform/pe_plat2_cdx_stream_seams.c
     platform/pe_plat2_cdx_save.c
     platform/pe_plat2_spu_a.c
     platform/pe_plat2_spu_b.c
     platform/pe_plat2_cdx_spu.c
+    platform/pe_plat2_spu_upload.c
     platform/host_framebuffer.c
     platform/pe_dispenv.c
     platform/pe_timer1.c
@@ -326,7 +333,6 @@ set(GAME_SRCS
     game/boot/func_801942FC_port.c
     game/boot/func_801904B0_port.c
     game/boot/movie_overlay_port.c
-    game/boot/cd_stream_port.c
     game/boot/func_80191DE8_port.c
     game/boot/func_80190998_port.c
     game/boot/func_80012850_port.c
@@ -585,6 +591,9 @@ list(REMOVE_ITEM DECOMP_SRCS
     "${CMAKE_SOURCE_DIR}/game/decomp/func_80070064_port.c"
     "${CMAKE_SOURCE_DIR}/game/decomp/func_800702DC_port.c"
     "${CMAKE_SOURCE_DIR}/game/decomp/func_800703F4_port.c")
+# The SPU upload family (800850F4/800850C0/80085174/80085098) is the clean-room platform/pe_plat2_spu_upload.c
+# (pe_plat/spu_upload.h); the translated boot file is no longer compiled (left in the tree).
+list(REMOVE_ITEM GAME_SRCS game/boot/func_800850F4_port.c)
 # 50BE8's matching leaf has an implicit live a0. The native reward callback
 # supplies that argument explicitly; keep the generated matching source intact.
 list(REMOVE_ITEM DECOMP_SRCS "${CMAKE_SOURCE_DIR}/game/decomp/func_80050BE8_port.c")
@@ -622,6 +631,8 @@ list(REMOVE_ITEM DECOMP_SRCS
     "${CMAKE_SOURCE_DIR}/game/decomp/func_80085DC4_port.c"
     "${CMAKE_SOURCE_DIR}/game/decomp/func_80085F14_port.c"
     "${CMAKE_SOURCE_DIR}/game/decomp/func_80085E54_port.c"
+    "${CMAKE_SOURCE_DIR}/game/decomp/func_80085098_port.c"
+    "${CMAKE_SOURCE_DIR}/game/decomp/func_800850C0_port.c"
     "${CMAKE_SOURCE_DIR}/game/decomp/func_80085DF4_port.c"
     "${CMAKE_SOURCE_DIR}/game/decomp/func_8007BDDC_port.c"
     "${CMAKE_SOURCE_DIR}/game/decomp/func_8007A910_port.c"
@@ -808,6 +819,9 @@ message(STATUS "pe: ${PE_DECOMP_TU_COUNT} decomp-derived port TUs")
 # cdx-etc: the translated libetc provider (platform/pe_libetc.c, removed 2026-11-27) is replaced by the clean-room
 # veneers (platform/pe_plat2_cdx_etc.c) and their host seams (platform/pe_plat2_cdx_etc_seams.c).
 
+# cdx-stream: the translated CD stream provider (game/boot/cd_stream_port.c) was replaced by the clean-room providers
+# (platform/pe_plat2_cdx_stream.c, _slots.c, _seams.c) and deleted.
+
 set(FIELD_RUNTIME_SRCS
     src/pe_globals.c
     platform/pe_callback.c
@@ -822,6 +836,15 @@ set(FIELD_RUNTIME_SRCS
 # translated retail graph and its host-safe providers, but not the CLI entry
 # point or the X11 presentation adapter.  Creating this target does not claim
 # that the currently translated graph is a complete Day 1 field runtime.
+# The clean-room stream handler (platform/pe_plat2_cdhost_stream.c) matches the 778 cdgen47 vectors but not yet the suite's deeper
+# stream states (record publication, payload copy): until the deep vector set is replayed to zero, the previous stream provider
+# stays in the build (it defines the same symbol, pe_plat_cdhost_stream, through the cd.h binding macro).  Set
+# -DPE_CDHOST_LEGACY_STREAM=OFF to build the clean-room one.
+option(PE_CDHOST_LEGACY_STREAM "Build the previous stream handler provider instead of the clean-room pe_plat2_cdhost_stream.c" ON)
+if(PE_CDHOST_LEGACY_STREAM)
+    list(REMOVE_ITEM FIELD_RUNTIME_SRCS platform/pe_plat2_cdhost_stream.c)
+    list(APPEND FIELD_RUNTIME_SRCS platform/pe_plat_cd_stream_handler_host.c)
+endif()
 add_library(pe_field_runtime STATIC ${FIELD_RUNTIME_SRCS})
 # The translated stream engine keeps its own func_8008CB54 / func_8008CBA8 definitions: they stay
 # compiled but unreferenced by the generated callers, which bind to pe_plat/cdx_spu.h.

@@ -313,7 +313,7 @@ extern int  func_80087090(pe_addr_t buffer, int count);
 extern pe_addr_t func_80085EB4(pe_addr_t spu_addr);
 extern void func_800850F4(pe_addr_t src, uint32_t size);
 extern void func_80085098(void);
-extern void func_80085174(void);   /* serviced DMA4 wait, func_800850F4_port.c */
+extern void func_80085174(void);   /* serviced DMA4 wait, platform/pe_plat2_spu_upload.c */
 extern int func_800851A8(pe_addr_t buffer, int count);
 
 #endif

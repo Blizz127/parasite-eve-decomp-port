@@ -11,7 +11,7 @@ mkdir -p "$OUT/cdgen42" "$OUT/cdgen42b" "$OUT/cdgen42c" "$OUT/cdgen43" "$OUT/cdg
 run() { echo "\$ $*" | tee -a "$LOG"; "$@" >> "$LOG" 2>&1; local rc=$?; echo "  exit=$rc" | tee -a "$LOG"; return $rc; }
 sha1sum build/disc1.candidate.exe | tee -a "$LOG"
 T=CMakeFiles/pe_field_runtime.dir
-run ninja -C build/vec $T/game/boot/cd_stream_port.c.o $T/platform/pe_plat2_cdx_etc.c.o $T/platform/pe_plat_irq_callback.c.o \
+run ninja -C build/vec $T/platform/pe_plat2_cdx_etc.c.o $T/platform/pe_plat_irq_callback.c.o \
     $T/platform/pe_libsnd.c.o $T/platform/pe_stream.c.o $T/platform/pe_save.c.o  # NOTE 2026-11-27: pe_libsnd.c is no longer built (cdx-spu); this cdgen44 line is a recorded control, not runnable; use pe_cdx_spu_run.sh
 P=pc_port/tools
 run python3 $P/pe_cdx_vectors.py $OUT/cdgen42/vectors.txt cdgen42 -n 200

@@ -29,22 +29,8 @@
 #define PE_PLAT_CD_H
 
 #include <stdint.h>
+#include "pe_plat/cdhost.h"   /* the six CD host entries: 0x8007AAB4 / B010 / B558 / BF44 / C564 / CEAC */
 
-int pe_plat_cd_acknowledge_host(void);
-#define func_8007AAB4 pe_plat_cd_acknowledge_host
-
-int pe_plat_cd_status_poll_host(uint32_t mode,uint32_t dst);
-#define func_8007B010 pe_plat_cd_status_poll_host
-
-int pe_plat_cd_command_issue_host(uint32_t cmd,uint32_t input,uint32_t dst,uint32_t mode);
-#define func_8007B558 pe_plat_cd_command_issue_host
-
-void pe_plat_cd_dma_issue_host(uint32_t channel,uint32_t address,uint32_t blocks,uint32_t words,uint32_t control,uint32_t interrupt,uint32_t unused);
-#define func_8007CEAC pe_plat_cd_dma_issue_host
-void pe_plat_cd_stream_handler_host(void);
-#define func_8007C564 pe_plat_cd_stream_handler_host
-int pe_plat_cd_sector_dma_host(uint32_t dst,uint32_t count);
-#define func_8007BF44 pe_plat_cd_sector_dma_host
 
 /* Stream setup, including the fifth o32 argument. */
 void pe_plat_cd_set_stream(uint32_t mode, int32_t start, int32_t end, uint32_t callback, uint32_t auxiliary);
@@ -533,18 +519,6 @@ int func_8007F0C8(uint32_t mode,uint32_t location,int command,uint32_t extra,uin
 /* Canonical guest-name prototypes for the bindings above (generated
  * from the pe_plat prototypes; tools read callee signatures from these). */
 int func_8007F418(uint32_t sequence,uint32_t response);
-/* Canonical guest-name prototypes for the bindings above (generated
- * from the pe_plat prototypes; tools read callee signatures from these). */
-int func_8007AAB4(void);
-/* Canonical guest-name prototypes for the bindings above (generated
- * from the pe_plat prototypes; tools read callee signatures from these). */
-int func_8007B010(uint32_t mode,uint32_t dst);
-/* Canonical guest-name prototypes for the bindings above (generated
- * from the pe_plat prototypes; tools read callee signatures from these). */
-int func_8007B558(uint32_t cmd,uint32_t input,uint32_t dst,uint32_t mode);
-void func_8007CEAC(uint32_t channel,uint32_t address,uint32_t blocks,uint32_t words,uint32_t control,uint32_t interrupt,uint32_t unused);
-void func_8007C564(void);
-int func_8007BF44(uint32_t dst,uint32_t count);
 /* Canonical guest-name prototypes for the bindings above (generated
  * from the pe_plat prototypes; tools read callee signatures from these). */
 uint32_t func_800824F0(uint32_t callback);
