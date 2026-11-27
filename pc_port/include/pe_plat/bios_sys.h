@@ -1,5 +1,5 @@
 /* Bind the BIOS trampoline address B(38h) at 0x800719E4 to its host model
- * (psx-spx "Kernel (BIOS)", platform/func_800719E4_port.c).  The libetc BIOS
+ * (psx-spx "Kernel (BIOS)", platform/pe_plat2_bios_exit.c).  The libetc BIOS
  * veneers (A(44h) FlushCache, B(5Bh) ChangeClearPAD, C(0Ah) ChangeClearRCnt,
  * SYSCALL(01h)/(02h) Enter/ExitCriticalSection, SetIntrMask and the VBlank
  * callback-slot setters) are the clean-room cdx-etc provider

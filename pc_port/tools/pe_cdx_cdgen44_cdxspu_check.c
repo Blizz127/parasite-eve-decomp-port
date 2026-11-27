@@ -41,6 +41,8 @@ TRAP(PE_SpuDma_WaitForCompletion) TRAP(PE_SpuRegister_LoadU16) TRAP(PE_SpuRegist
 TRAP(pe_plat_spua_dma_priority) TRAP(pe_plat_spua_dma_priority_enabled) TRAP(pe_plat_spua_configure_heap)
 /* cdx-spu2: only the stream bring-up (not an entry of this batch) calls the transfer-address leaf of platform/pe_plat2_spu_b.c */
 TRAP(pe_plat_spub_set_transfer_address)
+/* cdx-spu2: only the reverb work-area clear (not an entry of this batch) reaches these */
+TRAP(pe_plat_spub_heap_contains)
 
 void pe_plat_sio_poll_tick(void) { host_only_calls++; }
 int PE_Port_ShouldStop(void) { return 0; }

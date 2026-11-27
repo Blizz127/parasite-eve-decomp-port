@@ -16,7 +16,7 @@
  *   func_80072314  A(1Bh)   strlen(src)
  *   func_80071A34  A(2Ah)   memcpy(dst, src, len)
  *   func_80071A44  A(2Bh)   memset(dst, fillbyte, len)
- *   (A(28h) bzero is func_80071A24_port.c.)
+ *   (A(28h) bzero is platform/pe_plat2_bios_bzero.c.)
  */
 #ifndef PE_BIOS_STRING_H
 #define PE_BIOS_STRING_H

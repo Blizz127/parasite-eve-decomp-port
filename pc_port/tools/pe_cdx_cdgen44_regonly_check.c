@@ -23,6 +23,8 @@ TRAP(func_800850F4) TRAP(PE_SpuDma_WaitForCompletion) TRAP(pe_plat_spu_set_commo
 TRAP(pe_plat_ctl_counter_setup) TRAP(pe_plat_ctl_counter_start)
 /* cdx-spu2: only the stream bring-up (not an entry of this batch) calls the transfer-address leaf of platform/pe_plat2_spu_b.c */
 TRAP(pe_plat_spub_set_transfer_address)
+/* cdx-spu2: only the reverb work-area clear (not an entry of this batch) reaches these */
+TRAP(pe_plat_spub_heap_contains) TRAP(PE_SpuDma_Service) TRAP(PE_Event_ConsumeSpuDma)
 void pe_plat_sio_poll_tick(void) {}
 void PE_Decomp_GuestTrapDivZero(const char *fn) { (void)fn; bad_call = 1; trap_name = "PE_Decomp_GuestTrapDivZero"; }
 int PE_Port_ShouldStop(void) { return 0; }

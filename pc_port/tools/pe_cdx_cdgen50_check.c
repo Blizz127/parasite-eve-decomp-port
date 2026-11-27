@@ -13,6 +13,8 @@
  * The objects are built by pe_cdx_cdgen50_run.sh from the BUILD lines below ($O = scratch output directory):
  * BUILD-host: cc -std=gnu11 -Wall -Wextra -Werror -DC50_HOST=1 -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/tools/pe_cdx_cdgen50_check.c $O/legacy_poll.o -o $O/c50_host
  * BUILD-host-mapped: cc -std=gnu11 -Wall -Wextra -Werror -DC50_HOST=1 -DC50_MAP_VSYNC=1 -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/tools/pe_cdx_cdgen50_check.c $O/legacy_poll.o -o $O/c50_host_mapped
+ * BUILD-core-expand: cc -std=gnu11 -Wall -Wextra -Werror -DC50_CORE=1 -DC50_EXPAND_ABORT=1 -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/tools/pe_cdx_cdgen50_check.c $O/legacy_poll.o -o $O/c50_core_expand
+ *   (-DC50_EXPAND_ABORT=1: the abort-entry stand-in expands to the inline body poll.txt records; for a provider that calls the abort entry, run this build on poll.txt)
  * BUILD-core: cc -std=gnu11 -Wall -Wextra -Werror -DC50_CORE=1 -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/tools/pe_cdx_cdgen50_check.c $O/legacy_poll.o -o $O/c50_core
  * Run: $O/c50_<name> poll.txt|poll_stop.txt [noop|flip|retflip|storeflip|poke0|same]   (CDX_CATEGORIES=1, CDX_LINES=1, CDX_DEBUG=1, CDX_TRACE=1) */
 #include "pe_cdx_common_canary.h"
@@ -42,7 +44,25 @@ void HostFB_GetState(int *vsync, int *drawsync, int *presented, int *mask)
 }
 #if C50_CORE
 int pe_plat_hostfb_vsync(int mode) { return (int)cdx_callee(0x80073A44u, 1, (uint32_t)mode, 0, 0, 0, 0); }
+#if C50_EXPAND_ABORT
+/* poll.txt expands the abort entry 0x80081268 inline.  A provider that CALLS the abort entry through its bound symbol is compared with that expansion by this
+ * stand-in, which performs what the original's inlined body does (observed over the set): load the active word 0x8009B6CC; when it is 1 load 0x8009B6B8,
+ * call 0x8007F69C, 0x800822BC, (when the low bit of that word is set: load 0x8009B6C0 and call 0x800824F0), 0x8007FCBC, 0x8007EE84 (arity 0, scripted results); then store 0 into 0x8009B6CC. */
+void pe_plat_ds_81268(void)
+{
+    if (PE_LoadU32(0x8009B6CCu) == 1u) {
+        uint32_t b8 = PE_LoadU32(0x8009B6B8u);
+        (void)cdx_callee(0x8007F69Cu, 0, 0, 0, 0, 0, 0);
+        (void)cdx_callee(0x800822BCu, 0, 0, 0, 0, 0, 0);
+        if (b8 & 1u) { (void)PE_LoadU32(0x8009B6C0u); (void)cdx_callee(0x800824F0u, 0, 0, 0, 0, 0, 0); }
+        (void)cdx_callee(0x8007FCBCu, 0, 0, 0, 0, 0, 0);
+        (void)cdx_callee(0x8007EE84u, 0, 0, 0, 0, 0, 0);
+    }
+    PE_StoreU32(0x8009B6CCu, 0u);
+}
+#else
 void pe_plat_ds_81268(void) { (void)cdx_callee(0x80081268u, 0, 0, 0, 0, 0, 0); }
+#endif
 int pe_plat_ds_ready(int a0) { return (int)cdx_callee(0x8007F608u, 1, (uint32_t)a0, 0, 0, 0, 0); }
 #else
 /* referenced by the retail core in the same object, never called by the host adapter: a call fails the case */

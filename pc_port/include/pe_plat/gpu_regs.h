@@ -1,7 +1,7 @@
 /* Host guard for the GPU/DMA/IRQ register pointer words the clean-room GPU
  * providers dereference (0x80095854 ... ): a pointer that is neither guest RAM
  * nor a modelled MMIO register (uninitialised library state, as in some unit
- * tests) is a named refusal, like pe_plat_resetgraph_light_host.c, instead of a
+ * tests) is a named refusal, like pe_plat2_resetgraph_light.c (host table check), instead of a
  * fatal bad guest access.  Not observable in the vectors (their pointers are
  * valid). */
 #ifndef PE_PLAT_GPU_REGS_H

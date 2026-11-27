@@ -6,7 +6,7 @@ O=${C50_OUT:?}; V=${C50_VEC:?}; I=${C50_INT3:?}
 mkdir -p "$O"
 ( cd "$I" && cc -c -std=gnu11 -O2 -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/platform/pe_plat_cd_poll.c -o "$O/legacy_poll.o" ) || exit 1
 SRC=pc_port/tools/pe_cdx_cdgen50_check.c
-for n in ${C50_NAMES:-host host-mapped core}; do
+for n in ${C50_NAMES:-host host-mapped core core-expand}; do
   cmd=$(grep "^ \* BUILD-$n:" $SRC | sed "s/^ \* BUILD-$n: //" | sed "s#\$O#$O#g")
   echo "BUILD $n: $cmd"; bash -c "$cmd" || { echo "  build FAILED"; continue; }
   for set in poll poll_stop; do

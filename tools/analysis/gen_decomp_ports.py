@@ -1014,7 +1014,7 @@ PE_PLAT_REPLACED = {
     "func_80072314": "pc_port/platform/pe_bios_string.c",
     "func_80071A34": "pc_port/platform/pe_bios_string.c",
     "func_80071A44": "pc_port/platform/pe_bios_string.c",
-    "func_80071A24": "pc_port/platform/func_80071A24_port.c",
+    "func_80071A24": "pc_port/platform/pe_plat2_bios_bzero.c",
     "func_80071A54": "pc_port/platform/pe_bios_rand.c",  # BIOS A(2Fh) rand
     "func_80071A64": "pc_port/platform/pe_bios_rand.c",  # BIOS A(30h) srand
     "func_800726F4": "pc_port/platform/pe_plat_bios_event.c",  # BIOS B(0Bh) TestEvent
@@ -1027,7 +1027,7 @@ PE_PLAT_REPLACED = {
     "func_8007DD54": "pc_port/platform/pe_plat_bios_card.c",  # BIOS A(ACh) _card_load
     "func_8007DDB4": "pc_port/platform/pe_plat_bios_card.c",  # BIOS B(4Eh) _card_write
     "func_8007DDC4": "pc_port/platform/pe_plat_bios_card.c",  # BIOS B(50h) _new_card
-    "func_800719E4": "pc_port/platform/func_800719E4_port.c",  # BIOS B(38h)
+    "func_800719E4": "pc_port/platform/pe_plat2_bios_exit.c",  # BIOS B(38h)
     "func_800726C4": "pc_port/platform/pe_plat2_cdx_etc.c",  # BIOS A(44h) FlushCache
     "func_80073C74": "pc_port/platform/pe_plat2_cdx_etc.c",  # BIOS B(5Bh) ChangeClearPAD
     "func_80073C84": "pc_port/platform/pe_plat2_cdx_etc.c",  # BIOS C(0Ah) ChangeClearRCnt
@@ -1263,12 +1263,12 @@ PE_PLAT_HEADERS = {
                    "pc_port/platform/pe_plat_hostfb_forward.c": "pc_port/include/pe_plat/hostfb_forward.h",
                    "pc_port/platform/pe_bios_card.c": "pc_port/include/pe_plat/bios_file.h",
                    "pc_port/platform/pe_bios_string.c": "pc_port/include/pe_plat/bios_string.h",
-                   "pc_port/platform/func_80071A24_port.c": "pc_port/include/pe_plat/bios_string.h",
+                   "pc_port/platform/pe_plat2_bios_bzero.c": "pc_port/include/pe_plat/bios_string.h",
                    "pc_port/platform/pe_bios_rand.c": "pc_port/include/pe_plat/bios_rand.h",
                    "pc_port/platform/pe_plat_bios_event.c": "pc_port/include/pe_plat/bios_event.h",
                    "pc_port/platform/pe_plat_bios_intrp.c": "pc_port/include/pe_plat/bios_intrp.h",
                    "pc_port/platform/pe_plat_bios_card.c": "pc_port/include/pe_plat/bios_card.h",
-                   "pc_port/platform/func_800719E4_port.c": "pc_port/include/pe_plat/bios_sys.h",
+                   "pc_port/platform/pe_plat2_bios_exit.c": "pc_port/include/pe_plat/bios_sys.h",
                    "pc_port/platform/pe_plat2_cdx_etc.c": "pc_port/include/pe_plat/cdx_etc.h",
                    "pc_port/platform/pe_plat_gpu_status.c": "pc_port/include/pe_plat/gpu_status.h",
                    "pc_port/platform/pe_plat_gpu_area.c": "pc_port/include/pe_plat/gpu_area.h",

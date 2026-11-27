@@ -1,6 +1,6 @@
 /* ResetGraph (guest 0x80074A44): reset modes (low three bits 0, 3, 5) in
  * platform/pe_plat_gpu_resetgraph.c, every other mode through the light path
- * (platform/pe_plat_resetgraph_light_host.c). */
+ * (platform/pe_plat2_resetgraph_light.c). */
 #ifndef PE_PLAT_GPU_RESETGRAPH_H
 #define PE_PLAT_GPU_RESETGRAPH_H
 #include <stdint.h>

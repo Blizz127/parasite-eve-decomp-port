@@ -477,6 +477,134 @@ def gen_be3c(rng, k):
     return [mode, 0, 0, 0], setup, r, None
 
 
+# ============================================================ cdgen63: libpress DecDCTBufSize / DecDCTvlcSize / DecDCToutSync (overlay ovl_039F)
+# The three entries are hosted in pe_libpress.c.  The oracle runs the overlay bytes (ensure_overlay_blobs.py extracts the blob);
+# DecDCToutSync's callees in the same overlay (func_8010C39C poll loop, func_8010C430 status read, func_8010C448 timeout path) run
+# INLINE so the hardware accesses they make are part of the event stream.  The 0x100000-poll timeout arm (func_8010C448) needs a million
+# register reads per case and is not sampled (documented in the report).
+OVL |= {'func_8010BF94', 'func_8010C86C', 'func_8010C078'}
+BATCHES['cdgen63'] = []
+BATCHES['cdgen64s'] = []
+BATCHES['cdgen64i'] = []
+INLINE_OF = {'func_8010C078': (('func_8010C39C', True), ('func_8010C430', True), ('func_8010C448', True))}
+BUDGET_OF = {}
+ALIAS = {}
+ARITY_OF = {}     # spec name -> {callee address: significant argument count} (cdgen64)
+VLC_BOUND = 0x8011EB8C
+SIZE_POOL = (0, 1, 2, 3, 4, 5, 7, 8, 0xFF, 0x100, 0x7FFF, 0x8000, 0xFFFF, 0x10000, 0x3FFFFFFF, 0x40000000, 0x7FFFFFFF, 0x80000001,
+             0xFFFFFFFF, 0xFFFFFFFE, 0x1000, 0x1FFFF, 0xFFFFFF, 0x1000000)
+
+
+@spec('func_8010BF94', 'cdgen63', 1, 600)
+def gen_bf94(rng, k):
+    kind = rng.next() % 8
+    if kind == 0:
+        bs = rng.pick((0x80095744, 0x80011800, 0x80120000, 0x8011EB8C, 0x800A3608, 0x80010000)) & ~1
+    else:
+        bs = ZONE + 2 * (rng.next() % ((ZSIZE - 0x40) // 2))
+
+    def setup(ram):
+        fill_zone(ram, rng)
+        put16(ram, bs, rng.pick((0, 1, 2, 0x7FFF, 0x8000, 0xFFFF, 0x0100, 0x1234, 0xFFFE)) if rng.next() & 1 else rng.next() & 0xFFFF)
+    return [bs, 0, 0, 0], setup, None, None
+
+
+@spec('func_8010C86C', 'cdgen63', 1, 700)
+def gen_c86c(rng, k):
+    size = SIZE_POOL[k % len(SIZE_POOL)] if k < 3 * len(SIZE_POOL) else (rng.pick(SIZE_POOL) if rng.next() & 1 else rng.next())
+
+    def setup(ram):
+        fill_zone(ram, rng)
+        put32(ram, VLC_BOUND, rng.pick((0, 1, 2, 0xFFFFFF, 0x7FFFFFFF, 0x80000000, 0xFFFFFFFF, 0x12345678)) if rng.next() & 1 else word(rng))
+    return [size, 0, 0, 0], setup, None, None
+
+
+def _chcr1_seq(rng):
+    k = rng.pick((0, 0, 0, 1, 1, 2, 3, 5, 10, 40, 200, 600, 1200))
+    busy = [rng.pick((0x01000000, 0x11000000, 0x01000200, 0xFFFFFFFF, 0x01FFFFFF, 0x7F000000 | 0x01000000)) for _ in range(min(k, 6))]
+    seq = busy + [busy[-1]] * (k - len(busy)) if busy else []
+    return seq + [rng.pick((0, 0, 0x00FFFFFF, 0x7E000000, 0x10000000, 0xFEFFFFFF, 0x00000200, 0x11000000 & ~0x01000000))]
+
+
+@spec('func_8010C078', 'cdgen63', 1, 1200)
+def gen_c078(rng, k):
+    mode = rng.pick((0, 0, 0, 0, 1, 2, 3, 0xFF, 0x100, 0x80000000, 0x7FFFFFFF, 0xFFFFFFFF)) if rng.next() % 3 else (0 if rng.next() & 1 else word(rng))
+    if k < 40:
+        mode = (0, 1)[k & 1]
+    redir = rng.next() % 8 == 0
+
+    def setup(ram):
+        fill_zone(ram, rng)
+        if redir:                       # the two hardware pointer words (overlay data) aimed at other register slots
+            put32(ram, 0x8010DB30, 0x1F8010A8)
+            put32(ram, 0x8010DB50, 0x1F801820)
+            put32(ram, 0x1F8010A8 & 0x1FFFFF, word(rng))
+    model = {'mdec1': [rng.pick((0, 0x01000000, 0x80040000, 0x60000000, 0xFFFFFFFF, 0x04000000, 0x81000000, 0x00FFFFFF, 0x0F000000)) if rng.next() & 1 else rng.next()],
+             'chcr1': _chcr1_seq(rng)}
+    return [mode, 0, 0, 0], setup, rets_all(rng), model
+
+
+# ============================================================ cdgen64: ResetGraph light path, libgpu 0x80074A44
+# Light path = mode & 7 in {1, 2, 4, 6, 7} (0, 3, 5 are the reset modes, a different provider).  Shape 's': the GPU reset the light
+# path jumps to (0x80077144) is a stopped callee (measures the light host alone); shape 'i': it runs INLINE, so the GP1 / GP0
+# write sequence and the state stores are part of the stream.
+INLINE_OF['func_80074A44@inline'] = (('func_80077144', False),)
+# the table slot 13 target is called with one argument (1); the log vector with the format and the mode
+ARITY_OF['func_80074A44'] = ARITY_OF['func_80074A44@inline'] = {0x80130340: 1, 0x80130200: 2}
+ALIAS['func_80074A44@inline'] = 'func_80074A44'
+LIGHT_LOW = (1, 2, 4, 6, 7)
+
+
+def _light_mode(rng, k):
+    low = LIGHT_LOW[k % 5] if k < 25 else rng.pick(LIGHT_LOW)
+    hi = rng.pick((0, 0, 1, 2, 3, 0x1FFFFFFF, 0x10000000, 0x0FFFFFFF)) if rng.next() % 3 else rng.next() & 0x1FFFFFFF
+    return ((hi << 3) | low) & 0xFFFFFFFF
+
+
+def _light_env(rng, ram, k, gpu_words):
+    mk_env(rng, ram, limits=False, logger=True)
+    ram[0x9574E] = rng.pick((0, 0, 1, 1, 2, 2, 3, 0xFF)) if k > 12 else (0, 1, 2, 3)[k % 4]
+    mode_t = rng.next() % 6
+    if mode_t == 5:                                  # libgpu function table elsewhere: slot 13 = a sentinel guest function (hook arm)
+        put32(ram, 0x80095744, ZONE + 0x1800)
+        for i in range(16):
+            put32(ram, ZONE + 0x1800 + 4 * i, SENT[i])
+    elif mode_t == 4:                                # table elsewhere with the genuine GPU reset in slot 13
+        put32(ram, 0x80095744, ZONE + 0x1800)
+        for i in range(16):
+            put32(ram, ZONE + 0x1800 + 4 * i, SENT[i])
+        put32(ram, ZONE + 0x1800 + 0x34, 0x80077144)
+    if gpu_words:
+        if rng.next() % 5 == 0:                      # GP1 / DPCR / GP0 pointer words aimed at other slots (RAM or register page)
+            put32(ram, 0x80095860, rng.pick((0x1F801814, 0x1F801818, 0x1F801820, ZONE + 0x1900)))
+            put32(ram, 0x80095870, rng.pick((0x1F8010F0, 0x1F8010F4, ZONE + 0x1904)))
+            put32(ram, 0x80095854, rng.pick((0x1F801810, 0x1F801818, ZONE + 0x1908)))
+            for a in (0x1818, 0x1820, 0x10F4):
+                put32(ram, a, word(rng))
+        put32(ram, 0x1810, word(rng)); put32(ram, 0x1814, word(rng)); put32(ram, 0x10F0, word(rng))
+        for a in (0x80095874, 0x80095878, 0x80095884):
+            put32(ram, a, word(rng))
+
+
+@spec('func_80074A44', 'cdgen64s', 1, 1500)
+def gen_74a44s(rng, k):
+    mode = _light_mode(rng, k)
+
+    def setup(ram):
+        _light_env(rng, ram, k, False)
+    return [mode, 0, 0, 0], setup, rets_all(rng), None
+
+
+@spec('func_80074A44@inline', 'cdgen64i', 1, 1500)
+def gen_74a44i(rng, k):
+    mode = _light_mode(rng, k)
+
+    def setup(ram):
+        _light_env(rng, ram, k, True)
+    return [mode, 0, 0, 0], setup, rets_all(rng), {'stat': stat_seq(rng), 'gp0': [rng.next() for _ in range(1 + rng.next() % 4)]}
+
+
+
 # per-function case counts, tuned so every committed batch file stays under 2 MB
 COUNTS = {'func_80076EE4': 1000, 'func_800773D0': 300,
           'func_8007506C': 500, 'func_800750CC': 500, 'func_80074E28': 1000, 'func_8007512C': 700,
@@ -503,16 +631,23 @@ def build(funcs, out_path):
         gen, nargs, count = SPECS[name]
         import os
         count = int(os.environ.get('G2_COUNT', COUNTS.get(name, count)))
-        if name in OVL:
-            off, size, entry = C.func_range(name, OVL_YAML, OVL_VRAM)
+        real = ALIAS.get(name, name)
+        if real in OVL:
+            off, size, entry = C.func_range(real, OVL_YAML, OVL_VRAM)
         else:
-            off, size, entry = C.func_range(name)
+            off, size, entry = C.func_range(real)
+        inline = []
+        for iname, iovl in INLINE_OF.get(name, ()):
+            _o, isz, ient = C.func_range(iname, OVL_YAML, OVL_VRAM) if iovl else C.func_range(iname)
+            inline.append((ient, ient + isz))
         n = dropped = 0
+        C.ARITY_EXTRA = ARITY_OF.get(name, {})
         for k in range(count):
             seed = (entry & 0xFFFF) * 0x1000 + k
             rng = Rng(seed)
             args, setup, rets, model = gen(rng, k)
-            r = C.case_run(base_ovl if name in OVL else base, setup, entry, size, args, nargs, rets, model, gseed=seed)
+            r = C.case_run(base_ovl if real in OVL else base, setup, entry, size, args, nargs, rets, model, gseed=seed, inline=inline,
+                           budget=BUDGET_OF.get(name, 100000))
             if r is None:
                 dropped += 1
                 continue

@@ -2,7 +2,7 @@
  * code: func_8001220C reaches the credits main loop 0x801235DC through the
  * guest-code registry, and the credits' libpress calls into ovl_039F
  * (PE.IMG [0x39F,0x3C5) -> 0x8010BCF8) run on host replacements
- * (platform/pe_libpress.c) and the func_8010C89C hand port.
+ * (platform/pe_plat2_press_dct.c) and the func_8010C89C hand port.
  *
  * The retail cases copy the two overlays from the owner's PE.IMG into guest
  * RAM, as func_8006F044 does before the call, and run the retail bytes in the

@@ -192,17 +192,16 @@ Details and the full list of what was checked:
   audio, saves), the host providers that replace the Psy-Q SDK code (clean-room
   ones published, translated ones held until re-derived), the disc checks, the
   opt-in cheats, and its tests.
-  **Temporarily missing (2026-11-27):** three provider files were removed from
-  this tree pending clean-room re-derivation, because a whole-binary provenance
-  sweep found they still carried bodies translated from the original SDK code:
-  `pc_port/platform/pe_libpress.c` (the libpress DecDCT helpers),
-  `pc_port/platform/pe_plat_resetgraph_light_host.c` (the ResetGraph light
-  path) and `pc_port/game/boot/func_80071A84_port.c` (the sprintf formatter).
-  Their clean-room replacements are being written from black-box vector sets
-  and will land as forward commits; until then those parts are absent here and
-  this tree does not build the port. One more file, `pe_spu_dma.c`, carries a
-  short translated interrupt tail that is being replaced by a call to the
-  existing clean-room provider; it follows the same way.
+  **Temporarily missing (2026-11-27, updated):** three provider files were
+  removed from this tree because a whole-binary provenance sweep found they
+  still carried bodies translated from the original SDK code. Two of the three
+  parts are back as clean-room providers written from black-box vector sets and
+  public documentation: `pc_port/platform/pe_plat2_press_dct.c` (the libpress
+  DecDCT helpers) and `pc_port/platform/pe_plat2_resetgraph_light.c` (the
+  ResetGraph light path). The translated interrupt tail in `pe_spu_dma.c` is
+  now delegated to the existing clean-room provider. The sprintf formatter
+  (`pc_port/game/boot/func_80071A84_port.c`) is still missing pending its
+  clean-room replacement. Until then this tree does not build the port.
 - `configs/`: splat and symbol configuration (addresses and names only).
 - `tools/`, `scripts/`, `dev/`: the analysis tools, including the retail-data
   and Psy-Q guards, the build scripts and the build container.

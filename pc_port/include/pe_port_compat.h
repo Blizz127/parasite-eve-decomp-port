@@ -1069,7 +1069,8 @@ extern void func_800334AC(void);
 /* Phase 6E-B54I: GPU primitive-builder leaves of func_80030894 and the
  * two add/sort wrappers, all REAL translations with full word-decode
  * headers (game/boot/func_80077*_port.c, func_8005DADC_port.c,
- * func_80037{0DC,140}_port.c, platform/func_800719E4_port.c):
+ * func_80037{0DC,140}_port.c; func_800719E4 is the clean-room
+ * platform/pe_plat2_bios_exit.c host contract):
  *   func_80077A64  GetTPage(tp, abr, x, y) value builder (pure)
  *   func_80077AA4  CLUT value builder, (y<<6)|((x>>a4)&0x3F), &0xFFFF
  *   func_80077B04  SetSemiTrans — code byte bit 1 set/clear
@@ -1080,8 +1081,8 @@ extern void func_800334AC(void);
  *   func_8005DADC  *(u32*)0x800A8030 + 0x800A8028 + (a0<<3)
  *   func_800370DC  add/sort wrapper (draw-mode + setSprt + append)
  *   func_80037140  add/sort wrapper (draw-mode + SetTile + append)
- *   func_800719E4  BIOS B(38h) CD-mode trampoline (fail path; collapsed
- *                  with recorded justification, pe_libcd.c precedent) */
+ *   func_800719E4  BIOS B(38h) exit: silent host no-op returning 0
+ *                  (documented host contract, not a retail translation) */
 extern int func_80077A64(int tp, int abr, int x, int y);
 extern int func_80077AA4(int a0, int a1);
 extern void func_80077B04(pe_addr_t pe_a0, int a1);
@@ -1127,16 +1128,16 @@ void PE_RotMatrix794C4_values(const int16_t angles[3], int16_t out[9]);
 int32_t PE_Printf_Guest(pe_addr_t fmt, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uint32_t a5, uint32_t a6, uint32_t a7);
 /* host-replacement: func_8010BF94 (Psy-Q libpress DecDCTBufSize in ovl_039F;
  * guest bitstream -> its first halfword).  The credits overlay (ovl_0457)
- * calls it; implemented in platform/pe_libpress.c, no func_8010BF94 is
- * defined. */
+ * calls it; implemented in platform/pe_plat2_press_dct.c (declared in
+ * pe_plat/press_dct.h), no func_8010BF94 is defined. */
 uint32_t PE_DecDCTBufSize_Guest(pe_addr_t bs);
 /* host-replacement: func_8010C86C (Psy-Q libpress DecDCTvlcSize, handwritten
  * asm in ovl_039F: the VLC output bound [0x8011EB8C] becomes size << 1, or
- * 0xFFFFFF for size <= 1; returns the previous bound).  platform/pe_libpress.c. */
+ * 0xFFFFFF for size <= 1; returns the previous bound).  platform/pe_plat2_press_dct.c. */
 int32_t PE_DecDCTvlcSize_Guest(uint32_t size);
 /* host-replacement: func_8010C078 (Psy-Q libpress DecDCToutSync in ovl_039F;
  * mode != 0: MDEC1 status bit 24; mode 0: wait for DMA1, -1 on timeout).
- * platform/pe_libpress.c. */
+ * platform/pe_plat2_press_dct.c. */
 int32_t PE_DecDCToutSync_Guest(int32_t mode);
 
 void func_800783E4(pe_addr_t a, pe_addr_t b, int32_t wa, int32_t wb, pe_addr_t out);

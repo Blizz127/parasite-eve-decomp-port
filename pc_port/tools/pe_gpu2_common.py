@@ -73,6 +73,9 @@ class RangeStops:
             self.hit = pc
             return True
         if pc < self.lo or pc >= self.hi:
+            for klo, khi in self.known:           # callee bodies the case runs INLINE (cdgen63 / cdgen64 shapes); empty for every earlier batch
+                if klo <= pc < khi:
+                    return False
             self.hit = pc
             return True
         return False
@@ -157,6 +160,12 @@ GARBAGE_REGS = (2, 3, 8, 9, 10, 11, 12, 13, 14, 15, 24, 25)
 # ---- extended hardware model: GPUSTAT (0x1814), DMA2 CHCR (0x10A8), DMA6 CHCR (0x10E8) and GPUREAD (0x1810)
 # loads come from scripted sequences (psx-spx); root counter 1 as in pe_gpu_rows_vectors; all else aliases RAM.
 def _load2(fmt, buf, a):
+    if struct.calcsize(fmt) == 4 and a in (0x1098, 0x1824) and ({0x1098: 'chcr1', 0x1824: 'mdec1'}[a] in MODEL):
+        # cdgen63: DMA1 CHCR (0x1F801098) and MDEC1 status (0x1F801824) read from a scripted sequence when the case supplies one
+        val = (R.seq_next({0x1098: 'chcr1', 0x1824: 'mdec1'}[a]),)
+        if R.logged(a):
+            R.EVENTS.append(('L', 0x1F800000 + a, 4, val[0] & 0xFFFFFFFF))
+        return val
     if struct.calcsize(fmt) == 4 and a in (0x1810, 0x10E8):
         val = (R.seq_next({0x1810: 'gp0', 0x10E8: 'chcr6'}[a]),)
         if R.logged(a):
@@ -189,10 +198,16 @@ def _nconv(ram, a):
     return n
 
 
+ARITY_EXTRA = {}     # per-spec additions (cdgen64: the sentinel guest functions standing for the table-slot target and the log vector); empty for every earlier batch
+
+
 def _printf_mask(events, ram):
     out = []
     for e in events:
-        if e[0] == 'C' and int(e[1][5:], 16) in ARITY:
+        if e[0] == 'C' and int(e[1][5:], 16) in ARITY_EXTRA:
+            k = ARITY_EXTRA[int(e[1][5:], 16)]
+            e = e[:2] + tuple(x if i < k else None for i, x in enumerate(e[2:6])) + tuple(e[6:])
+        elif e[0] == 'C' and int(e[1][5:], 16) in ARITY:
             k = ARITY[int(e[1][5:], 16)]
             e = e[:2] + tuple(x if i < k else None for i, x in enumerate(e[2:6])) + tuple(e[6:])
         if e[0] == 'C' and int(e[1][5:], 16) in PRINTF and e[2] is not None:
@@ -202,9 +217,11 @@ def _printf_mask(events, ram):
     return out
 
 
-def _run_once(ram, entry, args, size, rets, model, budget, max_calls, garbage):
+def _run_once(ram, entry, args, size, rets, model, budget, max_calls, garbage, inline=()):
     rets = rets or {}
     EVENTS.clear()
+    MODEL.pop('chcr1', None)
+    MODEL.pop('mdec1', None)
     MODEL.update(stat=[0], chcr=[0], chcr6=[0], gp0=[0], t1=(0, 1), n={})
     if model:
         MODEL.update(model)
@@ -215,7 +232,7 @@ def _run_once(ram, entry, args, size, rets, model, budget, max_calls, garbage):
     pc = entry
     seen = {}
     for _ in range(max_calls + 1):
-        st = RangeStops(entry, entry + size, ())
+        st = RangeStops(entry, entry + size, inline)
         try:
             r = R.execute(ram, pc, (), stop_at=st, initial_regs=regs, instruction_budget=budget)
         except AssertionError as e:
@@ -238,18 +255,18 @@ def _run_once(ram, entry, args, size, rets, model, budget, max_calls, garbage):
     return list(EVENTS), 'CALLS', seen
 
 
-def case_run(base, setup, entry, size, args, nargs, rets=None, model=None, budget=100000, max_calls=96, gseed=1):
+def case_run(base, setup, entry, size, args, nargs, rets=None, model=None, budget=100000, max_calls=96, gseed=1, inline=()):
     """Returns (events, ret_or_None, seen) with `_` masks, or None."""
     ram1 = bytearray(base)
     setup(ram1)
     ram2 = bytearray(ram1)
-    ev1, r1, s1 = _run_once(ram1, entry, args, size, rets, model, budget, max_calls, {})
+    ev1, r1, s1 = _run_once(ram1, entry, args, size, rets, model, budget, max_calls, {}, inline)
     if isinstance(r1, str):
         return None
     g = Rng(gseed * 7919 + entry)
     garbage = {i: g.next() | 0x80000000 for i in GARBAGE_REGS}
     a2 = list(args[:nargs]) + [g.next() for _ in range(4 - nargs)]
-    ev2, r2, s2 = _run_once(ram2, entry, a2, size, rets, model, budget, max_calls, garbage)
+    ev2, r2, s2 = _run_once(ram2, entry, a2, size, rets, model, budget, max_calls, garbage, inline)
     if isinstance(r2, str) or len(ev1) != len(ev2):
         return None
     out = []

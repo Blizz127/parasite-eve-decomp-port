@@ -219,6 +219,16 @@ class Stops:
         return False
 
 
+def _bios_load_log(ram, addr, n=1):
+    """Log a byte-wise load made by an inline BIOS routine; returns the byte.  Addresses below 0x1000 (kernel RAM) are unfaithful for the vector format."""
+    a = addr & 0x1FFFFF
+    if (addr & 0x1FFFFFFF) < 0x1000:
+        c.UNFAITHFUL[0] = True
+    if a not in _OWN:
+        pl.LOADS.append((0x80000000 + a, 1, ram[a]))
+    return ram[a]
+
+
 def run_case(ram, entry, args, rets, sp, sysc, models=None):
     """Run entry; stop at callees, BIOS veneers and SYSCALLs.  Returns
     (ret, loads, stores, calls[(token_fields, stores_before)])."""
@@ -262,6 +272,13 @@ def run_case(ram, entry, args, rets, sp, sysc, models=None):
             for o in range(0, n, 4):
                 pl.STORES.append((0x80000000 + a + o, min(4, n - o), 0))
             r[2] = r[4]
+            regs = dict(enumerate(r))
+            pc = r[31]
+            continue
+        if hit == 0xA0 and (r[9] & 0xFF) in sp.get('bios_inline', {}):
+            # cdgen62: a BIOS memory routine (strlen A(1Bh), memchr A(2Eh)) the original calls through its veneer: run as a memory effect, the bytes it reads
+            # are logged as loads (a byte the original stored itself is own-written and not logged), nothing is recorded as a call
+            r[2] = sp['bios_inline'][r[9] & 0xFF](ram, r, _bios_load_log) & 0xFFFFFFFF
             regs = dict(enumerate(r))
             pc = r[31]
             continue

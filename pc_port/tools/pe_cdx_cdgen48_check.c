@@ -85,6 +85,8 @@ TRAP(func_80085084) TRAP(PE_Event_Enable) TRAP(PE_Event_Open) TRAP(pe_plat_bios_
 TRAP(pe_plat_cdxetc_enter_critical) TRAP(pe_plat_cdxetc_exit_critical) TRAP(pe_plat_ctl_counter_setup) TRAP(pe_plat_ctl_counter_start)
 TRAP(pe_plat_dma_callback) TRAP(pe_plat_interrupt_callback) TRAP(pe_plat_reset_callback) TRAP(pe_plat_spu_set_reverb_mode_type)
 TRAP(PE_Printf_Guest) TRAP(PE_Decomp_GuestTrapDivZero) TRAP(PE_SpuDma_InstallIrq)
+/* cdx-spu2: only the reverb work-area clear (not an entry here) reaches this one */
+TRAP(PE_Event_ConsumeSpuDma)
 #endif
 extern void func_800850F4(pe_addr_t src, uint32_t size);
 extern void func_80085174(void);

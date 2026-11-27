@@ -171,14 +171,14 @@ set(PLATFORM_SRCS
     platform/pe_gte.c
     platform/pe_gte_commands.c
     platform/pe_mdec.c
-    platform/pe_libpress.c
+    platform/pe_plat2_press_dct.c
     platform/pe_str_feed.c
     platform/pe_plat2_cdx_etc.c
     platform/pe_plat2_cdx_etc_seams.c
     platform/pe_plat2_gpuclear.c
     platform/pe_plat2_gpuq.c
     platform/pe_plat2_gpuq_host.c
-    platform/pe_plat_resetgraph_light_host.c
+    platform/pe_plat2_resetgraph_light.c
     platform/pe_spu_dma.c
     platform/pe_spu.c
     platform/pe_audio_driver.c
@@ -197,8 +197,8 @@ set(PLATFORM_SRCS
     platform/pe_disc_check.c
     platform/pe_disc_cache.c
     platform/pe_stream_commands.c
-    platform/func_80071A24_port.c
-    platform/func_800719E4_port.c
+    platform/pe_plat2_bios_bzero.c
+    platform/pe_plat2_bios_exit.c
     platform/pe_guest_image.c
     platform/plat_mods.c
     platform/plat_cheats.c

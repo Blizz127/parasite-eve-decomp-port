@@ -3,9 +3,9 @@
  *   cc -std=c99 -Wall -Wextra -Werror -DCHK_SET_A -Dfunc_80073A44=chk_vsync -Ipc_port/tools/chk_inc -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/tools/pe_gpu_rows_check.c pc_port/platform/pe_plat_gpu_timeout.c pc_port/platform/pe_plat_gpu_dma_start.c -Wl,--unresolved-symbols=ignore-all -o check
  *   cc -std=c99 -Wall -Wextra -Werror -DCHK_SET_B -Dpe_plat_gpu_timeout=chk_timeout -Dfunc_800773D0=chk_seed -Ipc_port/tools/chk_inc -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/tools/pe_gpu_rows_check.c pc_port/platform/pe_plat_gpu_dma_queue.c -Wl,--unresolved-symbols=ignore-all -o checkb
  *   cc -std=c99 -Wall -Wextra -Werror -DCHK_SET_C -Dpe_plat_gpu_dma_queue_run=chk_dmaq -Ipc_port/tools/chk_inc -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/tools/pe_gpu_rows_check.c pc_port/platform/pe_plat_gpu_drawsync.c -Wl,--unresolved-symbols=ignore-all -o checkc
- *   cc -std=c99 -Wall -Wextra -Werror -DCHK_SET_E -Ipc_port/tools/chk_inc -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/tools/pe_gpu_rows_check.c pc_port/platform/pe_plat_gpu_resetgraph.c pc_port/platform/pe_plat_resetgraph_light_host.c -Wl,--unresolved-symbols=ignore-all -o checke
- *   ./checke vectors.txt   (set E: resetgraph; the light-path modes also exercise the light provider, whose host-only
- *                           guard reads of the GPU register pointer words 0x80095860/70/54 consume no event)
+ *   cc -std=c99 -Wall -Wextra -Werror -DCHK_SET_E -Ipc_port/tools/chk_inc -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/tools/pe_gpu_rows_check.c pc_port/platform/pe_plat_gpu_resetgraph.c pc_port/platform/pe_plat2_resetgraph_light.c -Wl,--unresolved-symbols=ignore-all -o checke
+ *   ./checke vectors.txt   (set E: resetgraph; the light-path modes also exercise the light provider, which reads no
+ *                           GPU register pointer word since the clean-room rewrite pe_plat2_resetgraph_light.c)
  *   ./check vectors.txt    (set A: timeout, dmastart)   ./checkc vectors.txt   (set C: drawsync)   ./checkb vectors.txt    (set B: dmaq)
  * Line: ENTRY seed A a0..a3 R name=v,v;name=v RET r EV event...
  * Events (the original's observable behaviour in order):
