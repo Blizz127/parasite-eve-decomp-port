@@ -6,7 +6,7 @@
  * 0x80084FE4) and pe_plat_card_sio.c (libcard SIO poll 0x80083578), all
  * from ENTRY vectors.  pe_plat_state.c references runtime services the
  * checked functions never reach, so those stay unresolved:
- *   cc -std=c99 -Wall -Wextra -Werror -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/tools/pe_cd_leaf_vectors_check.c pc_port/platform/pe_plat_cd_leaf.c pc_port/platform/pe_plat_cd_data_ready.c pc_port/platform/pe_plat_spu_reverb.c pc_port/platform/pe_plat_state.c pc_port/platform/pe_plat_card_leaf.c pc_port/platform/pe_plat_pad_rc2.c pc_port/platform/pe_plat_card_sio.c -Wl,--unresolved-symbols=ignore-all -o check
+ *   cc -std=c99 -Wall -Wextra -Werror -Ipc_port/include -Ipc_port/platform -Ipc_port/bootstrap pc_port/tools/pe_cd_leaf_vectors_check.c pc_port/platform/pe_plat_cd_leaf.c pc_port/platform/pe_plat2_cdready.c pc_port/platform/pe_plat_spu_reverb.c pc_port/platform/pe_plat_state.c pc_port/platform/pe_plat_card_leaf.c pc_port/platform/pe_plat_pad_rc2.c pc_port/platform/pe_plat_card_sio.c -Wl,--unresolved-symbols=ignore-all -o check
  *   ./check vectors.txt
  * Line: ENTRY seed pattern A args... RET r L addr:size=value... S addr:size=value...
  * (`-` for an empty list), from pc_port/tools/pe_cd_leaf_vectors.py.

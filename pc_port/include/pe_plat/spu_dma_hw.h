@@ -104,11 +104,6 @@ void PE_SpuRegister_StoreU16(uint32_t offset, uint16_t value);
 uint32_t PE_SpuDma_Dma4Load(uint32_t index);
 void PE_SpuDma_Dma4Store(uint32_t index, uint32_t value);
 
-/* Host backend for clearing the reverb work area:
- * DMA channel 4 zero-fill of the work area for reverb mode 0..9 (pe_stream.c).
- * Returns 0, or -1 for a bad / allocated mode or a failed transfer. */
-int PE_SpuReverb_ClearWorkArea(int mode);
-
 #ifdef __cplusplus
 }
 #endif

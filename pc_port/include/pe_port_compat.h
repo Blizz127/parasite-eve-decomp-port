@@ -73,7 +73,7 @@ void func_8006E60C(void);
 /* All ten callees are now REAL implementations (Phase 6E-A batch 1):
  * func_80073C94/func_80072714/func_80072724  — pe_plat_irq_callback.c / pe_plat2_cdx_etc.c
  * func_80074924/749D8/74A44/74BB8            — pe_libgpu.c
- * func_8007D054                              — pe_libsnd.c
+ * func_8007D054                              — pe_plat2_cdx_spu.c (pe_libsnd.c deleted)
  * func_80077F7C  — pe_plat_gte_init.c (clean-room);  func_80079004/func_80079024 — pe_plat_gte_regs.c
  * func_800409B4                              — pe_libcard.c
  * func_800844E4/func_80082534                — pe_save.c

@@ -244,11 +244,11 @@ int       func_80074A44(int mode);   /* ResetGraph */
 unsigned char func_80074BB8(unsigned char a0);  /* SetGraphDebug */
 #include "pe_plat/gpuprim.h" /* PutDrawEnv / DrawOTagEnv (clean-room) */
 
-/* ── libsnd (pc_port/platform/pe_libsnd.c) ──────────────────────────── */
+/* ── libsnd (clean-room pe_plat2_cdx_spu.c / pe_plat2_spu_upload.c; the translated pe_libsnd.c is deleted) ──────────────────────────── */
 void func_8007D054(void);            /* SsInit wrapper (tail-call 7D074(0)) */
 void func_8007D15C(void);            /* SPU IRQ event install */
 
-/* ── streaming (pc_port/platform/pe_stream.c) ───────────────────────── */
+/* ── streaming (clean-room pe_plat2_cdx_spu.c; stream commands in pe_stream_commands.c) ─────── */
 void func_80085644(void);            /* streaming bring-up */
 void func_80086FF8(void);            /* stream command 0xF0 */
 void func_80087024(void);            /* stream command 0xF1 */
@@ -258,7 +258,7 @@ void func_8008D140(pe_addr_t attributes); /* masked SPU mode registers */
 void func_8008CB54(uint32_t mode); /* SPU reverb mode transition */
 
 /* ── libcard (pc_port/platform/pe_libcard.c) ────────────────────────── */
-void func_800409B4(void);            /* InitCARD + StartCARD */
+void func_800409B4(void);            /* game-class func_800409B4 (MemCard init manager; not libcard — see pe_libcard.c header) */
 
 /* ── libcd (pc_port/platform/pe_libcd.c) ────────────────────────────── */
 int  func_8007EC14(void);            /* CdInit */

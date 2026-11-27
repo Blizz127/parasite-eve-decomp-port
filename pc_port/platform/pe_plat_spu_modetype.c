@@ -83,7 +83,7 @@ int pe_plat_spu_set_reverb_mode_type(int mode)
     PE_GuestFrame_Leave(rec, PRESET_SIZE);
 
     if (arg & MODE_CLEAR_FLAG)
-        PE_SpuReverb_ClearWorkArea((int)m);
+        (void)func_8008D610((int)m);   /* clean-room SpuClearReverbWorkArea (pe_plat/cdx_spu.h) */
     /* Port integration (not original behaviour): the host clear can request
      * a port stop; stop here as the replaced hand port did. */
     if (PE_Port_ShouldStop())

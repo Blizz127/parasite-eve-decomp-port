@@ -443,6 +443,62 @@ uint32_t pe_plat_cdxspu_spu_read(int guest_destination, unsigned int size)
     return result;
 }
 
+/* ------------------------------------------------------- reverb work area clear */
+
+#define W_ZERO_BUFFER   0x8009C4C0u    /* zero-filled guest buffer the clear transfers from */
+#define CLEAR_CHUNK     0x400u         /* bytes per transfer */
+#define CLEAR_MODES     10u            /* reverb modes 0..9 */
+
+/* Clear the reverb work area of reverb mode `mode` (libspu SpuClearReverbWorkArea, retail 0x8008D610), written from the
+ * cdgen51 vector set and report (black box):
+ *   - mode >= 10 (unsigned): -1 at once, nothing touched;
+ *   - the work-area start of the mode is the word table[mode] (ten words at 0x8009B46C, in transfer-address units); the
+ *     heap-contains leaf (retail 0x80085BB4) is asked about it first and any nonzero answer returns -1;
+ *   - otherwise the area is cleared in chunks of at most 0x400 bytes from the zero buffer (at least one chunk, even for an
+ *     empty area: table entry 0x10000 issues one zero-length setup) and 0 is returned: mode 0
+ *     clears 0x10 << shift bytes at transfer address 0xFFF0, mode n >= 1 clears (0x10000 - table[n]) << shift bytes
+ *     starting at the unit table[n] (shift = word 0x8009B424 & 31); the transfer address of a chunk is the start plus
+ *     the bytes already cleared in units ((done >> shift), so it advances by one unit per 1 << shift bytes, not per chunk); each chunk is one DMA setup of the transfer path above (spu_dma_issue: its byte count is
+ *     rounded up to whole 64-byte blocks), after the halfword 0x8009B414 took the chunk's address;
+ *   - the busy word 0x8009B418 (when it is 1) and the callback word 0x8009B434 (when nonzero) are cleared for the
+ *     duration and restored afterwards;
+ *   - after each chunk the host completes the transfer (PE_SpuDma_Service) and the SPU DMA event is consumed through the
+ *     handle word 0x8009B384; the result of that event wait is IGNORED (the original goes on whatever it returns).
+ * Host contracts: a transfer still in flight completes first, with the callback its issuer left in the callback slot
+ * (PE_SpuDma_DeliverPending, before the busy and callback words are read; a stop there returns -1 and touches nothing, as does
+ * a stop requested later in the loop after the saved words are restored); a pending transfer is also delivered before each issue. */
+int pe_plat_cdxspu_clear_work_area(int mode_arg)
+{
+    uint32_t mode = (uint32_t)mode_arg, table, shift, bytes, start, done, chunk, busy, callback;
+    int result = 0;
+
+    if (mode >= CLEAR_MODES) return -1;
+    table = PE_LoadU32(W_REVERB_INIT + 4u * mode);
+    if (func_80085BB4(table) != 0) return -1;
+    if (!PE_SpuDma_DeliverPending()) return -1;   /* host contract: a transfer in flight completes with the callback its issuer left, before the words below are read */
+    shift = PE_LoadU32(W_SHIFT) & 31u;
+    if (mode == 0u) { bytes = 0x10u << shift; start = 0xFFF0u; }
+    else            { bytes = (0x10000u - table) << shift; start = table; }
+    busy = PE_LoadU32(W_B418);
+    callback = PE_LoadU32(W_CALLBACK);
+    if (busy == 1u) PE_StoreU32(W_B418, 0u);
+    if (callback != 0u) PE_StoreU32(W_CALLBACK, 0u);
+    done = 0u;
+    do {                                       /* at least one transfer: an empty work area still issues one zero-length setup */
+        chunk = bytes - done > CLEAR_CHUNK ? CLEAR_CHUNK : bytes - done;
+        if (!PE_SpuDma_DeliverPending()) { result = -1; break; }
+        PE_StoreU16(H_XFER_ADDR, (uint16_t)(start + (done >> shift)));
+        (void)spu_dma_issue(W_ZERO_BUFFER, chunk, 0);
+        (void)PE_SpuDma_Service();
+        (void)PE_Event_ConsumeSpuDma((int)PE_LoadU32(W_EVENT));
+        if (PE_Port_ShouldStop()) { result = -1; break; }
+        done += chunk;
+    } while (done != bytes);
+    if (busy == 1u) PE_StoreU32(W_B418, busy);
+    if (callback != 0u) PE_StoreU32(W_CALLBACK, callback);
+    return result;
+}
+
 /* ------------------------------------------------------------ stream bring-up */
 
 #define W_STREAM_HEAP 0x800B6958u      /* heap block buffer handed to the heap configuration */

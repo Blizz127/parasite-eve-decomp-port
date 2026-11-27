@@ -2,8 +2,8 @@
  * Read-only projection of the single PE_GPU VRAM authority.
  *
  * This file deliberately has no guest-memory or GPU-write API.  It exposes
- * the exact 1024x512 words already produced by translated retail LoadImage
- * work as either little-endian raw data or a diagnostic RGB555 PPM.
+ * the exact 1024x512 words currently held by that VRAM authority as either
+ * little-endian raw data or a diagnostic RGB555 PPM.
  */
 
 #include "host_vram.h"

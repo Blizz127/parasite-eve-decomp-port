@@ -75,8 +75,8 @@ typedef struct { uint8_t disp[20]; } DISP_ENV;
 #define D_8009448C     ((uint8_t *)PE_Translate(0x8009448Cu, 64))
 
 /* D_80011614 — retail guest pointer (global at 0x80011614 holding a guest
- * address).  Stored host-side as pe_addr_t; translated only at real access
- * sites. The initial value is bootstrap policy; authenticated real-image
+ * address).  Stored host-side as pe_addr_t; converted to a host pointer only
+ * at real access sites. The initial value is bootstrap policy; authenticated real-image
  * startup adopts the executable-backed value (see pe_globals.c). */
 extern pe_addr_t D_80011614;
 int PE_Globals_AdoptRetailImage(void);
@@ -104,14 +104,13 @@ extern unsigned short D_80093164[];
 #include "pe_plat/hostfb_forward.h" /* func_80073A44 / func_80074D28 -> host framebuffer forwards */
 int func_80074DC0(int mode);
 #include "pe_plat/gpuprim.h" /* DrawPrim/DrawOTag/ClearOTagR/ClearImage/PutDrawEnv/DrawOTagEnv/record pool (clean-room) */
-int pe_plat_gpu_clear_inline_host(uint32_t words[2], uint32_t color);
-#define PE_ClearImageInline8 pe_plat_gpu_clear_inline_host
-int PE_ClearImageInline8(uint32_t words[2], uint32_t color);
+#include "pe_plat/gpuclear.h" /* func_80076434 + PE_ClearImageInline8 -> pe_plat names (clean-room) */
 #include "pe_plat/gpuprim_clearrect.h" /* PE_DispatchClearRect (host-RECT ClearImage seam), clean-room */
 /* Original PutDispEnv command/state sequence, followed by host presentation. */
 extern pe_addr_t func_800755F0(pe_addr_t env);
 /* func_800752AC (ClearOTagR) and func_80076354 (jtb[11] OTC worker) are
- * REAL translations: game/boot/func_800752AC_port.c (Phase 6E-OTC1). */
+ * clean-room providers: platform/pe_plat2_gpuprim.c and
+ * platform/pe_plat2_gpuprim_otcw.c (gen_decomp_ports.py PE_PLAT_REPLACED). */
 
 /* ── BOOTSTRAP_RET — func_8001220C callees ────────────────────────── */
 /* func_8006AD40 is complete through its normal return (Phase 6E-B54K-M).
@@ -129,10 +128,9 @@ void func_80069B08(int a0);
  * func_80068E24_port.c). Prototypes live in pe_port_compat.h. */
 /* func_801235DC (credits main loop, ovl_0457) is reached from func_8001220C
  * through the guest-code registry (bootstrap/func_8001220C_port.c). */
-/* func_8019234C is a REAL translation of the M0000I transition outer loop
- * (game/boot/func_8019234C_port.c); the former Bootstrap_ReturnVoid stub
- * was removed once its callees, VSync return contract and ordering-table
- * compaction were available. */
+/* func_8019234C (the M0000I transition outer loop) is provided by
+ * game/boot/func_8019234C_port.c; the former Bootstrap_ReturnVoid stub for
+ * it is gone. */
 extern void func_8019234C(void);
 extern int func_801909B4(void);
 extern void func_801918F8(int buffer, int wide);
@@ -156,56 +154,39 @@ extern void func_8019319C(pe_addr_t node);
 extern void func_8007C304(uint32_t mode, int32_t start,
                           int32_t end, pe_addr_t callback, uint32_t auxiliary);
 extern void func_8007C394(uint32_t sector);
-/* func_80070E54 / func_80042FE8 / func_8006EBE4 are REAL translations
- * (game/boot/func_80070E54_port.c, Phase FTE1). */
+/* func_80070E54 / func_80042FE8 / func_8006EBE4 are declared here; the
+ * game TU game/boot/func_80070E54_port.c holds the frame tail and the
+ * LoadImage wrapper. */
 extern void func_80070E54(void);
 extern void func_80042FE8(void);
 extern int func_8006EBE4(void);
-/* func_8006E1C0 is REAL (Phase 6E-B51):
- * game/boot/func_8006E1C0_port.c — packed texture-entry LoadImage
- * dispatcher (68 retail words).  Phase 6E-B52 translates its two
- * func_8007506C (PsyQ LoadImage) wrapper calls through the read-only
- * func_80074E28 validator into the B53C-F func_80076C34 prefix.  B53E
- * translates the direct LoadImage worker func_80076664; B53F translates the
- * execution-proven installed-target path through callback wrapper
- * func_80073CF4, and B53G completes it by translating the installed setter
- * func_800746A0. B53H translates the busy-DMA prefix and B53I-C completes
- * the idle-DMA suffix of queue pump func_80076EE4; a later explicit IRQ
- * checkpoint now consumes the queued request and issues the second DMA.
- * B54D-M then complete every remaining archive/LoadImage walk, live poll,
- * func_80030894, F1/display call, conditional state reset, and bit-0 clear.
- * s2/poll are never assigned and no provider remains inside 6AD40. */
+/* func_8006E1C0 (packed texture-entry LoadImage dispatcher) is provided by
+ * game/boot/func_8006E1C0_port.c.  The libgpu / IRQ callees it reaches are
+ * the clean-room providers bound in gen_decomp_ports.py PE_PLAT_REPLACED:
+ * func_8007506C pe_plat2_gpuimg.c, func_80074E28 pe_plat2_gpuimg_rect.c,
+ * func_80076C34 pe_plat_gpu_swap.c, func_80076664 pe_plat2_gpuimg_work.c,
+ * func_80073CF4 and func_800746A0 pe_plat_irq_callback.c, func_80076EE4
+ * pe_plat2_gpuq.c. */
 
-/* func_80038D1C is now a REAL translation too (Phase 6E-B15):
- * game/boot/func_80038D1C_port.c — D_80091A20 byte test-and-clear
- * status leaf (11 retail words; also a matched decomp C leaf).
- * func_8006A9E4 is REAL too (Phase 6E-B16):
- * game/boot/func_8006A9E4_port.c — PE.IMG streaming resource load
- * (215 retail words); B45: callee func_80087090 is TRANSLATED (retry
- * wrapper); B46: func_800851A8 is TRANSLATED (prefix: magic number
- * check + error path; hardware success path routes through the
- * centralized bootstrap boundary).
- * func_800527C8 is REAL too (Phase 6E-B17):
- * game/boot/func_800527C8_port.c — multi-subsystem bootstrap
- * dispatcher (49 retail words, 17 calls); unresolved callees route
- * through the centralized bootstrap boundary in retail order.
- * func_800528F0 is REAL too (Phase 6E-B18):
- * game/boot/func_800528F0_port.c — PRNG table generator
- * (143 retail words, 521-byte output table at D_800A1B90).
- * func_8005BCBC is REAL too (Phase 6E-B24):
- * game/boot/func_8005BCBC_port.c — resource-state pointer/count
- * selector (21 retail words; guest-resident D_8009D0C0/C4/C8).
- * func_8005D6F4 is REAL too (Phase 6E-B25):
- * game/boot/func_8005D6F4_port.c — resource-buffer + display-state
- * initializer (147 retail words; eight unresolved callees routed
- * through the centralized bootstrap boundary after B26).
- * func_8005DC4C is REAL too (Phase 6E-B26):
- * game/boot/func_8005DC4C_port.c — PE.IMG message/string-table lookup
- * (20 retail words; pure read-only lookup, returns the guest address of
- * a 0xFF-terminated record or retail's own 0 for an out-of-range
- * index). */
+/* Game-function TUs under game/boot/ (each <name>_port.c):
+ * func_80038D1C   D_80091A20 byte test-and-clear status leaf (also has a
+ *                 generated TU);
+ * func_8006A9E4   PE.IMG streaming resource load; its callees func_80087090
+ *                 (retry wrapper) and func_800851A8 (magic-number check and
+ *                 error path; the hardware success path routes through the
+ *                 centralized bootstrap boundary) are game/boot TUs too;
+ * func_800527C8   multi-subsystem bootstrap dispatcher; unresolved callees
+ *                 route through the centralized bootstrap boundary in retail
+ *                 order;
+ * func_800528F0   PRNG table generator (521-byte output table at D_800A1B90);
+ * func_8005BCBC   resource-state pointer/count selector (guest-resident
+ *                 D_8009D0C0/C4/C8);
+ * func_8005D6F4   resource-buffer and display-state initializer;
+ * func_8005DC4C   PE.IMG message/string-table lookup (pure read-only lookup;
+ *                 returns the guest address of a 0xFF-terminated record, or
+ *                 retail's own 0 for an out-of-range index). */
 
-/* ── REAL translated functions ────────────────────────────────────── */
+/* ── Game function declarations ───────────────────────────────────── */
 extern void func_800725DC(void);
 extern void func_8001220C(void);
 extern int func_80038D1C(void);
@@ -223,7 +204,7 @@ extern void PE_func_8006AD40_PackFontRecords(void);
 /* Immediate (non-queued) libgpu entry points, platform/pe_libgpu.c. */
 #include "pe_plat/bios_sys.h"  /* SetIntrMask 0x80073E10 -> pe_plat_irq_set_mask */
 #include "pe_plat/irq_callback.h"
-/* Read-only names for the two retail authorities func_800746A0 uses. */
+/* Read-only names for the two retail authorities the DMA callback path uses (platform/pe_plat_dma_addr.c). */
 extern pe_addr_t PE_DMA_CallbackSlotAddress(uint32_t dma_channel);
 extern pe_addr_t PE_DMA_DicrPointerAddress(void);
 extern uint32_t  PE_DMA_DicrMmioAddress(void);
@@ -268,9 +249,6 @@ extern void      PE_Pump_GetTrace(PeGpuPumpTrace *out);
 extern void func_80042798(void);
 #include "pe_plat/gpu_swap.h" /* func_80076C34 + PE_func_80076C34_Inline8 -> pe_plat names (clean-room) */
 extern int  func_80076B98(pe_addr_t packet, uint32_t auxiliary);
-int pe_plat_gpu_clear_worker_host(pe_addr_t rect, uint32_t color);
-#define func_80076434 pe_plat_gpu_clear_worker_host
-extern int  func_80076434(pe_addr_t rect, uint32_t color);
 extern void func_800527C8(void);
 extern pe_addr_t func_8005332C(int32_t resource_id);
 extern pe_addr_t func_80053968(int32_t resource_id);

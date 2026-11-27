@@ -1,8 +1,19 @@
 /*
- * Phase 6E-A — libcard: InitCARD + StartCARD.
+ * Host definition of func_800409B4, a game-class function: the game's
+ * memory-card subsystem boot init.  Header rewritten 2026-11-27; it replaces
+ * the earlier label "libcard: InitCARD + StartCARD / Classification: 2 (SDK
+ * host implementation)", which was wrong.
  *
- * func_800409B4 (asm/disc1/307CC.s @ file 0x311B4).
- * Classification: 2 (SDK host implementation).
+ * Defined here: one global, func_800409B4 (no static function), and the
+ * static table kCardEvents.  Class and provider: game-class (audit3b,
+ * docs/evidence/public-openness-20261127/audit3b.tsv: classified `game`,
+ * MemCard_InitManager in the oracle layout; the audit notes that the body
+ * follows the matched leaf of the same name).  tools/analysis/
+ * gen_decomp_ports.py has no PE_PLAT_REPLACED row for 0x800409B4, so this
+ * file is its provider.  It is not an SDK function: the libapi stubs
+ * InitCARD2 / StartCARD2 are 0x8007E314 / 0x8007E324, and the libcard
+ * internals the retail function calls (0x8007DDD4, 0x8007DE40) are
+ * collapsed no-ops here.
  *
  * Retail structure:
  *   - word guard D_800A1850: skip init when already done.

@@ -5,8 +5,6 @@
 # Rows ending in `# clean-room ...` are NOT Psy-Q code: our own host models
 # sit at the address of a retail BIOS trampoline (li t2,A0h/B0h; jr t2;
 # li t1,N), which the classifier flags as libapi/bios-stub.
-func	0x80072334	pc_port/game/boot/func_80072334_port.c
-func	0x800725DC	pc_port/bootstrap/func_800725DC_port.c
 func	0x80072A74	pc_port/game/decomp/func_80072A74_port.c
 func	0x80072DF4	pc_port/game/decomp/func_80072DF4_port.c
 func	0x80072EA4	pc_port/game/decomp/func_80072EA4_port.c
@@ -18,7 +16,6 @@ func	0x80073554	pc_port/game/decomp/func_80073554_port.c
 func	0x800735C4	pc_port/game/decomp/func_800735C4_port.c
 func	0x800738D8	pc_port/game/decomp/func_800738D8_port.c
 func	0x80075C94	pc_port/game/decomp/func_80075C94_port.c
-func	0x80077C84	pc_port/game/boot/func_80077C84_port.c
 func	0x8007D778	pc_port/game/decomp/func_8007D778_port.c
 table	libgte_ratan_tbl	pc_port/tests/retail_enemy_tick_cases.h
 table	libgte_ratan_tbl	pc_port/tests/retail_item_execution_cases.h

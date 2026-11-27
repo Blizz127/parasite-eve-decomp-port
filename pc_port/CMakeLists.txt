@@ -24,19 +24,19 @@ set(PLATFORM_SRCS
     platform/pe_plat_gte_vn.c
     platform/pe_plat_gte_init.c
     platform/pe_plat_ds_leaf.c
-    platform/pe_plat_cd_data_ready.c
+    platform/pe_plat2_cdready.c
     platform/pe_plat_cd_poll.c
     platform/pe_plat_cd_retry.c
-    platform/pe_plat_cd_initialize_callbacks.c
-    platform/pe_plat_cd_issue_wrapper.c
+    platform/pe_plat2_cdinitcb.c
+    platform/pe_plat2_cdissue.c
     platform/pe_plat_cd_command_wait_host.c
     platform/pe_plat_cd_issue_step_host.c
-    platform/pe_plat_cd_read_stream_host.c
+    platform/pe_plat2_cdstreamopen.c
     platform/pe_plat_cd_public_init_host.c
     platform/pe_plat_cd_reset_host.c
-    platform/pe_plat_cd_response_query_host.c
-    platform/pe_plat_cd_command_sequence_host.c
-    platform/pe_plat_cd_queue_command_host.c
+    platform/pe_plat2_cdresp.c
+    platform/pe_plat2_cdseq.c
+    platform/pe_plat2_cdqueue.c
     platform/pe_plat_cd_search_file_host.c
     # CD host entries 0x8007AAB4 / B010 / B558 / BF44 / C564 / CEAC: clean-room replacements (pe_plat/cdhost.h).
     # The earlier providers platform/pe_plat_cd_{ack,status_poll,command_issue,sector_dma,stream_handler,dma_issue}_host.c
@@ -49,7 +49,7 @@ set(PLATFORM_SRCS
     platform/pe_plat2_cdhost_dma.c
     platform/pe_plat_cd_status_callback.c
     platform/pe_plat_cd_command_complete.c
-    platform/pe_plat_cd_unexpected_status.c
+    platform/pe_plat2_cdunexp.c
     platform/pe_plat_cd_leaf.c
     platform/pe_plat_cd_ring_host.c
     platform/pe_plat_spu_reverb.c
@@ -133,7 +133,6 @@ set(PLATFORM_SRCS
     platform/pe_plat2_cdx_spu.c
     platform/pe_plat2_spu_upload.c
     platform/host_framebuffer.c
-    platform/pe_dispenv.c
     platform/pe_timer1.c
     platform/pe_rcnt2.c
     platform/pe_sio0.c
@@ -153,6 +152,7 @@ set(PLATFORM_SRCS
     platform/pe_plat_gpu_swap.c
     platform/pe_plat_gpu_swap_host.c
     platform/pe_plat_irq_callback.c
+    platform/pe_plat_dma_addr.c
     platform/pe_plat_pad.c
     platform/pe_plat_pad_info.c
     platform/pe_plat_pad_set.c
@@ -175,7 +175,7 @@ set(PLATFORM_SRCS
     platform/pe_str_feed.c
     platform/pe_plat2_cdx_etc.c
     platform/pe_plat2_cdx_etc_seams.c
-    platform/pe_plat_gpu_clear_worker_host.c
+    platform/pe_plat2_gpuclear.c
     platform/pe_plat2_gpuq.c
     platform/pe_plat2_gpuq_host.c
     platform/pe_plat_resetgraph_light_host.c
@@ -189,14 +189,13 @@ set(PLATFORM_SRCS
     platform/pe_cdreg.c
     platform/pe_libcd.c
     platform/pe_plat_cd.c
-    platform/pe_plat_cd_sync.c
+    platform/pe_plat2_cdsync.c
     platform/pe_plat_libc.c
     platform/pe_plat_hostfb_forward.c
     platform/pe_drive_tray.c
     platform/pe_disc.c
     platform/pe_disc_check.c
     platform/pe_disc_cache.c
-    platform/pe_stream.c
     platform/pe_stream_commands.c
     platform/func_80071A24_port.c
     platform/func_800719E4_port.c
@@ -327,7 +326,6 @@ set(GAME_SRCS
     game/boot/func_8019A318_port.c
     game/boot/func_801995BC_port.c
     game/boot/func_8019B1D0_port.c
-    game/boot/func_80079384_port.c
     game/boot/func_8018F92C_port.c
     game/boot/func_80193478_port.c
     game/boot/func_801942FC_port.c
@@ -396,7 +394,6 @@ set(GAME_SRCS
     game/boot/func_8003C5D8_port.c
     game/boot/func_8006698C_port.c
     game/boot/func_8003DFD8_port.c
-    game/boot/func_800794C4_port.c
     game/boot/func_8003A088_port.c
     game/boot/func_8003BCE0_port.c
     game/boot/func_80038D1C_port.c
@@ -503,13 +500,10 @@ set(GAME_SRCS
     game/boot/func_80087090_port.c
     game/boot/func_800851A8_port.c
     game/boot/func_80085EB4_port.c
-    game/boot/func_800850F4_port.c
     game/boot/func_8006AD40_port.c
     game/boot/func_8006E1C0_port.c
     game/boot/func_80042798_port.c
     game/boot/func_80070E54_port.c
-    game/boot/func_800746A0_port.c
-    game/boot/func_80076C34_port.c
     game/boot/func_80077B64_port.c
     game/boot/func_80077BA4_port.c
     game/boot/func_80077BC4_port.c
@@ -541,17 +535,14 @@ set(GAME_SRCS
     game/boot/func_801924F8_port.c
     game/boot/func_80191DC8_port.c
     game/boot/func_80192934_port.c
-    game/boot/func_80081314_port.c
     game/boot/func_80192CE8_port.c
-    game/boot/func_800870F0_port.c
     game/boot/func_80191B64_port.c
 )
 # gpu2a (sw-gpu2a-20261127): the queue pump func_80076EE4 and the deadline seed func_800773D0 are the
 # clean-room pe_plat2_gpuq.c; the published host file and the translated pump file were removed 2026-11-27
-# (func_80076C34_port.c was retired 2026-11-27: its two host seams PE_DispatchClearRect and
+# (func_80076C34_port.c was retired 2026-11-27 and deleted from the tree: its two host seams PE_DispatchClearRect and
 # pe_plat_gpu_seed_deadline_host are the clean-room platform/pe_plat2_gpuprim_clearrect.c; the file is removed from
 # GAME_SRCS below and left in place for deletion).
-list(REMOVE_ITEM GAME_SRCS game/boot/func_80076C34_port.c)
 # DecDCToutCallback (func_8010C0D8) and the VLC table expander (func_8010BD4C) are the clean-room
 # pe_plat2_press.c; the old boot translation files were removed 2026-11-27.
 # Clean-room gpu2c providers (platform/pe_plat2_gpuprim*.c, pe_plat2_gpuaddr.c) own the libgpu primitive/address
@@ -593,7 +584,6 @@ list(REMOVE_ITEM DECOMP_SRCS
     "${CMAKE_SOURCE_DIR}/game/decomp/func_800703F4_port.c")
 # The SPU upload family (800850F4/800850C0/80085174/80085098) is the clean-room platform/pe_plat2_spu_upload.c
 # (pe_plat/spu_upload.h); the translated boot file is no longer compiled (left in the tree).
-list(REMOVE_ITEM GAME_SRCS game/boot/func_800850F4_port.c)
 # 50BE8's matching leaf has an implicit live a0. The native reward callback
 # supplies that argument explicitly; keep the generated matching source intact.
 list(REMOVE_ITEM DECOMP_SRCS "${CMAKE_SOURCE_DIR}/game/decomp/func_80050BE8_port.c")
@@ -837,10 +827,6 @@ set(FIELD_RUNTIME_SRCS
 # point or the X11 presentation adapter.  Creating this target does not claim
 # that the currently translated graph is a complete Day 1 field runtime.
 add_library(pe_field_runtime STATIC ${FIELD_RUNTIME_SRCS})
-# The translated stream engine keeps its own func_8008CB54 / func_8008CBA8 definitions: they stay
-# compiled but unreferenced by the generated callers, which bind to pe_plat/cdx_spu.h.
-set_source_files_properties(platform/pe_stream.c PROPERTIES
-    COMPILE_DEFINITIONS PE_CDXSPU_KEEP_LEGACY_STREAM)
 target_include_directories(pe_field_runtime PUBLIC
     ${CMAKE_SOURCE_DIR}
     ${CMAKE_SOURCE_DIR}/include

@@ -28,17 +28,17 @@ void pe_plat_cdxspu_reverb_transition(uint32_t mode);
 int pe_plat_cdxspu_stream_dispatch(void);
 void pe_plat_cdxspu_stream_bringup(void);
 uint32_t pe_plat_cdxspu_spu_write(uint32_t source, uint32_t size);
+int pe_plat_cdxspu_clear_work_area(int mode);
 uint32_t pe_plat_cdxspu_spu_read(int guest_destination, unsigned int size);
 
 #define func_8007D15C pe_plat_cdxspu_install_dma_event
 #define func_8007D054 pe_plat_cdxspu_init_default
 #define func_8007D074 pe_plat_cdxspu_init_wrapper
-#ifndef PE_CDXSPU_KEEP_LEGACY_STREAM
 #define func_8008CB54 pe_plat_cdxspu_reverb_transition
 #define func_8008CBA8 pe_plat_cdxspu_stream_dispatch
 #define func_80085644 pe_plat_cdxspu_stream_bringup
-#endif
 #define func_80085E54 pe_plat_cdxspu_spu_write
+#define func_8008D610 pe_plat_cdxspu_clear_work_area
 #define func_80085DF4 pe_plat_cdxspu_spu_read
 /* Canonical guest-name prototypes for the bindings above (generated
  * from the pe_plat prototypes; tools read callee signatures from these). */
@@ -49,5 +49,6 @@ void func_8008CB54(uint32_t mode);
 int func_8008CBA8(void);
 void func_80085644(void);
 uint32_t func_80085E54(uint32_t source, uint32_t size);
+int func_8008D610(int mode);
 uint32_t func_80085DF4(int guest_destination, unsigned int size);
 #endif

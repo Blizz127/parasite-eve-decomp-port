@@ -71,7 +71,7 @@ static int in_scratch(pe_addr_t a) { (void)a; return 0; }
 static int in_scratch(pe_addr_t a) { return a >= CDX_SCRATCH_LO && a < CDX_SCRATCH_HI; }
 #endif
 static int in_frame(pe_addr_t a) { return (a >= PE_GUEST_FRAME_LO && a < PE_GUEST_FRAME_HI) || in_scratch(a); }
-static uint32_t mlog[1024][3]; static unsigned nmlog;
+static uint32_t mlog[8192][3]; static unsigned nmlog;   /* register-store log: 8192 entries (was 1024; a 100-chunk SPU clear writes more, cdgen51) */
 #ifndef CDX_SEED_ZERO
 static uint8_t canary_img[MEM];                 /* the seed image of unseeded RAM */
 static uint32_t ostore[MEM];                    /* generation mark: byte stored by the original's S list in this case */
@@ -130,7 +130,7 @@ static void wr(pe_addr_t a, unsigned n)
 }
 static void mmio_store(pe_addr_t a, unsigned n, uint32_t v)
 {
-    if (is_reg(a) && nmlog < 1024) { mlog[nmlog][0] = a; mlog[nmlog][1] = n; mlog[nmlog][2] = v; nmlog++; }
+    if (is_reg(a) && nmlog < 8192) { mlog[nmlog][0] = a; mlog[nmlog][1] = n; mlog[nmlog][2] = v; nmlog++; }
     if (is_reg(a) && getenv("CDX_TRACE")) fprintf(stderr, "  native W %08X/%u <- %X\n", (unsigned)a, n, v);
 }
 uint8_t PE_LoadU8(pe_addr_t a) { uint32_t m; if (mmio_read(a, 1, &m)) return (uint8_t)m; rd(a, 1); return ram[a & (MEM - 1)]; }

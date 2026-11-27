@@ -293,7 +293,7 @@ static void test_PA_hi2_reverb(void)
     ASSERT(PE_LoadU16(regs + 0x184u) == 0u && PE_LoadU16(regs + 0x186u) == 0u,
            "8CF70 depth registers zeroed");
     ASSERT(PE_LoadU16(regs + 0xD1u * 2u) == 0x1234u, "8CF70 func_8007DAE0(0xD1, start, 0)");
-    /* func_8008D610 now runs natively (pe_stream.c): like retail
+    /* func_8008D610 runs natively (clean-room pe_plat2_cdx_spu.c): like retail
      * func_8007D778(1) it leaves SPUCNT in DMA-write mode (bits 4-5 = 2)
      * before bit 7 is restored. */
     /* The DMA now completes; the modelled completion handler clears the

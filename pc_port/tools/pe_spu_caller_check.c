@@ -481,7 +481,8 @@ void pe_plat_spu_set_reverb_attr(uint32_t attr)
     for (k = 0; k < 68 && o + 2 < sizeof t; k++) o += (unsigned)snprintf(t + o, sizeof t - o, "%02X", PE_LoadU8(attr + k));
     note(t);
 }
-int PE_SpuReverb_ClearWorkArea(int mode)
+/* retail 0x8008D610 (SpuClearReverbWorkArea): pe_plat_spu_modetype.c reaches it through the clean-room binding (pe_plat/cdx_spu.h) */
+int pe_plat_cdxspu_clear_work_area(int mode)
 { char t[64]; snprintf(t, sizeof t, "8008D610,%08X", (uint32_t)mode); note(t); return 0; }
 int PE_Port_ShouldStop(void) { return 0; }
 void pe_plat_spu_wait_cycles(void)

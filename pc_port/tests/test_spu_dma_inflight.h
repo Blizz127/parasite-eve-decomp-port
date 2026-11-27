@@ -218,7 +218,7 @@ static void test_SPUFL_reverb_clear_delivers_pending(void)
     B48A_Fill(SPUFL_C4C0, 0x80u, 0x90u);
     /* Mode 0: 0x80 bytes from D_8009C4C0 to 0xFFF0 << 3, one DMA chunk,
      * consumed through SpuInit's event. */
-    ASSERT(PE_SpuReverb_ClearWorkArea(0) == 0, "reverb clear failed");
+    ASSERT(func_8008D610(0) == 0, "reverb clear failed");
     PE_SpuDma_GetState(&state);
     ASSERT(SPUFL_Clean(), "reverb clear stopped or took a boundary");
     ASSERT(state.pending == 0 && state.event_count == 2,

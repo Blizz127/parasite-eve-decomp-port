@@ -89,7 +89,7 @@ void pe_plat_spu_set_reverb_attr(uint32_t attr);
 /* SpuSetReverbModeType (pe_plat_spu_modetype.c, clean-room from black-box
  * vectors: pc_port/tools/pe_cd_leaf_vectors.py modetype).  Its callees are
  * the existing providers func_8007DAE0/func_80085BB4 (pe_plat/state.h),
- * func_8008D140 (above) and PE_SpuReverb_ClearWorkArea (pe_spu_dma.h). */
+ * func_8008D140 (above) and func_8008D610 (clean-room pe_plat_cdxspu_clear_work_area, pe_plat/cdx_spu.h). */
 int pe_plat_spu_set_reverb_mode_type(int mode);
 /* _spu_FiDMA, the DMA4 completion handler (pe_plat_spu_fidma.c, clean-room
  * from black-box vectors: pc_port/tools/pe_cd_leaf_vectors.py fidma). */

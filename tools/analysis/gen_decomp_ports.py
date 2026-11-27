@@ -747,9 +747,10 @@ PE_PLAT_REPLACED = {
     "func_80085174": "pc_port/platform/pe_plat2_spu_upload.c",  # SPU upload DMA-complete wait
     "func_80085098": "pc_port/platform/pe_plat2_spu_upload.c",  # SPU upload DMA-complete callback
     "func_80085644": "pc_port/platform/pe_plat2_cdx_spu.c",  # stream bring-up
-    "func_8007BDDC": "pc_port/platform/pe_plat_cd_sync.c",  # CD data sync
-    "func_8007A910": "pc_port/platform/pe_plat_cd_sync.c",  # CD sync forwarding ABI
-    "func_80080B24": "pc_port/platform/pe_plat_cd_sync.c",  # DS sync forwarding ABI
+    "func_8007BDDC": "pc_port/platform/pe_plat2_cdsync.c",  # CD data sync
+    "func_8007A910": "pc_port/platform/pe_plat2_cdsync.c",  # CD sync forwarding ABI
+    "func_80080B24": "pc_port/platform/pe_plat2_cdsync.c",  # DS sync forwarding ABI
+    "func_8008D610": "pc_port/platform/pe_plat2_cdx_spu.c",  # SpuClearReverbWorkArea (reverb work-area clear)
     "func_80089F08": "pc_port/platform/pe_plat2_spu_b.c",  # SPU voice field
     "func_8007DC04": "pc_port/platform/pe_plat2_spu_a.c",  # DMA control priority
     "func_8007DAE0": "pc_port/platform/pe_plat2_spu_a.c",  # SPU value write
@@ -820,27 +821,27 @@ PE_PLAT_REPLACED = {
     "func_8007B964": "pc_port/platform/pe_plat_cd_leaf.c",  # libcd CD_vol (clean-room)
     "func_8007BAC0": "pc_port/platform/pe_plat_cd_leaf.c",  # libcd CD_initvol (clean-room)
     "func_8007B9EC": "pc_port/platform/pe_plat_cd_leaf.c",  # native flush, register-owner integration
-    "func_8007F994": "pc_port/platform/pe_plat_cd_initialize_callbacks.c",  # independent host initializer
+    "func_8007F994": "pc_port/platform/pe_plat2_cdinitcb.c",  # clean-room, cdgen59 (sw-cdrw-c)
     "func_80081414": "pc_port/platform/pe_plat_cd_search_file_host.c",
-    "func_8007EE84": "pc_port/platform/pe_plat_cd_queue_command_host.c",
-    "func_8007F0C8": "pc_port/platform/pe_plat_cd_command_sequence_host.c",
-    "func_8007F418": "pc_port/platform/pe_plat_cd_response_query_host.c",
+    "func_8007F418": "pc_port/platform/pe_plat2_cdresp.c",
+    "func_8007EE84": "pc_port/platform/pe_plat2_cdqueue.c",
+    "func_8007F0C8": "pc_port/platform/pe_plat2_cdseq.c",
     "func_8007FE24": "pc_port/platform/pe_plat2_cdx_stream.c",
     "func_8007F7E8": "pc_port/platform/pe_plat2_cdx_stream_slots.c",  # libds VBlank hook (pump slot 0x800A36A0; clean-room, cdgen42c)
     "func_8007F88C": "pc_port/platform/pe_plat2_cdx_stream_slots.c",  # libds status callback (slot 0x800A36A8; clean-room, cdgen42c)
     "func_80080778": "pc_port/platform/pe_plat2_cdx_stream_slots.c",  # default CD ready callback (D_8009AFB8; clean-room, cdgen42c)
     "func_8007ED58": "pc_port/platform/pe_plat_cd_reset_host.c",
     "func_8007EC14": "pc_port/platform/pe_plat_cd_public_init_host.c",
-    "func_80081314": "pc_port/platform/pe_plat_cd_read_stream_host.c",
+    "func_80081314": "pc_port/platform/pe_plat2_cdstreamopen.c",
     "func_80080DC4": "pc_port/platform/pe_plat_cd_issue_step_host.c",
     "func_80080D5C": "pc_port/platform/pe_plat_cd_command_wait_host.c",
-    "func_8007FCFC": "pc_port/platform/pe_plat_cd_issue_wrapper.c",  # independent command wrapper
+    "func_8007FCFC": "pc_port/platform/pe_plat2_cdissue.c",  # clean-room, cdgen58/58b (sw-cdrw-c)
     "func_800800F4": "pc_port/platform/pe_plat_cd_retry.c",  # independent CD command retry
     "func_80080164": "pc_port/platform/pe_plat_cd_status_callback.c",  # independent CD status provider
     "func_80080220": "pc_port/platform/pe_plat_cd_command_complete.c",  # independent CD status provider
-    "func_8008068C": "pc_port/platform/pe_plat_cd_unexpected_status.c",  # independent CD status provider
+    "func_8008068C": "pc_port/platform/pe_plat2_cdunexp.c",  # clean-room, cdgen60/60b (sw-cdrw-c)
     "func_800811E4": "pc_port/platform/pe_plat_cd_poll.c",  # independent host read-poll adapter
-    "func_8007C214": "pc_port/platform/pe_plat_cd_data_ready.c",  # independent data-ready callback
+    "func_8007C214": "pc_port/platform/pe_plat2_cdready.c",  # independent data-ready callback
     "func_8007C394": "pc_port/platform/pe_plat_cd_leaf.c",  # native StFreeRing (existing oracle evidence)
     "func_8007C484": "pc_port/platform/pe_plat_cd_ring_host.c",  # native StGetNext plus host feeder scheduling
     "func_8008D140": "pc_port/platform/pe_plat_spu_reverb.c",  # libspu _spu_setReverbAttr (clean-room)
@@ -1074,7 +1075,7 @@ PE_PLAT_REPLACED = {
     "func_80076354": "pc_port/platform/pe_plat2_gpuprim_otcw.c",  # OTC worker (clean-room, gpu2c)
     "func_800773D0": "pc_port/platform/pe_plat2_gpuq.c",  # deadline seed (clean-room, gpu2a)
     "func_800754E4": "pc_port/platform/pe_plat2_gpuprim.c",  # DrawOTagEnv (clean-room, gpu2c)
-    "func_80076434": "pc_port/platform/pe_plat_gpu_clear_worker_host.c",
+    "func_80076434": "pc_port/platform/pe_plat2_gpuclear.c",  # clear worker (clean-room, cdgen53)
     "func_80076664": "pc_port/platform/pe_plat2_gpuimg_work.c",  # LoadImage worker (clean-room, gpu2b)
     "func_800768A0": "pc_port/platform/pe_plat2_gpuimg_work.c",  # StoreImage worker (clean-room, gpu2b)
     "func_80076EE4": "pc_port/platform/pe_plat2_gpuq.c",  # libgpu queue pump (clean-room, gpu2a)
@@ -1151,7 +1152,7 @@ PE_PLAT_HEADERS = {
     "pc_port/platform/pe_plat_mdec_io_host.c": "pc_port/include/pe_plat/mdec_io_host.h",
     "pc_port/platform/pe_plat_vlc_frame.c": "pc_port/include/pe_plat/vlc_frame.h",
     "pc_port/platform/pe_plat2_gpuprim_clearrect.c": "pc_port/include/pe_plat/gpuprim_clearrect.h",
-                   "pc_port/platform/pe_plat_gpu_clear_worker_host.c": "pc_port/include/psx_compat.h",
+                   "pc_port/platform/pe_plat2_gpuclear.c": "pc_port/include/pe_plat/gpuclear.h",
                    "pc_port/platform/pe_plat2_gpuq.c": "pc_port/include/pe_plat/gpuq.h",
                    "pc_port/platform/pe_plat2_gpuimg.c": "pc_port/include/pe_plat/gpuimg.h",
                    "pc_port/platform/pe_plat2_gpuimg_rect.c": "pc_port/include/pe_plat/gpuimg.h",
@@ -1160,7 +1161,7 @@ PE_PLAT_HEADERS = {
                    "pc_port/platform/pe_plat2_cdx_stream_slots.c": "pc_port/include/pe_plat/cdx_stream.h",
                    "pc_port/platform/pe_plat_cd.c": "pc_port/include/pe_plat/cd.h",
                    "pc_port/platform/pe_plat2_spu_upload.c": "pc_port/include/pe_plat/spu_upload.h",
-                   "pc_port/platform/pe_plat_cd_sync.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat2_cdsync.c": "pc_port/include/pe_plat/cd.h",
                    "pc_port/platform/pe_plat_gte.c": "pc_port/include/pe_plat/gte.h",
                    "pc_port/platform/pe_plat_gte_regs.c": "pc_port/include/pe_plat/gte.h",
                    "pc_port/platform/pe_plat_gte_stack.c": "pc_port/include/pe_plat/gte.h",
@@ -1171,23 +1172,23 @@ PE_PLAT_HEADERS = {
                    "pc_port/platform/pe_plat_gte_vn.c": "pc_port/include/pe_plat/gte.h",
                    "pc_port/platform/pe_plat_gte_init.c": "pc_port/include/pe_plat/gte.h",
                    "pc_port/platform/pe_plat_ds_leaf.c": "pc_port/include/pe_plat/cd.h",
-                   "pc_port/platform/pe_plat_cd_initialize_callbacks.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat2_cdinitcb.c": "pc_port/include/pe_plat/cd.h",
                    "pc_port/platform/pe_plat_cd_search_file_host.c": "pc_port/include/pe_plat/cd.h",
-                   "pc_port/platform/pe_plat_cd_queue_command_host.c": "pc_port/include/pe_plat/cd.h",
-                   "pc_port/platform/pe_plat_cd_command_sequence_host.c": "pc_port/include/pe_plat/cd.h",
-                   "pc_port/platform/pe_plat_cd_response_query_host.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat2_cdresp.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat2_cdqueue.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat2_cdseq.c": "pc_port/include/pe_plat/cd.h",
                    "pc_port/platform/pe_plat_cd_reset_host.c": "pc_port/include/pe_plat/cd.h",
                    "pc_port/platform/pe_plat_cd_public_init_host.c": "pc_port/include/pe_plat/cd.h",
-                   "pc_port/platform/pe_plat_cd_read_stream_host.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat2_cdstreamopen.c": "pc_port/include/pe_plat/cd.h",
                    "pc_port/platform/pe_plat_cd_issue_step_host.c": "pc_port/include/pe_plat/cd.h",
                    "pc_port/platform/pe_plat_cd_command_wait_host.c": "pc_port/include/pe_plat/cd.h",
-                   "pc_port/platform/pe_plat_cd_issue_wrapper.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat2_cdissue.c": "pc_port/include/pe_plat/cd.h",
                    "pc_port/platform/pe_plat_cd_retry.c": "pc_port/include/pe_plat/cd.h",
                    "pc_port/platform/pe_plat_cd_status_callback.c": "pc_port/include/pe_plat/cd.h",
                    "pc_port/platform/pe_plat_cd_command_complete.c": "pc_port/include/pe_plat/cd.h",
-                   "pc_port/platform/pe_plat_cd_unexpected_status.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat2_cdunexp.c": "pc_port/include/pe_plat/cd.h",
                    "pc_port/platform/pe_plat_cd_poll.c": "pc_port/include/pe_plat/cd.h",
-                   "pc_port/platform/pe_plat_cd_data_ready.c": "pc_port/include/pe_plat/cd.h",
+                   "pc_port/platform/pe_plat2_cdready.c": "pc_port/include/pe_plat/cd.h",
                    "pc_port/platform/pe_plat_cd_leaf.c": "pc_port/include/pe_plat/cd.h",
                    "pc_port/platform/pe_plat2_cdhost_sector.c": "pc_port/include/pe_plat/cdhost.h",
                    "pc_port/platform/pe_plat2_cdhost_stream.c": "pc_port/include/pe_plat/cdhost.h",

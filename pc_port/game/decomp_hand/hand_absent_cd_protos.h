@@ -1,17 +1,25 @@
 /*
- * Host prototypes for the port_absent `cd` group (2026-09-23): hand adapters
- * in absent_cd_port.c for matched leaves 0x8007D614..0x80084EB0 (libspu DMA
- * IRQ tail, libcard / memory-card controller).  Each is a hand adaptation of
- * the verified matched leaf src/func_XXXXXXXX.c: pointer parameters/returns
- * are 32-bit guest addresses (pe_addr_t), everything else keeps the leaf's
- * type.  gen_decomp_ports.py reads these as canonical host signatures.
+ * Host prototypes for the port_absent `cd` group (created 2026-09-23; header
+ * rewritten 2026-11-27 to match what the file declares today).
  *
- * func_80083014 is declared `void func_80083014(void)` in its own leaf but
- * retail forwards the caller's live $a0 to the table callback it dispatches
- * (pe_dis.sh 0x80083014 0xC8: $a0 is never written before `jalr v0` at
- * 0x80083040); every retail caller passes the record (src/func_80082B70.c
- * declares `func_80083014(unsigned char *)`), so the register is spelled as
- * the explicit parameter here.
+ * This header only declares: pointer parameters/returns are 32-bit guest
+ * addresses (pe_addr_t), everything else keeps the integer type.  No body is
+ * defined in this file or in absent_cd_port.c any more (absent_cd_port.c now
+ * defines only PE_Card_ICall and static helpers).  gen_decomp_ports.py reads
+ * the declarations as canonical host signatures.  Provider of each declared
+ * function, by address, from gen_decomp_ports.py (PE_PLAT_REPLACED):
+ *   libspu  0x8007D614 pe_plat_spu_fidma.c
+ *   libcd/libds  0x80080F64 pe_plat_cd_gen.c; 0x80081110 pe_plat_81110.c;
+ *           0x800819D8 pe_plat_cd_gen2.c; 0x8008214C pe_plat_ds_gen11.c;
+ *           0x80082444 pe_plat_cd_gen6.c
+ *   libpad  0x8008284C and 0x800837C8 pe_plat_pad_actinfo.c;
+ *           0x80084B44 pe_plat_pad_state.c
+ *   libcard 0x80082B08 and 0x80083DF0 pe_plat_card_gen14.c;
+ *           0x800840DC pe_plat_card_gen8.c; 0x80084EB0 pe_plat_card_gen17.c
+ * Each provider carries its own provenance statement; none is made here.
+ * The earlier header text (hand adaptations of matched leaves, and a note on
+ * the argument register of 0x80083014, whose provider is pe_plat_pad_gen24.c
+ * and which is not declared here) described bodies that are gone.
  */
 #ifndef PE_HAND_ABSENT_CD_PROTOS_H
 #define PE_HAND_ABSENT_CD_PROTOS_H
@@ -19,11 +27,10 @@
 #include <stdint.h>
 #include "psx_compat.h"
 
-/* Guest scratch for retail stack buffers a leaf hands to a guest-address
- * callee (func_80082444's `char buf[8]`).  0x801FFB80..0x801FFBFF, disjoint
- * from PE_HAND_HI_STACK (0x801FFC00) and PE_HAND_LO_STACK_TEMP (0x801FFD00).
- * Storage-location substitution only: the bytes are retail's and none
- * outlive the call that uses them. */
+/* Guest scratch window 0x801FFB80..0x801FFBFF, disjoint from PE_HAND_HI_STACK
+ * (0x801FFC00) and PE_HAND_LO_STACK_TEMP (0x801FFD00).  Nothing in the tree
+ * references this macro now (the stack-buffer user was func_80082444, whose
+ * provider is pe_plat_cd_gen6.c). */
 #define PE_HAND_CD_STACK 0x801FFB80u
 
 void func_8007D614(void);
