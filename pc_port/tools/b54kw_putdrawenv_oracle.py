@@ -136,6 +136,7 @@ def main() -> None:
             "independent canonical DR_ENV construction")
     print("  OK model: terminal tag + E3/E4/E5/E1/E2/E6 packet")
 
+    # (control build against the removed translated file; recorded in docs/evidence/pe-b54kw-putdrawenv/REPORT.md; not runnable since 2026-11-27)
     sources = "".join((root / path).read_text(encoding="utf-8") for path in [
         "pc_port/platform/pe_gpu.c",
         "pc_port/platform/pe_libgpu.c",

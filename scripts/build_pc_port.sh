@@ -11,6 +11,7 @@
 # advances, or the generated tree drifts behind src/.
 #
 # Stages (each one fails loudly):
+#   0. inputs    — python deps + overlay blobs (see "Inputs" below)
 #   1. generate  — tools/analysis/gen_decomp_ports.py writes pc_port/game/decomp
 #                  and gen_overlay_ports.py writes pc_port/game/decomp_ovl
 #   2. verify    — the same tool re-checks that every emitted TU matches src/
@@ -23,6 +24,24 @@
 #                  tracked files (runs after stage 2; uses the user's disc via
 #                  the git-ignored disc cache when present, else signatures)
 #
+# Inputs (stage 0).  The generators read the user's own disc, extracted
+# under build/extracted/ (git-ignored):
+#   * pycparser, pinned in tools/requirements-port.txt.  If it cannot be
+#     imported the script prints the exact install command and exits 1.
+#     `PE_PYLIB=<dir>` prepends a directory holding a pycparser/ package to
+#     PYTHONPATH, for hosts without network access.
+#   * build/extracted/disc1/SLUS_006.62 and build/extracted/disc1/PE.IMG, from
+#         scripts/extract_us.sh 1      (disc 1 bin+cue under rom/image/, or
+#                                       PE_IMAGE_DIR=<dir with '*Disc 1*.cue'>)
+#         scripts/extract_overlays.sh
+#   * one overlay blob per configs/USA/overlays/*.yaml (68 rooms + subsystem
+#     overlays).  The standard extraction omits some room chunks (m0159i,
+#     m0437i); tools/extract/ensure_overlay_blobs.py extracts every missing
+#     one with `peimg.py room <id>` and checks each blob's sha1 against its
+#     yaml.  Without them the overlay generator silently emits a different
+#     tree than the development tree.  If SLUS_006.62/PE.IMG are absent it
+#     exits 1 with the remedy above.
+#
 # Idempotent: re-running regenerates in place, reuses the CMake cache and
 # rebuilds only what changed.  Nothing git-tracked is written; the only outputs
 # are the two git-ignored trees pc_port/game/decomp/ and the build directory.
@@ -31,6 +50,7 @@
 #   scripts/build_pc_port.sh                 # generate + configure + build + test
 #   scripts/build_pc_port.sh --clean         # remove the build dir first
 #   scripts/build_pc_port.sh --no-tests      # stop after the build
+#   scripts/build_pc_port.sh --generate-only # stop after stage 2 (generate+verify)
 #   scripts/build_pc_port.sh --build-dir DIR # default: pc_port/build
 #   scripts/build_pc_port.sh --no-guard      # skip the retail-data guard
 #   scripts/build_pc_port.sh --build-type T  # CMAKE_BUILD_TYPE (default: Release)
@@ -39,6 +59,7 @@
 #   CMAKE   — path to a cmake binary (otherwise resolved from PATH, then from
 #             the known fallbacks below)
 #   JOBS    — parallel build jobs (default: nproc)
+#   PE_PYLIB — directory with a pycparser/ package, prepended to PYTHONPATH
 #
 # The default build type is Release because this is the binary that ships:
 # an unoptimised (empty CMAKE_BUILD_TYPE) build is too slow to run a movie
@@ -58,6 +79,7 @@ BUILD_DIR="$ROOT/pc_port/build"
 RUN_TESTS=1
 CLEAN=0
 RUN_GUARD=1
+GENERATE_ONLY=0
 BUILD_TYPE=Release
 
 while [[ $# -gt 0 ]]; do
@@ -65,9 +87,10 @@ while [[ $# -gt 0 ]]; do
         --clean)      CLEAN=1; shift ;;
         --no-tests)   RUN_TESTS=0; shift ;;
         --no-guard)   RUN_GUARD=0; shift ;;
+        --generate-only) GENERATE_ONLY=1; shift ;;
         --build-dir)  BUILD_DIR="$2"; shift 2 ;;
         --build-type) BUILD_TYPE="$2"; shift 2 ;;
-        -h|--help)    sed -n '2,45p' "${BASH_SOURCE[0]}"; exit 0 ;;
+        -h|--help)    sed -n '2,67p' "${BASH_SOURCE[0]}"; exit 0 ;;
         *) echo "ERROR: unknown argument '$1' (see --help)." >&2; exit 1 ;;
     esac
 done
@@ -150,6 +173,45 @@ echo "   cmake     : $CMAKE_BIN ($("$CMAKE_BIN" --version | head -1))"
 echo "   build dir : $BUILD_DIR"
 echo "   jobs      : $JOBS"
 
+# ── 0. inputs: pinned pycparser, extracted overlay blobs ────────────────
+if [[ -n "${PE_PYLIB:-}" ]]; then
+    if [[ ! -d "$PE_PYLIB" ]]; then
+        echo "ERROR: PE_PYLIB='$PE_PYLIB' is not a directory." >&2
+        exit 1
+    fi
+    export PYTHONPATH="$PE_PYLIB${PYTHONPATH:+:$PYTHONPATH}"
+fi
+REQ="$ROOT/tools/requirements-port.txt"
+PYCPARSER_WANT="$(sed -n 's/^pycparser==\([^[:space:]#]*\).*/\1/p' "$REQ")"
+if [[ -z "$PYCPARSER_WANT" ]]; then
+    echo "ERROR: no 'pycparser==<version>' pin in $REQ." >&2
+    exit 1
+fi
+echo
+echo "-- [0/5] inputs"
+if ! PYCPARSER_HAVE="$(python3 -c 'import pycparser; print(pycparser.__version__)' 2>/dev/null)"; then
+    cat >&2 <<MSG
+ERROR: the Python package pycparser is required by the port generators and
+       cannot be imported.  Install the pinned version:
+
+           python3 -m pip install --user -r tools/requirements-port.txt
+
+       or, offline, set PE_PYLIB=<directory containing pycparser/>.
+MSG
+    exit 1
+fi
+if [[ "$PYCPARSER_HAVE" != "$PYCPARSER_WANT" ]]; then
+    cat >&2 <<MSG
+ERROR: pycparser $PYCPARSER_HAVE is installed but the generator output is only
+       reproducible with pycparser $PYCPARSER_WANT (tools/requirements-port.txt):
+
+           python3 -m pip install --user -r tools/requirements-port.txt
+MSG
+    exit 1
+fi
+echo "   pycparser : $PYCPARSER_HAVE (pinned)"
+python3 "$ROOT/tools/extract/ensure_overlay_blobs.py"
+
 # ── 1+2. generate the decomp-derived TUs, then prove the tree is settled ─
 # `--verify` re-derives every TU from src/ and exits 1 on any difference, so
 # generate-then-verify is the idempotence check.  It can legitimately fail once
@@ -183,6 +245,12 @@ ERROR: generated port TUs still drift from src/ after 3 generate+verify passes.
        which is a real bug in tools/analysis/gen_decomp_ports.py.
 EOF
     exit 1
+fi
+
+if [[ "$GENERATE_ONLY" -eq 1 ]]; then
+    echo
+    echo "-- stopping after stage 2 (--generate-only)"
+    exit 0
 fi
 
 # ── guard: no retail bytes in tracked files ─────────────────────────────

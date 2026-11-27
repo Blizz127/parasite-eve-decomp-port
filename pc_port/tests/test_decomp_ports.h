@@ -59,7 +59,7 @@ extern void func_80085DC4(int value);              /* 73CC4(9, value)    */
 extern void func_8007DE40(void);                   /* one boundary       */
 extern void func_8004E94C(void);                   /* boundary with arg  */
 
-/* Retail .data: eight 32-bit DMA callback identities (see pe_libetc.c). */
+/* Retail .data: eight 32-bit DMA callback identities (see pe_plat2_cdx_etc_seams.c). */
 #define DECOMP_DMA_CB_TABLE 0x800956C0u
 
 /* ── 1. scalar getters/setters (retail widening + write/no-write) ───── */

@@ -148,6 +148,7 @@ def main() -> None:
             "canonical packet model")
     print("  OK independent model: masks, zero-size maxima, overlap, packet")
 
+    # (control build against the removed translated file; recorded in docs/evidence/pe-b54kr-moveimage-display-prefix/REPORT.md; not runnable since 2026-11-27)
     wrapper_source = (root / "pc_port" / "game" / "boot" /
                       "func_8007512C_port.c").read_text(encoding="utf-8")
     gpu_source = (root / "pc_port" / "platform" /

@@ -119,6 +119,7 @@ def main() -> None:
             "normal/timeout wait predicate model")
     print("  OK model: pending/status returns and wait threshold")
 
+    # (control build against the removed translated file; recorded in docs/evidence/pe-b54ks-drawsync-drain/REPORT.md; not runnable since 2026-11-27)
     source = (root / "pc_port" / "platform" /
               "pe_libgpu.c").read_text(encoding="utf-8")
     require("PE_Port_ServiceDmaIrqCheckpoint" in source and

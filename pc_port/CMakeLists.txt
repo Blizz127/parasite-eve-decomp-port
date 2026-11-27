@@ -110,7 +110,6 @@ set(PLATFORM_SRCS
     platform/pe_plat_gpu_words.c
     platform/pe_plat_gpu_drawenv.c
     platform/pe_plat2_gpuenv.c
-    platform/pe_plat_gpu_primitive.c
     platform/pe_plat2_gpupkt.c
     platform/pe_plat2_press.c
     platform/pe_plat2_gpuaddr.c
@@ -165,12 +164,9 @@ set(PLATFORM_SRCS
     platform/pe_mdec.c
     platform/pe_libpress.c
     platform/pe_str_feed.c
-    platform/pe_libetc.c
     platform/pe_plat2_cdx_etc.c
+    platform/pe_plat2_cdx_etc_seams.c
     platform/pe_plat_gpu_clear_worker_host.c
-    platform/pe_plat_gpu_upload_worker_host.c
-    platform/pe_plat_gpu_readback_worker_host.c
-    platform/pe_plat_gpu_queue_pump_host.c
     platform/pe_plat2_gpuq.c
     platform/pe_plat2_gpuq_host.c
     platform/pe_plat_resetgraph_light_host.c
@@ -192,7 +188,6 @@ set(PLATFORM_SRCS
     platform/pe_disc.c
     platform/pe_disc_check.c
     platform/pe_disc_cache.c
-    platform/pe_save.c
     platform/pe_stream.c
     platform/pe_stream_commands.c
     platform/func_80071A24_port.c
@@ -504,18 +499,10 @@ set(GAME_SRCS
     game/boot/func_800850F4_port.c
     game/boot/func_8006AD40_port.c
     game/boot/func_8006E1C0_port.c
-    game/boot/func_8007506C_port.c
-    game/boot/func_8007512C_port.c
     game/boot/func_80042798_port.c
-    game/boot/func_800752AC_port.c
-    game/boot/func_80075358_port.c
-    game/boot/func_800753B4_port.c
     game/boot/func_80070E54_port.c
-    game/boot/func_80076664_port.c
-    game/boot/func_800768A0_port.c
     game/boot/func_800746A0_port.c
     game/boot/func_80076C34_port.c
-    game/boot/func_80076EE4_port.c
     game/boot/func_80077B64_port.c
     game/boot/func_80077BA4_port.c
     game/boot/func_80077BC4_port.c
@@ -528,12 +515,10 @@ set(GAME_SRCS
     game/boot/func_80077B34_port.c
     game/boot/func_80077C04_port.c
     game/boot/func_80077CB4_port.c
-    game/boot/func_8007A214_port.c
     game/boot/func_8005DADC_port.c
     game/boot/func_800370DC_port.c
     game/boot/func_80037140_port.c
     game/boot/func_80030894_port.c
-    game/boot/func_8010BE3C_port.c
     game/boot/func_80190660_port.c
     game/boot/func_8018F2F4_port.c
     game/boot/func_8018F468_port.c
@@ -553,39 +538,21 @@ set(GAME_SRCS
     game/boot/func_80192CE8_port.c
     game/boot/func_800870F0_port.c
     game/boot/func_80191B64_port.c
-    game/boot/func_8010BD4C_port.c
 )
 # gpu2a (sw-gpu2a-20261127): the queue pump func_80076EE4 and the deadline seed func_800773D0 are the
-# clean-room pe_plat2_gpuq.c; the published host file and the translated pump file are no longer built
-# (func_80076C34_port.c stays: it still carries PE_DispatchClearRect for pe_libgpu.c).
-list(REMOVE_ITEM PLATFORM_SRCS platform/pe_plat_gpu_queue_pump_host.c)
-list(REMOVE_ITEM GAME_SRCS game/boot/func_80076EE4_port.c)
-# DecDCToutCallback (func_8010C0D8) is now the clean-room pe_plat2_press.c; the old
-# boot translation file is excluded (the lead removes the file).
-list(REMOVE_ITEM GAME_SRCS game/boot/func_8010BE3C_port.c)
-# Clean-room gpu2c providers (platform/pe_plat2_gpuprim*.c, pe_plat2_gpuaddr.c) own these symbols now: the translated
-# boot files stay in the tree for the lead's later removal but are not built.  (platform/pe_libgpu.c and
-# platform/pe_plat_gpu_address.c are no longer in PLATFORM_SRCS.)
-list(REMOVE_ITEM GAME_SRCS
-    game/boot/func_80075358_port.c
-    game/boot/func_800753B4_port.c
-    game/boot/func_800752AC_port.c
-    game/boot/func_8007A214_port.c)
+# clean-room pe_plat2_gpuq.c; the published host file and the translated pump file were removed 2026-11-27
+# (func_80076C34_port.c stays: it still carries PE_DispatchClearRect).
+# DecDCToutCallback (func_8010C0D8) and the VLC table expander (func_8010BD4C) are the clean-room
+# pe_plat2_press.c; the old boot translation files were removed 2026-11-27.
+# Clean-room gpu2c providers (platform/pe_plat2_gpuprim*.c, pe_plat2_gpuaddr.c) own the libgpu primitive/address
+# symbols; the translated boot files and platform/pe_libgpu.c / platform/pe_plat_gpu_address.c were removed 2026-11-27.
 
 # gpu2b (docs/evidence/native-gpu2-20261126/gpu2b/AUTHOR-REPORT.md): the clean-room image-transfer providers replace two
-# host worker files and four translated boot files; the lead removes the superseded files.
+# host worker files and four translated boot files (removed 2026-11-27).
 list(APPEND PLATFORM_SRCS
     platform/pe_plat2_gpuimg.c
     platform/pe_plat2_gpuimg_rect.c
     platform/pe_plat2_gpuimg_work.c)
-list(REMOVE_ITEM PLATFORM_SRCS
-    platform/pe_plat_gpu_upload_worker_host.c
-    platform/pe_plat_gpu_readback_worker_host.c)
-list(REMOVE_ITEM GAME_SRCS
-    game/boot/func_8007506C_port.c
-    game/boot/func_8007512C_port.c
-    game/boot/func_80076664_port.c
-    game/boot/func_800768A0_port.c)
 
 # Decomp-derived port TUs (pc_port/game/decomp/*.c).  They are generated from
 # the verified matching C leaves in src/ by tools/analysis/gen_decomp_ports.py;
@@ -834,6 +801,9 @@ set_source_files_properties(${DECOMP_SRCS} PROPERTIES COMPILE_OPTIONS
 list(LENGTH DECOMP_SRCS PE_DECOMP_TU_COUNT)
 message(STATUS "pe: ${PE_DECOMP_TU_COUNT} decomp-derived port TUs")
 
+# cdx-etc: the translated libetc provider (platform/pe_libetc.c, removed 2026-11-27) is replaced by the clean-room
+# veneers (platform/pe_plat2_cdx_etc.c) and their host seams (platform/pe_plat2_cdx_etc_seams.c).
+
 set(FIELD_RUNTIME_SRCS
     src/pe_globals.c
     platform/pe_callback.c
@@ -849,8 +819,6 @@ set(FIELD_RUNTIME_SRCS
 # point or the X11 presentation adapter.  Creating this target does not claim
 # that the currently translated graph is a complete Day 1 field runtime.
 add_library(pe_field_runtime STATIC ${FIELD_RUNTIME_SRCS})
-# cdx-etc: the translated libetc host seams keep their raw names (see pe_plat/bios_sys.h)
-set_source_files_properties(platform/pe_libetc.c PROPERTIES COMPILE_DEFINITIONS PE_CDXETC_HOST_SEAMS=1)
 target_include_directories(pe_field_runtime PUBLIC
     ${CMAKE_SOURCE_DIR}
     ${CMAKE_SOURCE_DIR}/include
@@ -1245,6 +1213,115 @@ if(BUILD_TESTS)
     endif()
     endif()
 
+    # --- -Wl,--wrap and pe_plat #define rebinds -------------------------------
+    # include/pe_plat/*.h, psx_compat.h and pe_port_compat.h rebind a guest name
+    # to its clean-room provider with `#define func_XXXXXXXX pe_plat_*` (and
+    # pe_plat_bios_* -> pe_plat_cdxetc_*).  After such a rebind every caller
+    # references the *provider* symbol, so `-Wl,--wrap=func_XXXXXXXX` silently
+    # stops intercepting: the test's __wrap_func_XXXXXXXX is linked but never
+    # called.  pe_wrap_providers() therefore also wraps the rebound provider and
+    # aliases its __wrap_ symbol to the test's __wrap_<listed name> definition,
+    # so the tests keep intercepting the function they were written for.  The
+    # rebind table is scanned from the headers at configure time (so future
+    # rebinds are picked up without editing this file; header edits re-run
+    # configure) and every resolved mapping is printed as `wrap[...]`.
+    # Comment-only lines and `#if 0` blocks are ignored.  A listed name that is
+    # neither rebound nor mentioned anywhere in the port sources, or that is a
+    # #define in the headers in an unrecognised form, fails configure.
+    file(GLOB _pe_rebind_headers CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/include/pe_plat/*.h)
+    list(APPEND _pe_rebind_headers
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/psx_compat.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/pe_port_compat.h)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${_pe_rebind_headers})
+    foreach(_h IN LISTS _pe_rebind_headers)
+        file(STRINGS ${_h} _pe_hdr_lines)
+        set(_pe_if0_depth 0)   # >0 while inside an `#if 0` block
+        set(_pe_if0_nest 0)    # nested #if depth inside that block
+        set(_pe_in_comment FALSE)
+        foreach(_l IN LISTS _pe_hdr_lines)
+            if(_pe_in_comment)
+                if(_l MATCHES "\\*/")
+                    set(_pe_in_comment FALSE)
+                endif()
+                continue()
+            endif()
+            if(_l MATCHES "^[ \t]*/\\*" AND NOT _l MATCHES "\\*/")
+                set(_pe_in_comment TRUE)
+                continue()
+            endif()
+            if(_l MATCHES "^[ \t]*//")
+                continue()
+            endif()
+            if(_pe_if0_depth GREATER 0)
+                if(_l MATCHES "^[ \t]*#[ \t]*if(def|ndef)?[ \t(]")
+                    math(EXPR _pe_if0_nest "${_pe_if0_nest}+1")
+                elseif(_l MATCHES "^[ \t]*#[ \t]*endif")
+                    if(_pe_if0_nest EQUAL 0)
+                        set(_pe_if0_depth 0)
+                    else()
+                        math(EXPR _pe_if0_nest "${_pe_if0_nest}-1")
+                    endif()
+                elseif(_pe_if0_nest EQUAL 0 AND _l MATCHES "^[ \t]*#[ \t]*else")
+                    set(_pe_if0_depth 0)
+                endif()
+                continue()
+            endif()
+            if(_l MATCHES "^[ \t]*#[ \t]*if[ \t]+0([ \t/]|$)")
+                set(_pe_if0_depth 1)
+                set(_pe_if0_nest 0)
+                continue()
+            endif()
+            # every `#define NAME ...` is recorded; the object-like `NAME pe_plat_*`
+            # form is parsed as a rebind, anything else on a wrapped name is fatal
+            if(_l MATCHES "^[ \t]*#[ \t]*define[ \t]+([A-Za-z_][A-Za-z0-9_]*)")
+                set(PE_WRAP_DEFINED_${CMAKE_MATCH_1} TRUE)
+                if(_l MATCHES "^[ \t]*#[ \t]*define[ \t]+(func_[0-9A-Fa-f]+|pe_plat_[A-Za-z0-9_]+|HostFB_[A-Za-z0-9_]+)[ \t]+(pe_plat[A-Za-z0-9_]*|HostFB_[A-Za-z0-9_]+)([ \t]|$)")
+                    set(PE_WRAP_REBIND_${CMAKE_MATCH_1} ${CMAKE_MATCH_2})
+                endif()
+            endif()
+        endforeach()
+    endforeach()
+    function(pe_wrap_providers target)
+        foreach(_p IN LISTS ARGN)
+            target_link_options(${target} PRIVATE "-Wl,--wrap=${_p}")
+            set(_chk ${_p})
+            while(TRUE)
+                if(DEFINED PE_WRAP_DEFINED_${_chk} AND NOT DEFINED PE_WRAP_REBIND_${_chk})
+                    message(FATAL_ERROR "wrap[${target}]: '${_chk}' is a #define in the rebind headers "
+                        "but not in the recognised object-like `#define NAME pe_plat_*` form; "
+                        "-Wl,--wrap=${_p} would silently intercept nothing. Extend the scan or the list.")
+                endif()
+                if(NOT DEFINED PE_WRAP_REBIND_${_chk})
+                    break()
+                endif()
+                set(_chk ${PE_WRAP_REBIND_${_chk}})
+            endwhile()
+            if(NOT DEFINED PE_WRAP_REBIND_${_p})
+                # not rebound: it must at least exist in the port sources
+                execute_process(
+                    COMMAND grep -rqw --include=*.c --include=*.h
+                            --exclude-dir=tests --exclude-dir=tools --exclude-dir=build
+                            -e ${_p} include platform bootstrap game
+                    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+                    RESULT_VARIABLE _rc)
+                if(NOT _rc EQUAL 0)
+                    message(FATAL_ERROR "wrap[${target}]: '${_p}' is neither #define-rebound in "
+                        "include/pe_plat/*.h, psx_compat.h, pe_port_compat.h nor mentioned in the "
+                        "port sources; -Wl,--wrap=${_p} would intercept nothing")
+                endif()
+            endif()
+            set(_cur ${_p})
+            # follow chained rebinds (pe_plat_bios_x -> pe_plat_cdxetc_x)
+            while(DEFINED PE_WRAP_REBIND_${_cur})
+                set(_next ${PE_WRAP_REBIND_${_cur}})
+                message(STATUS "wrap[${target}]: ${_cur} -> ${_next}")
+                set(_cur ${_next})
+                target_link_options(${target} PRIVATE
+                    "-Wl,--wrap=${_cur}" "-Wl,--defsym=__wrap_${_cur}=__wrap_${_p}")
+            endwhile()
+        endforeach()
+    endfunction()
+
     if(UNIX AND NOT APPLE)
         pe_test_inputs_present(_pe_ok pe-ambient-reload-tests tests/test_ambient_reload.c)
         if(_pe_ok)
@@ -1280,9 +1357,7 @@ if(BUILD_TESTS)
         if(_pe_ok)
             add_executable(pe-transition-exit-tests tests/test_transition_exit.c)
             target_link_libraries(pe-transition-exit-tests PRIVATE pe_field_runtime)
-            foreach(provider HostFB_SetDispMask HostFB_VSync func_80074A44 func_80074F44 func_80074DC0 func_800755F0 func_80086C5C func_8008CBA8 func_80086FF8 func_80087024)
-                target_link_options(pe-transition-exit-tests PRIVATE "-Wl,--wrap=${provider}")
-            endforeach()
+            pe_wrap_providers(pe-transition-exit-tests HostFB_SetDispMask HostFB_VSync func_80074A44 func_80074F44 func_80074DC0 func_800755F0 func_80086C5C func_8008CBA8 func_80086FF8 func_80087024)
             if(PE_PORT_SANITIZERS)
                 target_compile_options(pe-transition-exit-tests PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
                 target_link_options(pe-transition-exit-tests PRIVATE -fsanitize=address,undefined -static-libasan -static-libubsan)
@@ -1295,9 +1370,7 @@ if(BUILD_TESTS)
         if(_pe_ok)
             add_executable(pe-transition-constructor-tests tests/test_transition_constructor.c)
             target_link_libraries(pe-transition-constructor-tests PRIVATE pe_field_runtime)
-            foreach(provider func_80191854 func_800371B0 func_80078E34 func_80078E64 func_80078FC4 func_80077E64 func_80078FE4)
-                target_link_options(pe-transition-constructor-tests PRIVATE "-Wl,--wrap=${provider}")
-            endforeach()
+            pe_wrap_providers(pe-transition-constructor-tests func_80191854 func_800371B0 func_80078E34 func_80078E64 func_80078FC4 func_80077E64 func_80078FE4)
             if(PE_PORT_SANITIZERS)
                 target_compile_options(pe-transition-constructor-tests PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
                 target_link_options(pe-transition-constructor-tests PRIVATE -fsanitize=address,undefined -static-libasan -static-libubsan)
@@ -1311,9 +1384,7 @@ if(BUILD_TESTS)
         if(_pe_ok)
             add_executable(pe-transition-init-tests tests/test_transition_init.c)
             target_link_libraries(pe-transition-init-tests PRIVATE pe_field_runtime)
-            foreach(provider func_8019BD78 func_8005BCB0 func_800371A4 func_80191C94)
-                target_link_options(pe-transition-init-tests PRIVATE "-Wl,--wrap=${provider}")
-            endforeach()
+            pe_wrap_providers(pe-transition-init-tests func_8019BD78 func_8005BCB0 func_800371A4 func_80191C94)
             if(PE_PORT_SANITIZERS)
                 target_compile_options(pe-transition-init-tests PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
                 target_link_options(pe-transition-init-tests PRIVATE -fsanitize=address,undefined -static-libasan -static-libubsan)
@@ -1324,9 +1395,7 @@ if(BUILD_TESTS)
 
         add_executable(pe-transition-outer-tests tests/test_transition_outer.c)
         target_link_libraries(pe-transition-outer-tests PRIVATE pe_field_runtime)
-        foreach(provider func_80196498 func_80191DE8 HostFB_VSync HostFB_SetDispMask pe_plat_bios_srand pe_plat_bios_rand func_8003EB04 func_8006A25C func_801942FC func_8018F05C func_8018F92C func_80194108 func_80192740 func_80192800 func_80193478 func_80191E30 func_80191EFC func_80037870 func_80074DC0 func_80193AB0 func_80074A44 func_80075424 func_800755F0 func_800753B4 func_800752AC func_8019BF8C func_80192030 PE_TransitionCompactOT)
-            target_link_options(pe-transition-outer-tests PRIVATE "-Wl,--wrap=${provider}")
-        endforeach()
+        pe_wrap_providers(pe-transition-outer-tests func_80196498 func_80191DE8 HostFB_VSync HostFB_SetDispMask pe_plat_bios_srand pe_plat_bios_rand func_8003EB04 func_8006A25C func_801942FC func_8018F05C func_8018F92C func_80194108 func_80192740 func_80192800 func_80193478 func_80191E30 func_80191EFC func_80037870 func_80074DC0 func_80193AB0 func_80074A44 func_80075424 func_800755F0 func_800753B4 func_800752AC func_8019BF8C func_80192030 PE_TransitionCompactOT)
         if(PE_PORT_SANITIZERS)
             target_compile_options(pe-transition-outer-tests PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
             target_link_options(pe-transition-outer-tests PRIVATE -fsanitize=address,undefined -static-libasan -static-libubsan)
@@ -1349,9 +1418,7 @@ if(BUILD_TESTS)
         if(_pe_ok)
             add_executable(pe-transition-loader-tests tests/test_transition_loader.c)
             target_link_libraries(pe-transition-loader-tests PRIVATE pe_field_runtime)
-            foreach(provider HostFB_VSync HostFB_SetDispMask func_8006E6A8 func_8006E7E8 func_8006CDA4 func_8006E6D4 pe_plat_cd_read_poll_host pe_plat_gpu_load_tim func_80074DC0 pe_plat_bios_enter_critical pe_plat_bios_flush_cache pe_plat_bios_exit_critical)
-                target_link_options(pe-transition-loader-tests PRIVATE "-Wl,--wrap=${provider}")
-            endforeach()
+            pe_wrap_providers(pe-transition-loader-tests HostFB_VSync HostFB_SetDispMask func_8006E6A8 func_8006E7E8 func_8006CDA4 func_8006E6D4 pe_plat_cd_read_poll_host pe_plat_gpu_load_tim func_80074DC0 pe_plat_bios_enter_critical pe_plat_bios_flush_cache pe_plat_bios_exit_critical)
             if(PE_PORT_SANITIZERS)
                 target_compile_options(pe-transition-loader-tests PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
                 target_link_options(pe-transition-loader-tests PRIVATE -fsanitize=address,undefined -static-libasan -static-libubsan)

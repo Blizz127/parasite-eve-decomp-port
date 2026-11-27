@@ -117,6 +117,7 @@ def main() -> None:
             "production base, count, call, or following boundary")
     print("  OK caller: D_801D0DFC, count 0x40, exact next instruction 0x80192750")
 
+    # (control build against the removed translated file; recorded in docs/evidence/pe-b54kai-record-pool/REPORT.md; not runnable since 2026-11-27)
     source = (root / "pc_port/game/boot/func_8007A214_port.c").read_text()
     caller_source = (root / "pc_port/game/boot/func_801924F8_port.c").read_text()
     require("RECORD_SHIFT         5u" in source and

@@ -683,8 +683,8 @@ DEAD_SDK_UNLINKED = {
     "func_80083BB8": "libpad _padSetActAlign: caller replaced (pe_plat_pad_set.c)",
     "func_80083D04": "libpad _padSetMainMode: caller replaced (pe_plat_pad_set.c)",
     "func_800835A4": "libpad _padSetAct: caller replaced (pe_plat_pad_set.c)",
-    # Only called by func_80082534, now host code (pe_save.c):
-    "func_80082DBC": "libpad PadStopCom: caller replaced (pe_save.c)",
+    # Only called by func_80082534, now clean-room host code (pe_plat2_cdx_save.c; pe_save.c deleted 2026-11-27):
+    "func_80082DBC": "libpad PadStopCom: caller replaced (pe_plat2_cdx_save.c)",
     "func_80074774": "libgpu LoadTPage: unreferenced",
     "func_80074C14": "libgpu SetGraphQueue: unreferenced",
     "func_80074FD4": "libgpu ClearImage2: unreferenced",
@@ -1055,7 +1055,7 @@ PE_PLAT_REPLACED = {
     "func_800753B4": "pc_port/platform/pe_plat2_gpuprim.c",  # DrawOTag (clean-room, gpu2c)
     "func_80075358": "pc_port/platform/pe_plat2_gpuprim.c",  # DrawPrim (clean-room, gpu2c)
     "func_80075424": "pc_port/platform/pe_plat2_gpuprim.c",  # PutDrawEnv (clean-room, gpu2c)
-    "func_8010BD4C": "pc_port/game/boot/func_8010BD4C_port.c",
+    "func_8010BD4C": "pc_port/platform/pe_plat2_press.c",  # libpress VLC table expander (clean-room, gpu2d)
     "func_8010BFA0": "pc_port/platform/pe_plat_mdec_io_host.c",  # libpress DecDCTin wrapper
     "func_8010C89C": "pc_port/platform/pe_plat_vlc_frame.c",  # libpress VLC frame decoder (bounded/resumable)
     "func_8010C01C": "pc_port/platform/pe_plat_mdec_io_host.c",  # libpress DecDCTout wrapper
@@ -1116,6 +1116,16 @@ PE_PLAT_REPLACED = {
     "func_8007A334": "pc_port/platform/pe_plat_cd.c",   # CdMode
     "func_8007A344": "pc_port/platform/pe_plat_cd.c",   # CdLastCom
     "func_8007A354": "pc_port/platform/pe_plat_cd.c",   # CdLastPos
+    # Bound in pc_port/CMakeLists.txt and pe_port_compat.h (clean-room GPU
+    # providers); without these entries a clean generation emits a TU for
+    # func_80074DC0 (undefined D_80095744 at link) and a loud boundary for
+    # func_800755F0 in its callers.
+    "func_80074DC0": "pc_port/platform/pe_plat_gpu_drawsync.c",     # DrawSync
+    "func_800755F0": "pc_port/platform/pe_plat_gpu_putdispenv.c",   # PutDispEnv
+    # Same gap class: bound in CMakeLists.txt and pe_port_compat.h
+    # (pe_plat/gpu_dma_start.h), absent here, so a regeneration dropped the
+    # guest-pointer row for 0x80076B98 that the int3 registry carries.
+    "func_80076B98": "pc_port/platform/pe_plat_gpu_dma_start.c",   # GPU DMA start
 }
 PE_PLAT_HEADERS = {
     "pc_port/platform/pe_plat2_gpuprim.c": "pc_port/include/pe_plat/gpuprim.h",
@@ -1128,26 +1138,15 @@ PE_PLAT_HEADERS = {
     "pc_port/platform/pe_plat2_ctl.c": "pc_port/include/pe_plat/ctl.h",
     "pc_port/platform/pe_plat2_cdx_save.c": "pc_port/include/pe_plat/cdx_save.h",
     "pc_port/platform/pe_plat2_spu_b.c": "pc_port/include/pe_plat/spu_b.h",
-    "pc_port/game/boot/func_8010BD4C_port.c": "pc_port/include/pe_plat/mdec_expand.h",
     "pc_port/platform/pe_plat_mdec_io_host.c": "pc_port/include/pe_plat/mdec_io_host.h",
     "pc_port/platform/pe_plat_vlc_frame.c": "pc_port/include/pe_plat/vlc_frame.h",
-    "pc_port/game/boot/func_8010BE3C_port.c": "pc_port/include/pe_plat/mdec_callback.h","pc_port/game/boot/func_8007512C_port.c": "pc_port/include/psx_compat.h",
-                   "pc_port/game/boot/func_80076C34_port.c": "pc_port/include/psx_compat.h",
-                   "pc_port/game/boot/func_800752AC_port.c": "pc_port/include/psx_compat.h",
-                   "pc_port/game/boot/func_80075358_port.c": "pc_port/include/psx_compat.h",
-                   "pc_port/game/boot/func_800753B4_port.c": "pc_port/include/psx_compat.h",
-                   "pc_port/platform/pe_libgpu.c": "pc_port/include/psx_compat.h",
+    "pc_port/game/boot/func_80076C34_port.c": "pc_port/include/psx_compat.h",
                    "pc_port/platform/pe_plat_gpu_clear_worker_host.c": "pc_port/include/psx_compat.h",
-                   "pc_port/platform/pe_plat_gpu_upload_worker_host.c": "pc_port/include/psx_compat.h",
-                   "pc_port/platform/pe_plat_gpu_readback_worker_host.c": "pc_port/include/psx_compat.h",
                    "pc_port/platform/pe_plat2_gpuq.c": "pc_port/include/pe_plat/gpuq.h",
-                   "pc_port/game/boot/func_8007506C_port.c": "pc_port/include/psx_compat.h",
-                   "pc_port/platform/pe_plat_gpu_queue_pump_host.c": "pc_port/include/psx_compat.h",
                    "pc_port/platform/pe_plat2_gpuimg.c": "pc_port/include/pe_plat/gpuimg.h",
                    "pc_port/platform/pe_plat2_gpuimg_rect.c": "pc_port/include/pe_plat/gpuimg.h",
                    "pc_port/platform/pe_plat2_gpuimg_work.c": "pc_port/include/pe_plat/gpuimg.h",
                    "pc_port/platform/pe_libsnd.c": "pc_port/include/pe_plat/state.h",
-                   "pc_port/game/boot/func_8007A214_port.c": "pc_port/include/pe_plat/cd_stream.h",
                    "pc_port/game/boot/cd_stream_port.c": "pc_port/include/pe_plat/cd_stream.h",
                    "pc_port/platform/pe_plat_cd.c": "pc_port/include/pe_plat/cd.h",
                    "pc_port/game/boot/func_800850F4_port.c": "pc_port/include/pe_plat/state.h",
@@ -1241,10 +1240,11 @@ PE_PLAT_HEADERS = {
                    "pc_port/platform/pe_plat_gpu_drawenv.c": "pc_port/include/pe_plat/gpu_primitive.h",
                    "pc_port/platform/pe_plat2_gpuenv.c": "pc_port/include/pe_plat/gpuenv.h",
                    "pc_port/platform/pe_plat_gpu_tim.c": "pc_port/include/pe_plat/gpu_primitive.h",
-                   "pc_port/platform/pe_plat_gpu_primitive.c": "pc_port/include/pe_plat/gpu_primitive.h",
+                   "pc_port/platform/pe_plat_gpu_drawsync.c": "pc_port/include/pe_plat/gpu_drawsync.h",
+                   "pc_port/platform/pe_plat_gpu_putdispenv.c": "pc_port/include/pe_plat/gpu_putdispenv.h",
+                   "pc_port/platform/pe_plat_gpu_dma_start.c": "pc_port/include/pe_plat/gpu_dma_start.h",
                    "pc_port/platform/pe_plat2_gpupkt.c": "pc_port/include/pe_plat/gpupkt.h",
                    "pc_port/platform/pe_plat2_press.c": "pc_port/include/pe_plat/press.h",
-                   "pc_port/platform/pe_plat_gpu_address.c": "pc_port/include/pe_plat/gpu_address.h",
                    "pc_port/platform/pe_plat_state.c": "pc_port/include/pe_plat/state.h",
                    "pc_port/platform/pe_plat2_spu_a.c": "pc_port/include/pe_plat/spu_a.h",
                    "pc_port/platform/pe_plat_libc.c": "pc_port/include/pe_plat/libc.h",
@@ -1257,7 +1257,6 @@ PE_PLAT_HEADERS = {
                    "pc_port/platform/pe_plat_bios_intrp.c": "pc_port/include/pe_plat/bios_intrp.h",
                    "pc_port/platform/pe_plat_bios_card.c": "pc_port/include/pe_plat/bios_card.h",
                    "pc_port/platform/func_800719E4_port.c": "pc_port/include/pe_plat/bios_sys.h",
-                   "pc_port/platform/pe_libetc.c": "pc_port/include/pe_plat/bios_sys.h",
                    "pc_port/platform/pe_plat2_cdx_etc.c": "pc_port/include/pe_plat/cdx_etc.h",
                    "pc_port/platform/pe_plat_gpu_status.c": "pc_port/include/pe_plat/gpu_status.h",
                    "pc_port/platform/pe_plat_gpu_area.c": "pc_port/include/pe_plat/gpu_area.h",
@@ -1266,7 +1265,6 @@ PE_PLAT_HEADERS = {
                    "pc_port/platform/pe_plat_gpu_resetgraph.c": "pc_port/include/pe_plat/gpu_resetgraph.h",
                    "pc_port/platform/pe_plat_gpu_swap.c": "pc_port/include/pe_plat/gpu_swap.h",
                    "pc_port/platform/pe_plat_irq_callback.c": "pc_port/include/pe_plat/irq_callback.h",
-                   "pc_port/platform/pe_save.c": "pc_port/include/pe_plat/pad.h",
                    "pc_port/platform/pe_plat_pad.c": "pc_port/include/pe_plat/pad.h",
                    "pc_port/platform/pe_plat_pad_info.c": "pc_port/include/pe_plat/pad.h",
                    "pc_port/platform/pe_plat_pad_set.c": "pc_port/include/pe_plat/pad.h",

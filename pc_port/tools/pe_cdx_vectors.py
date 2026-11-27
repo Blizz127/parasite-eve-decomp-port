@@ -33,7 +33,7 @@ before the call (the checker compares distinct bytes).
 Usage: pe_cdx_vectors.py OUT.txt BATCH [ENTRY ...] [-n N] [-regonly] [-edge]
        (-edge: cdgen46 only; the retry callees return arbitrary nonzero success values instead of the documented 1 / 0xF1000000+n)
        (-regonly: the register-level-only entries of the batch, which have no smoke checker; see REPORT)
-       BATCH in cdgen42, cdgen44, cdgen45, cdgen46 (cdgen43 is split between this file
+       BATCH in cdgen42, cdgen42b, cdgen44, cdgen45, cdgen46 (cdgen43 is split between this file
        for the libetc veneers and pe_cdx_irq_vectors.py for the IRQ dispatcher).
 """
 import os
@@ -49,6 +49,42 @@ pl = c.pl
 v = c.v
 ZONE = c.ZONE
 POOL_RET = (0, 1, 0xFFFFFFFF)
+PILOT = [False]       # True while discover() runs its pilot cases (hooks use random, not structured, seeding)
+
+# ---- stack-window loads (cdgen42b fix, resolves cdgen42 lines 2982 / 2816 class) ----------------------------------
+# pe_pad_leaf_vectors._logged hides every access in 0x1F0000..0x1FF000 (the interpreter's stack), and
+# pe_cd_leaf_vectors only drops a case when the access lies outside 0x1FE000..0x1FF000.  A caller-supplied pointer
+# into the original's own frame window (a response buffer on the caller's stack: the real runtime layout) was
+# therefore read but never logged, so the vector said "no load" and a native that reads the buffer was failed
+# as `read-outside-original-loads` (cdgen42 line 2982).  Fix: a load from 0x1FE000..0x1FFFFF is logged
+# (as 0x801FExxx) when none of its bytes was stored earlier by the original in the same case (the original's own
+# spills/locals stay out); a load that mixes own-written and external bytes drops the case.  Stores stay unlogged.
+STACKW = (0x1FE000, 0x1FF000)
+_OWN = set()
+_chain_load = pl._ns['LOAD']
+_chain_store = pl._ns['STORE']
+
+
+def _own_store(fmt, buf, a, val):
+    if STACKW[0] <= a < STACKW[1]:
+        _OWN.update(range(a, a + struct.calcsize(fmt)))
+    return _chain_store(fmt, buf, a, val)
+
+
+def _own_load(fmt, buf, a):
+    val = _chain_load(fmt, buf, a)
+    if STACKW[0] <= a < STACKW[1] and not getattr(c, 'NO_STACK_LOADS', False):
+        n = struct.calcsize(fmt)
+        own = [(a + i) in _OWN for i in range(n)]
+        if not any(own):
+            pl.LOADS.append((0x80000000 + a, n, val[0] & 0xFFFFFFFF))
+        elif not all(own):
+            c.UNFAITHFUL[0] = True
+    return val
+
+
+pl._ns['STORE'] = _own_store
+pl._ns['LOAD'] = _own_load
 BIOS_STOPS = (0xA0, 0xB0, 0xC0)
 CLASS32 = (0, 1, 2, 3, 0x7F, 0x80, 0xFF, 0x100, 0x7FFFFFFF, 0x80000000, 0xFFFFFFFF, 0x10000, 0x12345678)
 EDGE = (0, 1, 2, 3, 0x7F, 0x80, 0xFF, 0x100, 0x101, 0x7FFF, 0x8000, 0xFFFF, 0x10000, 0x7FFFFFFF, 0x80000000, 0xFFFFFFFF)
@@ -119,6 +155,7 @@ def run_case(ram, entry, args, rets, sp, sysc, models=None):
     (ret, loads, stores, calls[(token_fields, stores_before)])."""
     pl.LOADS.clear()
     pl.STORES.clear()
+    _OWN.clear()
     pl.CUR[0] = entry
     calls = []
     regs = {i: a for i, a in enumerate(args[:4], 4)}
@@ -207,6 +244,7 @@ def discover(base, entry, sp, pilots=100):
     """Probe: run pilot cases and collect the guest words the function reads."""
     seen = {}
     sysc = syscall_pcs(base, entry)
+    PILOT[0] = True
     for seed in range(1, pilots + 1):
         s = seed * 104729 ^ entry
         ram, x, ring, size = c.prep(base, s)
@@ -231,6 +269,7 @@ def discover(base, entry, sp, pilots=100):
             seen.setdefault(key2[0], {}).setdefault(key2[1], 0)
             seen[key2[0]][key2[1]] += 1
     # keep words read in >= 20% of the pilots (state words, not pointer-chased noise)
+    PILOT[0] = False
     DISC[entry] = sorted((a, set(d)) for a, d in seen.items() if sum(d.values()) >= pilots // 5)
     return DISC[entry]
 
@@ -320,6 +359,8 @@ def cases(base, entry, n=200, extra=None):
             res = run_case(ram, entry, args, rets, sp, sysc, models)
         except (struct.error, IndexError):
             dropped += 1                   # wild pointer outside the 2 MiB RAM image
+            if os.environ.get('CDX_DEBUG_DROP'):
+                print('drop %08X seed %d args %s: wild pointer' % (entry, seed, ' '.join('%X' % q for q in args)))
             continue
         except MipsBreak:
             BREAKS[entry] = BREAKS.get(entry, 0) + 1   # retail raises a BREAK exception (e.g. divide by a zero word)
@@ -335,6 +376,8 @@ def cases(base, entry, n=200, extra=None):
             c.CdIrq.active = False
         if c.UNFAITHFUL[0]:
             dropped += 1
+            if os.environ.get('CDX_DEBUG_DROP'):
+                print('drop %08X seed %d args %s: unfaithful access' % (entry, seed, ' '.join('%X' % q for q in args)))
             continue
         ret, loads, stores, calls = res
         text = ' '.join(','.join('%08X' % y for y in rec) + '@%d' % m for rec, m in calls) or '-'
@@ -373,6 +416,9 @@ def main():
             e, SPEC[e]['name'], len(o), spun, dropped, BREAKS.get(e, 0), len(DISC[e])))
     open(outp, 'w').write('\n'.join(lines) + '\n')
     print('\n'.join(report))
+    if hasattr(sys.modules[__name__], 'COV'):
+        print('seed-class counts', {k: v_ for k, v_ in sorted(sys.modules[__name__].COV.items())})
+        print('runtime tuples', {k: len(v_) for k, v_ in sys.modules[__name__].RT.items()})
 
 
 if __name__ == '__main__':

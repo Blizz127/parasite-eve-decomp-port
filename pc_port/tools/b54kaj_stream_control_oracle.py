@@ -106,6 +106,7 @@ def main() -> None:
             "production arguments, call, stack argument, or next boundary")
     print("  OK caller: (1, signed record+6, -1, 0, 0); next call at 0x80192770")
 
+    # (control build against the removed translated file; recorded in docs/evidence/pe-b54kaj-stream-control/REPORT.md; not runnable since 2026-11-27)
     source = (root / "pc_port/game/boot/func_8007A214_port.c").read_text()
     caller_source = (root / "pc_port/game/boot/func_801924F8_port.c").read_text()
     require("func_8007C544(1u, start, end)" in source and

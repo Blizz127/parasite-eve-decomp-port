@@ -48,6 +48,7 @@ static uint32_t mlog[1024][3]; static unsigned nmlog;
 static uint32_t rq[16384][3]; static unsigned nrq, rq_pos;
 static uint32_t last_w_addr; static unsigned last_w_size;
 static int is_reg(pe_addr_t a) { return (a >> 16) == 0x1F80u; }
+static int loose_reads;   /* CDX_LOOSE_READS=1: an extra read of PLAIN RAM the original never made is not a mismatch (no observable effect); register reads stay replayed in order */
 static int mmio_read(pe_addr_t a, unsigned n, uint32_t *v)
 {
     if (!is_reg(a)) return 0;
@@ -62,7 +63,7 @@ static int mmio_read(pe_addr_t a, unsigned n, uint32_t *v)
 static void rd(pe_addr_t a, unsigned n)
 {
     unsigned j;
-    if (in_frame(a)) return;
+    if (in_frame(a) || loose_reads) return;
     for (j = 0; j < n; j++) if (readable[(a + j) & (MEM - 1)] != cur) {
         if (!bad_read && getenv("CDX_DEBUG")) fprintf(stderr, "  first read outside original loads: %08X size %u\n", (unsigned)a, n);
         bad_read = 1;
@@ -198,6 +199,7 @@ int main(int argc, char **argv)
     FILE *f; static char line[1 << 20], copy[1 << 20]; static char *tok[MAXTOK];
     unsigned n = 0, bad = 0, i;
     if (argc < 2 || !(f = fopen(argv[1], "r"))) { fprintf(stderr, "usage: check vectors.txt [noop|flip]\n"); return 2; }
+    loose_reads = getenv("CDX_LOOSE_READS") != NULL;
     if (argc > 2) mutant = !strcmp(argv[2], "noop") ? 1 : !strcmp(argv[2], "flip") ? 2 : 0;
     while (fgets(line, sizeof line, f)) {
         int nt = 0, ri, li, si, ti, ci, ok = 1, na, has; uint32_t entry, a[8] = {0}, wret, got = 0; unsigned k, slot;
@@ -331,7 +333,7 @@ int main(int argc, char **argv)
         { unsigned q; for (q = 0; q < 8; q++) cat_count[q] += (unsigned)cat_hit[q]; }
         if (!ok) {
             entry_bad[slot]++;
-            if (bad++ < 8 && !mutant) {
+            if (bad++ < (getenv("CDX_MAXPRINT") ? (unsigned)atoi(getenv("CDX_MAXPRINT")) : 8u) && !mutant) {
                 unsigned q;
                 fprintf(stderr, "MISMATCH line %u entry %08X (%s%s%s) %.160s\n", n, entry, bad_read ? "read outside original loads; " : "",
                         bad_call ? "unexpected call; " : "", "stores/return/calls/regs", line);

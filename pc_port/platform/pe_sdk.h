@@ -181,7 +181,7 @@ pe_addr_t PE_Bios_FirstFile(pe_addr_t pattern, pe_addr_t dir); /* B(42h) */
 pe_addr_t func_80072794(pe_addr_t dir);              /* B(43h) nextfile */
 int  func_800727A4(pe_addr_t name);                  /* B(45h) delete */
 
-/* ── libetc (pc_port/platform/pe_libetc.c) ──────────────────────────── */
+/* ── libetc (platform/pe_plat2_cdx_etc.c, host seams in pe_plat2_cdx_etc_seams.c) ── */
 void func_80073C74(uint32_t flag); /* BIOS ChangeClearPAD */
 uint32_t func_80073C84(uint32_t counter,uint32_t flag); /* ChangeClearRCnt,0..3 */
 void func_800726C4(void);            /* BIOS A0(44h) FlushCache host adapter */
@@ -224,7 +224,7 @@ int  PE_Event_Test(int handle);
 int  PE_Event_Disable(int handle);
 int  PE_Event_Close(int handle);
 int  PE_Event_UnDeliver(uint32_t cls, uint32_t spec);
-/* BIOS B(07h) DeliverEvent host model (pe_libetc.c). */
+/* BIOS B(07h) DeliverEvent host model (pe_plat2_cdx_etc_seams.c). */
 void PE_Event_Deliver(uint32_t cls, uint32_t spec);
 /* Card events: run the EvMdINTR handler, or mark the event for TestEvent
  * (pe_bios_card.c). */

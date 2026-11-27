@@ -118,6 +118,7 @@ def main() -> None:
             "GP1/GP0 first-packet model")
     print("  OK model: DrawSync, GP1 DMA-off, one GP0(E1h) word")
 
+    # (control build against the removed translated file; recorded in docs/evidence/pe-b54ku-drawprim-e1/REPORT.md; not runnable since 2026-11-27)
     wrapper_source = (root / "pc_port" / "game" / "boot" /
                       "func_80075358_port.c").read_text(encoding="utf-8")
     gpu_source = (root / "pc_port" / "platform" /

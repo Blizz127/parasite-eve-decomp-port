@@ -13,8 +13,24 @@ A8047448@2E1=1300,2100,40+   (m0278i at 0x2E1: spawn door 0x114 (-900,150); exit
 A8048048@2E1=430,1500,40+   (m0280i at 0x2E1: spawn door 0x116 (-64,-2020); exit quad x 360..500 z 1200..1800 -> door 0x118, m0281i; back quad x -600..300 z -2500..-2300 just south of the spawn)
 A80480C8@2E1=-625,-30,40+   (m0281i at 0x2E1: spawn door 0x118 (-151,2780); exit quad x -700..-550 z -110..50 -> door 0x119, m0282i; back quad x -540..-188 z 2900..3150)
 A8048148@2E1=0,-400,60+;27,6620,40+   (m0282i at 0x2E1: C2/C3 first clear the back quad x -2200..-1972 z -369..0 along z=-400, then turn north; spawn door 0x119 (-1998,-400); exit quad x -200..255 z 6543..6700 -> door 0x11A, m0283i)
-A80481C8@2E1=500,-500,60+;500,-4200,60+;1100,-4400,60+;1100,-4750,40+   (m0283i at 0x2E1: C3 follows the left corridor around the central floor hole; spawn door 0x11A (3333,-400); exit quad x 1000..1200 z -4900..-4600 -> door 0x11B, m0284i; back quad x 3240..3500 z -222..-40)
+#HISTORY (Game Over m0287i f21120, exit bit never set, creature 72/frame) A80481C8@2E1=500,-500,60+;500,-4200,60+;1100,-4400,60+;1100,-4750,40+   (m0283i at 0x2E1: C3 follows the left corridor around the central floor hole; spawn door 0x11A (3333,-400); exit quad x 1000..1200 z -4900..-4600 -> door 0x11B, m0284i; back quad x 3240..3500 z -222..-40)
+A80481C8@2E1=2750,-1500,100+;2420,-3000,60+$FF7F:3;2420,-3000,60!300;2900,-3500,80+;3000,-3800,80+;2925,-4300,60+;2920,-4530,60+;2000,-4522,80+;1100,-4650,40+   (m0283i at 0x2E1, ACTIVE since sw-day6amb: examine at the panel then run NORTH up the right strip; see the recipe block at the end of this file and docs/evidence/laterdays-native-20261127/DAY6-AMBUSH.md. Gated-binary results: E4 reaches story 0x2E2 f21078, E8 reaches the credits token AA108448 f34846.)
 A8048248@2E1=520,-2475,40+   (m0284i at 0x2E1: spawn door 0x11B (500,1478); exit quad x 300..740 z -2600..-2350 -> door 0x11C, m0285i; back quad x -150..808 z 1700..2400)
 A80482C8@2E1=-25,-2200,40+   (m0285i at 0x2E1: spawn door 0x11C (600,3160); exit quad x -150..100 z -2400..-2000 -> door 0x11D, m0286i; quad x 350..880 z 3300..3588 near the spawn)
 A8048348@2E1=-457,3900,40+   (m0286i at 0x2E1: spawn door 0x11D (-255,0); exit quad x -567..-347 z 3556..4240 -> door 0x11E, m0287i; back quad x -550..-400 z -250..100)
 A80483C8@2E1=-2525,0,40+   (m0287i at 0x2E1: spawn door 0x11E (1998,250); exit quad x -2650..-2400 z -540..540 -> movie 0x2C, story 0x2E2, door 0x11F, m0288i; back quad x 2000..2550 z 300..550)
+# --- sw-day6b 2026-11-27 (NOT active; see docs/evidence/laterdays-native-20261127/DAY6-REPORT.md) ---
+# m0283i boiler-panel examine (sets persist[0x2F] bit 0x1000, which the m0287i exit quad requires; the left-corridor entry above never sets it).
+# Executed pad-only: ...@2E1=2750,-1500,100+;2420,-3000,60+$FF7F:3;2420,-3000,60!300;...  (arrive in x 2235..2500 z -3400..-2700, tap Left to face west, Cross).
+# Result with the 2E1 chain: the scripted ambush that follows kills Aya within ~60 frames of control (Game Over from m0283i f19673), so the override is
+# recorded here but not promoted: with it the walk ends earlier (m0283i) than without it (m0287i f21120).
+#A80481C8@2E1=2750,-1500,100+;2420,-3000,60+$FF7F:3;2420,-3000,60!300;2750,-1500,100+;2000,-450,100+;500,-500,60+;500,-4200,60+;1100,-4400,60+;1100,-4750,40+
+# --- sw-day6amb 2026-11-27 (NOT active; see docs/evidence/laterdays-native-20261127/DAY6-AMBUSH.md) ---
+# SURVIVING pad-only route through the m0283i panel ambush into m0288i (gated binary 651fcb90, runs E2 and E4; Game Overs E1/E3/E5/E6 are the flee variants that fail).
+# Recipe: arrive at the panel region (x 2235..2500, z -3400..-2700), tap Left to face west, Cross (examine, persist[0x2F] bit 0x1000). Stand there until Aya regains
+# control (~f19588 in the committed flow; the creature only starts walking ~290 frames after the examine, from (3000,-500) at 17-19 units/frame toward the panel
+# corridor, collision radius ~170). Then RUN NORTH up the right strip, never south: x>=2900 for z -3500..-4300 (a west-side approach pins Aya on a non-mesh pipe at
+# (2757,-3750)), straight south to (2920,-4530) (west of x~2900 at z -4300..-4520 is also blocked: going west there creeps at <1 unit/frame), then west along z=-4522 to the exit
+# quad. The creature then follows a fixed waypoint path at ~7 units/frame (Aya runs 22.5). Walking (5/frame) is caught. The examine also sets the m0287i exit bit
+# (0x1000) and leaves bit 0x800 clear, which selects the creature's SLOW chase speed there (24.0 vs 72.0 units/frame) and opens that room's exit quad.
+# (now ACTIVE above as the A80481C8@2E1 entry; the previous committed route is kept above as a #HISTORY line)

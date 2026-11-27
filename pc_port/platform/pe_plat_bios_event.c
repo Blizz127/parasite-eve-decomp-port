@@ -10,7 +10,7 @@
  *   B(20h) UnDeliverEvent(class,spec)  moves enabled/ready mode-2000h events
  *                                   of that class/spec back to enabled/busy.
  * These wrappers only forward to the host event table PE_Event_* (platform/
- * pe_libetc.c, 6f749ac5b "Host DeliverEvent model"); what that table does for
+ * pe_plat2_cdx_etc_seams.c); what that table does for
  * Disable/Close/UnDeliver beyond the return values and TestEvent is its own
  * behaviour (known gaps against the text above are listed in
  * docs/evidence/native-pad-bios-rows-20261125/REPORT.md).  The guest names are

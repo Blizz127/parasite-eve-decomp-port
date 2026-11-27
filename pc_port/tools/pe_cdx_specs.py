@@ -49,6 +49,8 @@ def load_specs(m, batch):
           batch=b, inline=(0x80071A74, 0x80073C5C), bios=True,
           bios_silent=((0xA0, 0x3F), (0xB0, 0x3F)))
         m.HOOKS[0x8007BBFC] = _cdirq_hook(m)
+    if batch == 'cdgen42b':
+        _load_cdgen42b(m)
     if batch == 'cdgen44':
         b = 'cdgen44'
         # SPU DMA event installer / SPU init chain (libsnd): BIOS B(08h) OpenEvent and B(0Ch) EnableEvent are
@@ -146,3 +148,237 @@ def load_specs(m, batch):
             return x, None
         m.HOOKS[0x80082534] = nohooks
         m.HOOKS[0x800844E4] = nohooks
+
+
+# ------------------------------------------------------------------------------------------------------------------
+# cdgen42b: the CD-stream pump 0x8007FE24, the command-progress handler 0x80080404 and the status decoder 0x8008080C
+# sampled in the states the running game reaches (fresh-author request, sw-vec-cd2 2026-11-27).
+#   * the discrete seed dimensions the author asked for, as a full product (each combination sampled);
+#   * RUNTIME-OBSERVED input tuples (CDXT lines of the scratch trace hook, env CDX42B_TRACE = comma-separated logs);
+#   * random fill (generic discovery seeding + random callback slots) up to >= 400 cases per function.
+# The callback slots 0x800A36A0..36AC hold real guest functions at runtime (0x8007F7E8, 0x8007E964, 0x8007F88C,
+# 0x8007F960 in the boot trace); they are stopped callees here, plus three sentinels, so every `jalr` through a slot
+# is a CALL line.  Nothing here reads a provider.
+CB_SENTINELS = (0x80131300, 0x80131340, 0x80131380)
+CB_RUNTIME = (0x8007F7E8, 0x8007E964, 0x8007F88C, 0x8007F960)
+
+
+def _load_cdgen42b(m):
+    import os
+    import re
+    import struct
+    c, gv = m.c, m.gv
+    s = m.spec
+    b = 'cdgen42b'
+    cb = {a: 2 for a in CB_SENTINELS + CB_RUNTIME}
+    cb0 = {a: 0 for a in CB_SENTINELS + CB_RUNTIME}
+
+    def put32(ram, a, v):
+        struct.pack_into('<I', ram, a & 0x1FFFFF, v & 0xFFFFFFFF)
+
+    def put8(ram, a, v):
+        ram[a & 0x1FFFFF] = v & 0xFF
+
+    def hsh(*k):
+        h = 0x9E3779B1
+        for q in k:
+            h = gv.xs32((h ^ (q & 0xFFFFFFFF)) * 2654435761 & 0xFFFFFFFF or 1)
+        return h
+
+    # ---- runtime tuples ------------------------------------------------------------------------------------------
+    RT = {'pump': [], 'progress': [], 'decode': []}
+    for path in [q for q in os.environ.get('CDX42B_TRACE', '').split(',') if q]:
+        for ln in open(path, errors='replace'):
+            mm = re.match(r'CDXT (pump|progress|decode) ', ln)
+            if not mm:
+                continue
+            kv = {k: int(v, 16) for k, v in re.findall(r'(\w+)=([0-9A-Fa-f]+)', ln) if k != 'call'}
+            if kv not in RT[mm.group(1)]:
+                RT[mm.group(1)].append(kv)
+    REP = 8      # each runtime tuple becomes REP cases (different seeds: callee returns and every word the tuple does not pin)
+    for key in RT:
+        RT[key] = [t for t in RT[key] for _ in range(REP)]
+    NRAND = 400
+    COV = {}
+
+    def cov(fn, key):
+        COV.setdefault(fn, {})
+        COV[fn][key] = COV[fn].get(key, 0) + 1
+    m.COV = COV
+    m.RT = RT
+
+    def cb_pick(h, nonzero, allowed=None):
+        pool = allowed or (CB_RUNTIME + CB_SENTINELS)
+        return pool[h % len(pool)] if nonzero else 0
+
+    # ---- pump 0x8007FE24 -----------------------------------------------------------------------------------------
+    PH, ST = (0, 1, 2, 3), tuple(range(0x15))
+    CD3 = (0, 1, 2)
+    SUBS = (0x15, 0x16, 0x17, 0x18, 0, 0x14, 0x19)
+    PUMP_CELLS = len(PH) * len(ST) * 3 * 2 * 2          # phase x state x gate x slot(0/nz) x byte 0x8009B58B
+    NPUMP = PUMP_CELLS * 27
+    PUMP_SLOT_NZ = (0x80080164, 0x80080404, 0x8008080C) + CB_SENTINELS[:1] + CB_RUNTIME[:1]
+
+    def pump_hook(ram, x, args, rets, seed):
+        k = seed - 1
+        nrt = len(RT['pump'])
+        if m.PILOT[0] or k >= nrt + NPUMP:
+            h = hsh(seed, 77)
+            put32(ram, 0x8009B574, (0, 1, 2, 2, 3, h >> 8)[h % 6])
+            put32(ram, 0x8009B578, (list(ST) + [0x15, 0x20, h >> 12])[(h >> 4) % 24])
+            put32(ram, 0x800A36A0, cb_pick(h >> 3, (h >> 20) & 1, PUMP_SLOT_NZ))
+            if k >= nrt + NPUMP:
+                cov('pump', 'random')
+            return x, None
+        if k < nrt:
+            t = RT['pump'][k]
+            put32(ram, 0x8009B574, t['574']); put32(ram, 0x8009B578, t['578']); put32(ram, 0x8009B57C, t['57C'])
+            put32(ram, 0x8009B554, t['554']); put32(ram, 0x8009B598, t['598']); put32(ram, 0x8009B594, t['594'])
+            put32(ram, 0x8009B5A0, t['5A0']); put8(ram, 0x8009B588, t['b588']); put8(ram, 0x8009B58A, t['b58A'])
+            put8(ram, 0x8009B58B, t['b58B']); put32(ram, 0x8009B6A4, t['6A4'])
+            slot = t['36A0']
+            put32(ram, 0x800A36A0, slot if slot == 0 or slot in cb else CB_SENTINELS[0])
+            cov('pump', 'runtime')
+            return x, None
+        p = k - nrt
+        cell, j = divmod(p, 27)
+        b58b, slotc, gate = cell % 2, (cell // 2) % 2, (cell // 4) % 3
+        st, ph = (cell // 12) % 21, cell // 252
+        h = hsh(cell, j)
+        put32(ram, 0x8009B574, PH[ph]); put32(ram, 0x8009B578, ST[st]); put32(ram, 0x8009B554, gate)
+        put8(ram, 0x8009B58B, b58b)
+        put32(ram, 0x8009B598, CD3[j // 9]); put32(ram, 0x8009B594, CD3[(j // 3) % 3]); put32(ram, 0x8009B5A0, CD3[j % 3])
+        put32(ram, 0x8009B57C, SUBS[(j + cell) % len(SUBS)])         # j covers 0..26: every substate in every cell
+        put32(ram, 0x8009B6A4, ((j + cell) >> 1) & 1)
+        put8(ram, 0x8009B588, ((j + cell) // 3) & 1)
+        put8(ram, 0x8009B58A, ((j + cell) // 5) & 1)
+        put32(ram, 0x8009B58C, (0, 1, 0x7FFFFFFF, 0xFFFFFFFF)[((j + cell) // 7) % 4])     # incremented word of state 0xF / substate 0x16
+        put32(ram, 0x800A36A0, PUMP_SLOT_NZ[(j + cell) % len(PUMP_SLOT_NZ)] if slotc else 0)
+        cov('pump', 'product')
+        return x, None
+
+    s(0x8007FE24, 'cd_status_pump', '', {**{0x8007FCFC: 2, 0x800800F4: 0, 0x80080404: 0, 0x8008080C: 0, 0x80080164: 0}, **cb0},
+      batch=b, void=True, n=len(RT['pump']) + NPUMP + NRAND)
+    m.HOOKS[0x8007FE24] = pump_hook
+
+    # ---- progress 0x80080404 -------------------------------------------------------------------------------------
+    PSTATUS, PSTATE = (1, 2, 3, 5), tuple(range(0xB, 0x12))
+    FLAGS = (0x00, 0x10, 0x02, 0x12)
+    CNT = (0, 299, 300, 301, 400, 0x7FFFFFFF, 0xFFFFFFFF)
+    NPROG_PRODUCT = len(PSTATUS) * len(PSTATE) * len(FLAGS) * 2 * 8
+    NIDLE = len(FLAGS) * len(SUBS) * 3 * 8              # state 0xE, phase 2, status 2, cmd 1; flags x substate x countdown x slots
+    RESP = (0, 1, 0x80100000, 0x80100040, 0x801FEC10, 0x00100000, 0x1F800000, 0xFFFFFFFF)
+
+    def prog_common(ram, cell, v, h):
+        put32(ram, 0x8009B57C, SUBS[(v + cell) % len(SUBS)])       # v covers 0..7: every substate / counter value per cell
+        put32(ram, 0x8009B5A0, (v + cell // 7) % 3)
+        put32(ram, 0x8009B58C, CNT[(v * 3 + cell) % len(CNT)])
+        put32(ram, 0x8009B554, (v // 2 + cell) % 3)
+        put32(ram, 0x8009B574, (v + cell // 3) % 4)
+        for bit, a in enumerate((0x800A36A4, 0x800A36A8, 0x800A36AC)):      # all eight zero / nonzero patterns per cell
+            put32(ram, a, cb_pick(h >> (21 + 3 * bit), (v >> bit) & 1))
+
+    def prog_hook(ram, x, args, rets, seed):
+        k = seed - 1
+        nrt = len(RT['progress'])
+        if m.PILOT[0] or k >= nrt + NPROG_PRODUCT + NIDLE:
+            h = hsh(seed, 99)
+            args[0] = (0, 1, 2, 3, 4, 5, 0xFF, h >> 8)[h % 8] & 0xFF
+            put32(ram, 0x8009B578, (list(PSTATE) + [0, 0xA, 0x12, 0x13, 0x20, h >> 12])[(h >> 4) % 13])
+            put8(ram, 0x8009B56C, (0, 0x10, 0x02, 0x12, 0xFF, h >> 20)[(h >> 9) % 6])
+            put32(ram, 0x8009B590, (0, 1, 2, h >> 5)[(h >> 14) % 4])
+            for bit, a in enumerate((0x800A36A4, 0x800A36A8, 0x800A36AC)):
+                put32(ram, a, cb_pick(h >> (3 + 4 * bit), (h >> (15 + bit)) & 1))
+            if k >= nrt + NPROG_PRODUCT + NIDLE:
+                cov('progress', 'random')
+            return x, None
+        if k < nrt:
+            t = RT['progress'][k]
+            args[0] = t['status'] & 0xFF; args[1] = t['resp']
+            put32(ram, 0x8009B574, t['574']); put32(ram, 0x8009B578, t['578']); put32(ram, 0x8009B57C, t['57C'])
+            put8(ram, 0x8009B56C, t['b56C']); put32(ram, 0x8009B590, t['590']); put32(ram, 0x8009B554, t['554'])
+            put32(ram, 0x8009B5A0, t['5A0']); put32(ram, 0x8009B58C, t['58C'])
+            for a, key in ((0x800A36A4, '36A4'), (0x800A36A8, '36A8'), (0x800A36AC, '36AC')):
+                v_ = t[key]
+                put32(ram, a, v_ if v_ == 0 or v_ in cb else CB_SENTINELS[0])
+            cov('progress', 'runtime')
+            return x, None
+        p = k - nrt
+        if p < NPROG_PRODUCT:
+            cell, v = divmod(p, 8)
+            hi = hsh(cell, v)
+            flag, b590 = cell % 4, (cell // 4) % 2
+            state = (cell // 8) % 7
+            status = cell // 56
+            args[0] = PSTATUS[status]
+            args[1] = RESP[(hi >> 25) % len(RESP)]
+            put32(ram, 0x8009B578, PSTATE[state]); put8(ram, 0x8009B56C, FLAGS[flag]); put32(ram, 0x8009B590, b590)
+            prog_common(ram, cell, v, hi)
+            cov('progress', 'product')
+            return x, None
+        p -= NPROG_PRODUCT          # idle path: state 0xE, phase 2, status 2, command byte 1
+        cell, v = divmod(p, 8)
+        hi = hsh(cell, v, 5)
+        args[0] = 2
+        args[1] = RESP[(hi >> 25) % len(RESP)]
+        put32(ram, 0x8009B578, 0xE); put8(ram, 0x8009B558, 1)
+        put8(ram, 0x8009B56C, FLAGS[cell % 4]); put32(ram, 0x8009B590, hi >> 30 & 1)
+        prog_common(ram, cell, v, hi)
+        put32(ram, 0x8009B57C, SUBS[(cell // 4) % len(SUBS)]); put32(ram, 0x8009B5A0, (cell // 28) % 3)
+        put32(ram, 0x8009B574, 2)
+        cov('progress', 'idle')
+        return x, None
+
+    s(0x80080404, 'cd_command_progress', 'bw', dict(cb), batch=b, void=True,
+      n=len(RT['progress']) + NPROG_PRODUCT + NIDLE + NRAND)
+    m.HOOKS[0x80080404] = prog_hook
+
+    # ---- decode 0x8008080C ---------------------------------------------------------------------------------------
+    DST = (5, 1, 2, 3, 0, 0xFF)
+    DCMD = (0, 1, 2, 3, 9, 0xE, 0x15, 0x1B)
+    DTAB = (0, 1, 2, 3, 4, 8, 0x10, 0x80000000)
+    DPTR = (0x80100000, 0x801FE400, 0x801FEC00, 0x00100100, 0xA0100200, 0x801FED80)    # zone, own-window (arena / above / top), KUSEG, KSEG1
+    DBYTE = (0x00, 0x80, 0x40, 0x20, 0x02, 0xE2, 0xFF, None)
+    NDEC = len(DST) * len(DCMD) * len(DTAB) * len(DPTR)
+
+    def dec_hook(ram, x, args, rets, seed):
+        k = seed - 1
+        nrt = len(RT['decode'])
+        if m.PILOT[0] or k >= nrt + NDEC:
+            if k >= nrt + NDEC:
+                cov('decode', 'random')
+            return x, None
+        if k < nrt:
+            t = RT['decode'][k]
+            args[0] = t['status']; args[1] = t['resp']
+            put8(ram, 0x8009B558, t['cmd']); put32(ram, 0x8009B624 + 4 * (t['cmd'] & 0xFF), t['tab'])
+            hi = hsh(k, 11)
+            rb = t['resp'] & 0x1FFFFF
+            for q in range(16):               # the response buffer is not part of the trace tuple: seed its bytes (status byte patterns cycle)
+                ram[(rb + q) & 0x1FFFFF] = (hi >> (2 * q)) & 0xFF
+            bt = DBYTE[k % len(DBYTE)]
+            if bt is not None:
+                ram[(rb + (t['tab'] - 1 if t['status'] != 5 and 0 < t['tab'] < 0x100 else 0)) & 0x1FFFFF] = bt
+            cov('decode', 'runtime')
+            return x, None
+        p = k - nrt
+        hi = hsh(p, 3)
+        pi = p % len(DPTR); p //= len(DPTR)
+        ti = p % len(DTAB); p //= len(DTAB)
+        ci = p % len(DCMD); si = p // len(DCMD)
+        args[0] = (0x1234500 + DST[si]) & 0xFFFFFFFF if si % 2 else DST[si]
+        args[1] = DPTR[pi]
+        put8(ram, 0x8009B558, DCMD[ci]); put32(ram, 0x8009B624 + 4 * DCMD[ci], DTAB[ti])
+        bt = DBYTE[hi % len(DBYTE)]
+        idx = DTAB[ti] - 1 if DST[si] != 5 and 0 < DTAB[ti] < 0x100 else 0
+        base_ = DPTR[pi] & 0x1FFFFF
+        for q in range(16):                   # response bytes resp[0..15] (the 8-byte copy and the indexed status byte)
+            ram[(base_ + q) & 0x1FFFFF] = (hi >> (2 * q)) & 0xFF if q % 2 else (hi >> (3 * q + 1)) & 0xFF
+        if bt is not None:
+            ram[(base_ + idx) & 0x1FFFFF] = bt
+        cov('decode', 'product')
+        return x, None
+
+    s(0x8008080C, 'cd_decode_status', 'ww', {}, batch=b, void=True, inline=(0x80080998,),
+      n=len(RT['decode']) + NDEC + NRAND)
+    m.HOOKS[0x8008080C] = dec_hook

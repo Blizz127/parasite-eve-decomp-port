@@ -19,7 +19,6 @@ func	0x800735C4	pc_port/game/decomp/func_800735C4_port.c
 func	0x800738D8	pc_port/game/decomp/func_800738D8_port.c
 func	0x80075C94	pc_port/game/decomp/func_80075C94_port.c
 func	0x80077C84	pc_port/game/boot/func_80077C84_port.c
-func	0x8007A244	pc_port/game/boot/func_8007A214_port.c
 func	0x8007D778	pc_port/game/decomp/func_8007D778_port.c
 func	0x8007F7E8	pc_port/game/boot/cd_stream_port.c
 func	0x8007F88C	pc_port/game/boot/cd_stream_port.c

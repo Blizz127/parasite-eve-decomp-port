@@ -103,6 +103,7 @@ def main() -> None:
     print("  OK retail: MDEC module, 13-word DecDCTReset wrapper, 60-word next boundary")
     print("  OK caller: func_801924F8 invokes mode 0 at 0x80192728")
 
+    # (control build against the removed translated file; recorded in docs/evidence/pe-b54kaf-decdctreset/REPORT.md; not runnable since 2026-11-27)
     wrapper_source = (root / "pc_port/game/boot/func_8010BE3C_port.c").read_text()
     caller_source = (root / "pc_port/game/boot/func_801924F8_port.c").read_text()
     require("if (mode == 0)" in wrapper_source and

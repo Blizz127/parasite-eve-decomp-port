@@ -95,6 +95,7 @@ def main() -> None:
     print("  OK retail: 9-word DecDCToutCallback wrapper and canonical return")
     print("  OK caller: exact 0x80191DC8 registration; next instruction 0x80192740")
 
+    # (control build against the removed translated file; recorded in docs/evidence/pe-b54kah-decdctoutcallback/REPORT.md; not runnable since 2026-11-27)
     wrapper_source = (root / "pc_port/game/boot/func_8010BE3C_port.c").read_text()
     caller_source = (root / "pc_port/game/boot/func_801924F8_port.c").read_text()
     require("func_80073CF4(1u, callback)" in wrapper_source and

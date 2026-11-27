@@ -1,0 +1,5 @@
+# Pinned Python dependency of the port generators (scripts/build_pc_port.sh).
+# Install: python3 -m pip install --user -r tools/requirements-port.txt
+# Offline: point PE_PYLIB at a directory containing a pycparser/ package.
+# 3.11 is the version the committed generator output was verified against.
+pycparser==3.11

@@ -102,6 +102,7 @@ def main() -> None:
     print("  OK retail: 60-word reset, 36-word submit, exact MMIO table")
     print("  OK tables: quantization and scale command payloads authenticated")
 
+    # (control build against the removed translated file; recorded in docs/evidence/native-be3c-20261125/HELPER_NOTES.md; not runnable since 2026-11-27)
     source = (root / "pc_port/game/boot/func_8010BE3C_port.c").read_text()
     model = (root / "pc_port/platform/pe_mdec.c").read_text()
     require("mode != 0 && mode != 1" in source and

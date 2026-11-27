@@ -71,7 +71,7 @@ void func_8006E60C(void);
 
 /* ── func_8003E610 callees ─────────────────────────────────────────── */
 /* All ten callees are now REAL implementations (Phase 6E-A batch 1):
- * func_80073C94/func_80072714/func_80072724  — pe_libetc.c
+ * func_80073C94/func_80072714/func_80072724  — pe_plat_irq_callback.c / pe_plat2_cdx_etc.c
  * func_80074924/749D8/74A44/74BB8            — pe_libgpu.c
  * func_8007D054                              — pe_libsnd.c
  * func_80077F7C  — pe_plat_gte_init.c (clean-room);  func_80079004/func_80079024 — pe_plat_gte_regs.c
@@ -102,7 +102,7 @@ extern void func_8003E91C(void);
 extern void func_80036F7C(void);
 
 /* func_80073D24 is now a REAL SDK implementation (Phase 6E-B6):
- * pe_libetc.c — VBlank callback slot-4 setter with previous-handler
+ * pe_plat2_cdx_etc.c — VBlank callback slot-4 setter with previous-handler
  * return, guest-table backed (pe_callback.h).
  * func_800371A4 is now a REAL translation (Phase 6E-B7):
  * game/boot/func_800371A4_port.c — 3-word $gp-relative byte setter.

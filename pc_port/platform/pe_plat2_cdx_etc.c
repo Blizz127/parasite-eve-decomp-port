@@ -21,8 +21,10 @@
  * HOST SIDE.  The guest-visible results above are produced by this file alone.  The port additionally keeps
  * host bookkeeping that other host code gates on (critical-section depth that defers pending IRQ / audio
  * command delivery, the ChangeClear* snapshot used by the IRQ-registration diagnostics, the code-cache flush
- * hook).  That bookkeeping still lives behind the pe_plat_bios_* host seams, so the five BIOS veneers forward
- * to them and ignore their results; the checkers stand those seams in as inert. */
+ * hook).  That bookkeeping lives behind the pe_plat_bios_* host seams, now clean-room host contracts in
+ * platform/pe_plat2_cdx_etc_seams.c (pe_plat/cdx_etc_seams.h); the five BIOS veneers forward to them and
+ * ignore their results; the checkers stand those seams in as inert.  The raw names are kept on purpose: the
+ * transition-loader test wraps them at link time (-Wl,--wrap). */
 #include <stdint.h>
 #define PE_CDXETC_HOST_SEAMS 1   /* keep the raw pe_plat_bios_* host-seam names in this TU */
 #include "pe_plat/cdx_etc.h"

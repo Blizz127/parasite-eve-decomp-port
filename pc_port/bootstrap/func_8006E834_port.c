@@ -26,7 +26,7 @@ extern void func_800726C4(void);
 extern uint32_t func_80073A44(int a);
 extern void func_80074D28(int a);
 extern pe_addr_t func_800755F0(pe_addr_t env);
-/* func_80072714/func_80072724 (pe_libetc.c), func_800749D8 (pe_libgpu.c)
+/* func_80072714/func_80072724 (pe_plat2_cdx_etc.c), func_800749D8 (pe_libgpu.c)
  * and func_8006E6D4/func_800811E4 (pe_libcd.c) are real implementations
  * (Phase 6E-A) via pe_sdk.h. */
 
@@ -43,7 +43,7 @@ extern pe_addr_t func_800755F0(pe_addr_t env);
 
 /* func_80086FF8 is real (pe_stream.c, Phase 6E-A batch 2), and
  * func_800726C4 is the host-safe BIOS A0(44h) FlushCache adapter in
- * pe_libetc.c. */
+ * pe_plat2_cdx_etc.c. */
 
 /* ── Adapted function ──────────────────────────────────────────────── */
 int func_8006E834(void)
